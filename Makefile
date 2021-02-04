@@ -2,19 +2,17 @@ all: build
 
 SHELL :=/bin/bash -euEo pipefail
 
-IMAGE_REF		?= docker.io/scylladb/scylla-operator:latest
+IMAGE_LATEST_TAG ?= latest
+IMAGE_REF ?= docker.io/scylladb/scylla-operator:$(IMAGE_LATEST_TAG)
 
 # Produce CRDs that work back to Kubernetes 1.11 (no version conversion)
 CRD_OPTIONS 	?= "crd:trivialVersions=true"
-# Helm repo parameters
-HELM_BUCKET 	?= "gs://scylla-operator-charts"
-HELM_LOCAL_REPO	?= "helm/repo"
-HELM_REPOSITORY	?= "https://scylla-operator-charts.storage.googleapis.com"
 
 GO_REQUIRED_MIN_VERSION ?=1.15.7
 
 GIT_TAG ?=$(shell git describe --long --tags --abbrev=7 --match 'v[0-9]*' || echo 'v0.0.0-unknown')
 GIT_COMMIT ?=$(shell git rev-parse --short "HEAD^{commit}" 2>/dev/null)
+GIT_BRANCH ?=$(shell (git rev-parse --abbrev-ref HEAD))
 GIT_TREE_STATE ?=$(shell ( ( [ ! -d ".git/" ] || git diff --quiet ) && echo 'clean' ) || echo 'dirty')
 
 GO ?=go
@@ -39,7 +37,6 @@ GO_LD_EXTRAFLAGS ?=
 GO_TEST_PACKAGES :=./pkg/... # ./cmd/...
 GO_TEST_FLAGS ?=-race
 GO_TEST_ARGS ?=
-
 
 define version-ldflags
 -X $(1).versionFromGit="$(GIT_TAG)" \
@@ -146,7 +143,11 @@ update-deps-overrides:
 	cp "$(tmp_dir)"/{updated,current}/deps.diff
 .PHONY: update-deps-overrides
 
-verify: verify-govet verify-gofmt
+verify-helm:
+	@$(foreach chart,$(HELM_CHARTS),helm lint helm/$(chart); )
+.PHONY: verify-helm
+
+verify: verify-govet verify-gofmt verify-helm
 .PHONY: verify
 
 update: update-gofmt
@@ -222,11 +223,28 @@ generate:
 	controller-gen object:headerFile="hack/boilerplate.go.txt" paths="$(GO_PACKAGES)"
 .PHONY: generate
 
+HELM_CHANNEL ?=latest
+HELM_CHARTS=scylla-operator scylla-manager scylla
+
+# Build Helm charts and publish them in Development GCS repo
+dev-helm-publish: export REPOSITORY ?=https://scylla-operator-charts-dev.storage.googleapis.com/$(HELM_CHANNEL)
+dev-helm-publish: export BUCKET ?=gs://scylla-operator-charts-dev/$(HELM_CHANNEL)
+dev-helm-publish:
+	@$(MAKE) helm-publish
+.PHONY: dev-helm-publish
+
 # Build Helm charts and publish them in GCS repo
-helm-release:
-	mkdir -p $(HELM_LOCAL_REPO)
-	gsutil rsync -d $(HELM_BUCKET) $(HELM_LOCAL_REPO)
-	helm package helm/scylla-operator helm/scylla helm/scylla-manager -d $(HELM_LOCAL_REPO)
-	helm repo index $(HELM_LOCAL_REPO) --url $(HELM_REPOSITORY) --merge $(HELM_LOCAL_REPO)/index.yaml
-	gsutil rsync -d $(HELM_LOCAL_REPO) $(HELM_BUCKET)
-.PHONY: helm-release
+helm-publish: export LOCAL_REPO ?=helm/repo/$(HELM_CHANNEL)
+helm-publish: export BUCKET ?=gs://scylla-operator-charts/$(HELM_CHANNEL)
+helm-publish: export REPOSITORY ?=https://scylla-operator-charts.storage.googleapis.com/$(HELM_CHANNEL)
+helm-publish: export APP_VERSION ?=$(IMAGE_LATEST_TAG)
+helm-publish: export CHART_VERSION ?=$(GIT_TAG)-$(APP_VERSION)
+helm-publish:
+	mkdir -p $(LOCAL_REPO)
+	gsutil rsync -d $(BUCKET) $(LOCAL_REPO)
+
+	@$(foreach chart,$(HELM_CHARTS),helm package helm/$(chart) --destination $(LOCAL_REPO) --app-version $(APP_VERSION) --version $(CHART_VERSION); )
+
+	helm repo index $(LOCAL_REPO) --url $(REPOSITORY) --merge $(LOCAL_REPO)/index.yaml
+	gsutil rsync -d $(LOCAL_REPO) $(BUCKET)
+.PHONY: helm-publish

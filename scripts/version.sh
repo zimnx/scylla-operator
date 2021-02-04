@@ -18,10 +18,12 @@
 
 set -euo pipefail
 
-BRANCH=$(git rev-parse --abbrev-ref HEAD)
+BRANCH="${BRANCH:-"$(git rev-parse --abbrev-ref HEAD)"}"
+LATEST_TAG=$(git describe --tags --always --abbrev=0)
+
 if [[ $BRANCH =~ ^v[0-9]+\.[0-9]+$ ]]; then
-  echo $(git describe --tags --always --abbrev=0)
+  echo $LATEST_TAG
   exit 0
 fi
 
-echo 'nightly'
+echo "nightly"
