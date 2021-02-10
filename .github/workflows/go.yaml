@@ -131,27 +131,38 @@ jobs:
     needs: [success]
     if: ${{ github.event_name != 'pull_request' }}
     steps:
+    - uses: actions/checkout@v2
+      with:
+        fetch_depth: 0
     - name: Determine promotion tag
       if: ${{ github.event_name != 'schedule' }}
       run: |
         source ./hack/lib/tag-from-gh-ref.sh
-        echo "IMAGE_TAG=$( tag_from_gh_ref "${GITHUB_REF} )" | tee -a ${GITHUB_ENV}
+        echo "VERSION_TAG=$( tag_from_gh_ref "${GITHUB_REF} )" | tee -a ${GITHUB_ENV}
     - name: Determine promotion tag for scheduled job
       if: ${{ github.event_name == 'schedule' }}
       run: |
-        echo "IMAGE_TAG=nightly" | tee -a ${GITHUB_ENV}
+        echo "VERSION_TAG=nightly" | tee -a ${GITHUB_ENV}
     - name: Login to DockerHub
       uses: docker/login-action@v1
       with:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
-    - uses: actions/checkout@v2
     # TODO: use the same image sha from images step - has to match what we used for e2e
-    - name: Publish latest image
+    - name: Publish Docker image
       uses: docker/build-push-action@v2
       with:
         context: .
         file: ./Dockerfile
         platforms: linux/amd64
         push: true
-        tags: ${{ env.image_ref }}:${{ env.IMAGE_TAG }}
+        tags: ${{ env.image_ref }}:${{ env.VERSION_TAG }}
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@master
+      with:
+        service_account_key: ${{ secrets.GCP_SA_KEY }}
+    - name: Publish Helm Chart
+      env:
+        HELM_CHANNEL: latest
+        APP_VERSION: ${{ env.VERSION_TAG }}
+      run: make helm-publish
