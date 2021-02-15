@@ -45,9 +45,11 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     ( (tag_from_gh_ref 'refs/heads/v1.0.0.0' && exit 1) || true )
     [[ "$( tag_from_gh_ref 'refs/heads/master' )" == 'latest' ]]
     [[ "$( tag_from_gh_ref 'refs/heads/v1.0' )" == '1.0' ]]
+    [[ "$( tag_from_gh_ref 'refs/heads/v1.1' )" == '1.1' ]]
     [[ "$( tag_from_gh_ref 'refs/tags/v1.0.0-alpha.0' )" == '1.0.0-alpha.0' ]]
     [[ "$( tag_from_gh_ref 'refs/tags/v1.0.0-beta.0' )" == '1.0.0-beta.0' ]]
     [[ "$( tag_from_gh_ref 'refs/tags/v1.0.0-rc.0' )" == '1.0.0-rc.0' ]]
+    [[ "$( tag_from_gh_ref 'refs/tags/v1.1.0-rc.0' )" == '1.1.0-rc.0' ]]
 
     echo "${message_prefix}..SUCCESS." >&2
 fi
