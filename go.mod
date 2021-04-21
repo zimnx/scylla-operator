@@ -19,6 +19,7 @@ require (
 	github.com/go-openapi/validate v0.19.8
 	github.com/gocql/gocql v0.0.0-20200815110948-5378c8f664e9
 	github.com/google/go-cmp v0.5.2
+	github.com/google/go-github/v35 v35.0.0
 	github.com/hailocab/go-hostpool v0.0.0-20160125115350-e80d13ce29ed
 	github.com/hashicorp/go-version v1.2.1
 	github.com/kr/text v0.2.0 // indirect
@@ -38,6 +39,7 @@ require (
 	go.uber.org/config v1.4.0
 	go.uber.org/multierr v1.5.0
 	go.uber.org/zap v1.15.0
+	golang.org/x/oauth2 v0.0.0-20200107190931-bf48bf16ab8d
 	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f // indirect
 	gopkg.in/yaml.v2 v2.3.0
 	k8s.io/api v0.20.4
