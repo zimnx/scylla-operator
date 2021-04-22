@@ -13,6 +13,7 @@ import (
 
 	cmd "github.com/scylladb/scylla-operator/pkg/cmd/utils/gen-release-notes"
 	"github.com/scylladb/scylla-operator/pkg/genericclioptions"
+	"github.com/spf13/cobra"
 	"k8s.io/klog/v2"
 )
 
@@ -32,13 +33,19 @@ func main() {
 	if len(os.Getenv("GOMAXPROCS")) == 0 {
 		runtime.GOMAXPROCS(runtime.NumCPU())
 	}
-	command := cmd.NewGenReleaseNotesCommand(ctx, genericclioptions.IOStreams{
+	streams := genericclioptions.IOStreams{
 		In:     os.Stdin,
 		Out:    os.Stdout,
 		ErrOut: os.Stderr,
-	})
-	err = command.Execute()
-	if err != nil {
+	}
+
+	var rootCmd = &cobra.Command{}
+	rootCmd.AddCommand(
+		cmd.NewGenGithubReleaseNotesCommand(ctx, streams),
+		cmd.NewGenGitReleaseNotesCommand(ctx, streams),
+	)
+
+	if err := rootCmd.Execute(); err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "Error: %s\n", err)
 		os.Exit(1)
 	}
