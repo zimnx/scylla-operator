@@ -46,6 +46,13 @@ function find_previous_semver {
     return 1
 }
 
+function is_semver {
+  if [[ ${1} =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc).[0-9]+)?$ ]]; then
+    return 0
+  fi
+  return 1
+}
+
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     set -euEo pipefail
     shopt -s inherit_errexit
@@ -73,6 +80,12 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     is_lower_semver 'v1.2.0-beta.1' 'v1.2.0'
     is_lower_semver 'v1.2.0-rc.1' 'v1.2.0'
     is_lower_semver 'v1.2.0' 'v1.2.1-rc.1'
+
+    is_semver 'v1.2.0'
+    is_semver '1.2.0'
+    is_semver 'v1.2.0-alpha.1'
+    is_semver 'v1.2.0-beta.1'
+    is_semver 'v1.2.1-rc.1'
 
     [[ "$( find_previous_semver 'v1.0.0 v1.1.0' 'v1.2.0' )" == "v1.1.0" ]]
     [[ "$( find_previous_semver 'v1.1.0 v1.0.0' 'v1.2.0' )" == "v1.1.0" ]]
