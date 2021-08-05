@@ -232,7 +232,6 @@ jobs:
     - verify
     - verify-deps
     - build-and-test
-#    - test-integration  # flaky
     - images
     - test-e2e
     # TODO: Depend on upgrade-e2e when available
@@ -260,8 +259,15 @@ jobs:
       if: ${{ github.event_name != 'schedule' }}
       run: |
         source ./hack/lib/tag-from-gh-ref.sh
+        source ./hack/lib/semver.sh
+
         IMAGE_TAG=$( tag_from_gh_ref "${GITHUB_REF}" )
         echo "IMAGE_TAG=${IMAGE_TAG}" | tee -a ${GITHUB_ENV}
+
+        # Helm Chart version must has semantic format.
+        if [ $( is_semver "${IMAGE_TAG}" ) -eq 0 ] ; then
+          echo "HELM_CHART_VERSION=${IMAGE_TAG}" | tee -a ${GITHUB_ENV}
+        fi
     - name: Determine promotion tag for scheduled job
       if: ${{ github.event_name == 'schedule' }}
       run: |
@@ -297,8 +303,9 @@ jobs:
       env:
         HELM_CHANNEL: latest
         HELM_APP_VERSION: ${{ env.IMAGE_TAG }}
-      run: make helm-publish
-
+      run: |
+        echo "HELM_CHART_VERSION=${HELM_CHART_VERSION}"
+        echo "HELM_APP_VERSION=${HELM_APP_VERSION}"
   failure-notifications:
     name: Failure notifications
     runs-on: ubuntu-20.04
