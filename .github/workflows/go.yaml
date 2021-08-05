@@ -126,101 +126,101 @@ jobs:
         if-no-files-found: error
         retention-days: ${{ env.retention_days }}
 
-  test-e2e:
-    name: Test e2e
-    runs-on: ubuntu-20.04
-    needs: images
-    steps:
-    - uses: actions/checkout@v2
-      with:
-        path: ${{ env.git_repo_path }}
-        fetch-depth: 0  # also fetch tags
-    - name: Create artifacts dir
-      env:
-        ARTIFACTS_DIR: ${{ runner.temp }}/e2e-artifacts
-      run: |
-        set -x
-        mkdir "${ARTIFACTS_DIR}"
-        echo "ARTIFACTS_DIR=${ARTIFACTS_DIR}" | tee -a ${GITHUB_ENV}
-    - uses: actions/download-artifact@v2
-      with:
-        name: operatorimage.tar.lz4
-        path: ~/
-    - name: Load image
-      run: |
-        set -x
-        unlz4 ~/operatorimage.tar.lz4 - | docker load
-        # docker looses the registry part on save/load
-        docker tag "$( echo "${image_repo_ref}:ci" | sed -E -e 's~[^/]+/(.*)~\1~' )" "${image_repo_ref}:ci"
-        docker images '${{ env.image_repo_ref }}:ci'
-    - name: Setup go
-      uses: actions/setup-go@v2
-      with:
-        go-version: ${{ env.go_version }}
-    - name: Install tools
-      run: |
-        set -x
-        go install github.com/mikefarah/yq/v4@v4.6.1
-    - name: Setup minikube
-      uses: ./go/src/github.com/scylladb/scylla-operator/.github/actions/setup-minikube
-    - name: Deploy scylla-operator
-      run: |
-        set -x
-        timeout 10m ./hack/ci-deploy.sh '${{ env.image_repo_ref }}:ci'
-        kubectl get pods -A
-    - name: Tolerate flakes on promotion jobs
-      if: ${{ github.event_name != 'pull_request' }}
-      run: |
-        echo "FLAKE_ATTEMPTS=5" | tee -a ${GITHUB_ENV}
-    - name: Run e2e
-      run: |
-        set -euExo pipefail
-
-        flake_attempts=0
-        if [[ -v 'FLAKE_ATTEMPTS' ]]; then
-          flake_attempts="${FLAKE_ATTEMPTS}"
-        fi
-
-        timeout 60m docker run --user="$( id -u ):$( id -g )" --rm \
-        --entrypoint=/usr/bin/scylla-operator-tests \
-        -v="${ARTIFACTS_DIR}:${ARTIFACTS_DIR}:rw" \
-        -v="${HOME}/.kube/config:/kubeconfig:ro" -e='KUBECONFIG=/kubeconfig' \
-        '${{ env.image_repo_ref }}:ci' run --artifacts-dir="${ARTIFACTS_DIR}" --flake-attempts="${flake_attempts}"
-    - name: Dump cluster state
-      if: ${{ always() }}
-      working-directory: ${{ runner.temp }}
-      run: timeout 10m ${{ env.git_repo_path }}/hack/ci-gather-artifacts.sh
-    - name: Get machine logs and info
-      if: ${{ always() }}
-      working-directory: ${{ runner.temp }}/e2e-artifacts
-      run: |
-        set -x
-        docker info > docker.info
-        docker images -a > docker.images
-        docker stats -a --no-stream --no-trunc > docker.stats
-        free -h > free
-        journalctl -u kubelet > kubelet.log
-    - name: Collect audit logs
-      if: ${{ always() }}
-      working-directory: ${{ runner.temp }}/e2e-artifacts
-      run: |
-        set -euEx -o pipefail
-        sudo cat $( ls /var/log/minikube/kube-apiserver-audit*.log | sort -n ) > ./kube-apiserver-audit.log
-        jq -s 'group_by(.user.username) | map({"user": .[0].user.username, "total": length, "verbs": (group_by(.verb) | map({"key":.[0].verb, "value": length}) | from_entries)}) | sort_by(.total) | reverse' ./kube-apiserver-audit.log > ./api-call-stats.json
-    - name: Compress artifacts
-      if: ${{ always() }}
-      working-directory: ${{ runner.temp }}
-      run: |
-        set -x
-        tar -c --use-compress-program=lz4 -f ./e2e-artifacts.tar.lz4 "e2e-artifacts/"
-    - name: Upload artifacts
-      if: ${{ always() }}
-      uses: actions/upload-artifact@v2
-      with:
-        name: e2e-artifacts.tar.lz4
-        path: ${{ runner.temp }}/e2e-artifacts.tar.lz4
-        if-no-files-found: error
-        retention-days: ${{ env.retention_days }}
+#  test-e2e:
+#    name: Test e2e
+#    runs-on: ubuntu-20.04
+#    needs: images
+#    steps:
+#    - uses: actions/checkout@v2
+#      with:
+#        path: ${{ env.git_repo_path }}
+#        fetch-depth: 0  # also fetch tags
+#    - name: Create artifacts dir
+#      env:
+#        ARTIFACTS_DIR: ${{ runner.temp }}/e2e-artifacts
+#      run: |
+#        set -x
+#        mkdir "${ARTIFACTS_DIR}"
+#        echo "ARTIFACTS_DIR=${ARTIFACTS_DIR}" | tee -a ${GITHUB_ENV}
+#    - uses: actions/download-artifact@v2
+#      with:
+#        name: operatorimage.tar.lz4
+#        path: ~/
+#    - name: Load image
+#      run: |
+#        set -x
+#        unlz4 ~/operatorimage.tar.lz4 - | docker load
+#        # docker looses the registry part on save/load
+#        docker tag "$( echo "${image_repo_ref}:ci" | sed -E -e 's~[^/]+/(.*)~\1~' )" "${image_repo_ref}:ci"
+#        docker images '${{ env.image_repo_ref }}:ci'
+#    - name: Setup go
+#      uses: actions/setup-go@v2
+#      with:
+#        go-version: ${{ env.go_version }}
+#    - name: Install tools
+#      run: |
+#        set -x
+#        go install github.com/mikefarah/yq/v4@v4.6.1
+#    - name: Setup minikube
+#      uses: ./go/src/github.com/scylladb/scylla-operator/.github/actions/setup-minikube
+#    - name: Deploy scylla-operator
+#      run: |
+#        set -x
+#        timeout 10m ./hack/ci-deploy.sh '${{ env.image_repo_ref }}:ci'
+#        kubectl get pods -A
+#    - name: Tolerate flakes on promotion jobs
+#      if: ${{ github.event_name != 'pull_request' }}
+#      run: |
+#        echo "FLAKE_ATTEMPTS=5" | tee -a ${GITHUB_ENV}
+#    - name: Run e2e
+#      run: |
+#        set -euExo pipefail
+#
+#        flake_attempts=0
+#        if [[ -v 'FLAKE_ATTEMPTS' ]]; then
+#          flake_attempts="${FLAKE_ATTEMPTS}"
+#        fi
+#
+#        timeout 60m docker run --user="$( id -u ):$( id -g )" --rm \
+#        --entrypoint=/usr/bin/scylla-operator-tests \
+#        -v="${ARTIFACTS_DIR}:${ARTIFACTS_DIR}:rw" \
+#        -v="${HOME}/.kube/config:/kubeconfig:ro" -e='KUBECONFIG=/kubeconfig' \
+#        '${{ env.image_repo_ref }}:ci' run --artifacts-dir="${ARTIFACTS_DIR}" --flake-attempts="${flake_attempts}"
+#    - name: Dump cluster state
+#      if: ${{ always() }}
+#      working-directory: ${{ runner.temp }}
+#      run: timeout 10m ${{ env.git_repo_path }}/hack/ci-gather-artifacts.sh
+#    - name: Get machine logs and info
+#      if: ${{ always() }}
+#      working-directory: ${{ runner.temp }}/e2e-artifacts
+#      run: |
+#        set -x
+#        docker info > docker.info
+#        docker images -a > docker.images
+#        docker stats -a --no-stream --no-trunc > docker.stats
+#        free -h > free
+#        journalctl -u kubelet > kubelet.log
+#    - name: Collect audit logs
+#      if: ${{ always() }}
+#      working-directory: ${{ runner.temp }}/e2e-artifacts
+#      run: |
+#        set -euEx -o pipefail
+#        sudo cat $( ls /var/log/minikube/kube-apiserver-audit*.log | sort -n ) > ./kube-apiserver-audit.log
+#        jq -s 'group_by(.user.username) | map({"user": .[0].user.username, "total": length, "verbs": (group_by(.verb) | map({"key":.[0].verb, "value": length}) | from_entries)}) | sort_by(.total) | reverse' ./kube-apiserver-audit.log > ./api-call-stats.json
+#    - name: Compress artifacts
+#      if: ${{ always() }}
+#      working-directory: ${{ runner.temp }}
+#      run: |
+#        set -x
+#        tar -c --use-compress-program=lz4 -f ./e2e-artifacts.tar.lz4 "e2e-artifacts/"
+#    - name: Upload artifacts
+#      if: ${{ always() }}
+#      uses: actions/upload-artifact@v2
+#      with:
+#        name: e2e-artifacts.tar.lz4
+#        path: ${{ runner.temp }}/e2e-artifacts.tar.lz4
+#        if-no-files-found: error
+#        retention-days: ${{ env.retention_days }}
 
   # TODO: Add upgrade-e2e - use the same image sha from images step
 
@@ -232,9 +232,8 @@ jobs:
     - verify
     - verify-deps
     - build-and-test
-#    - test-integration  # flaky
     - images
-    - test-e2e
+    #- test-e2e
     # TODO: Depend on upgrade-e2e when available
     steps:
     - name: Always succeed
@@ -245,7 +244,7 @@ jobs:
     name: Promote artifacts
     runs-on: ubuntu-20.04
     needs: [success]
-    if: ${{ github.event_name != 'pull_request' }}
+#    if: ${{ github.event_name != 'pull_request' }}
     steps:
     - uses: actions/checkout@v2
       with:
@@ -259,9 +258,18 @@ jobs:
     - name: Determine promotion tag
       if: ${{ github.event_name != 'schedule' }}
       run: |
+        set -euExo pipefail
+
         source ./hack/lib/tag-from-gh-ref.sh
+        source ./hack/lib/semver.sh
+
         IMAGE_TAG=$( tag_from_gh_ref "${GITHUB_REF}" )
         echo "IMAGE_TAG=${IMAGE_TAG}" | tee -a ${GITHUB_ENV}
+
+        # Helm Chart version must has semantic format.
+        if [ is_semver "${IMAGE_TAG}" ] ; then
+          echo "HELM_CHART_VERSION=${IMAGE_TAG}" | tee -a ${GITHUB_ENV}
+        fi
     - name: Determine promotion tag for scheduled job
       if: ${{ github.event_name == 'schedule' }}
       run: |
@@ -279,26 +287,27 @@ jobs:
         # docker looses the registry part on save/load
         docker tag "$( echo "${image_repo_ref}:ci" | sed -E -e 's~[^/]+/(.*)~\1~' )" "${image_repo_ref}:ci"
         docker images '${{ env.image_repo_ref }}:ci'
-    - name: Login to DockerHub
-      uses: docker/login-action@v1
-      with:
-        username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
-    - name: Promote image
-      run: |
-        set -x
-        docker tag '${{ env.image_repo_ref }}:ci' '${{ env.image_repo_ref }}:${{ env.IMAGE_TAG }}'
-        docker push '${{ env.image_repo_ref }}:${{ env.IMAGE_TAG }}'
-    - name: Set up Cloud SDK
-      uses: google-github-actions/setup-gcloud@master
-      with:
-        service_account_key: ${{ secrets.GCP_SA_KEY }}
+#    - name: Login to DockerHub
+#      uses: docker/login-action@v1
+#      with:
+#        username: ${{ secrets.DOCKERHUB_USERNAME }}
+#        password: ${{ secrets.DOCKERHUB_TOKEN }}
+#    - name: Promote image
+#      run: |
+#        set -x
+#        docker tag '${{ env.image_repo_ref }}:ci' '${{ env.image_repo_ref }}:${{ env.IMAGE_TAG }}'
+#        docker push '${{ env.image_repo_ref }}:${{ env.IMAGE_TAG }}'
+#    - name: Set up Cloud SDK
+#      uses: google-github-actions/setup-gcloud@master
+#      with:
+#        service_account_key: ${{ secrets.GCP_SA_KEY }}
     - name: Publish Helm Chart
       env:
         HELM_CHANNEL: latest
         HELM_APP_VERSION: ${{ env.IMAGE_TAG }}
-      run: make helm-publish
-
+      run: |
+        echo "HELM_CHART_VERSION=${HELM_CHART_VERSION}"
+        echo "HELM_APP_VERSION=${HELM_APP_VERSION}"
   failure-notifications:
     name: Failure notifications
     runs-on: ubuntu-20.04
