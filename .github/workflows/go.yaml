@@ -258,6 +258,8 @@ jobs:
     - name: Determine promotion tag
       if: ${{ github.event_name != 'schedule' }}
       run: |
+        set -euExo pipefail
+
         source ./hack/lib/tag-from-gh-ref.sh
         source ./hack/lib/semver.sh
 
