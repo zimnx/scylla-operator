@@ -72,3 +72,12 @@ func IsOrphanedPV(pv *corev1.PersistentVolume, nodes []*corev1.Node) (bool, erro
 
 	return true, nil
 }
+
+func IsScyllaContainerRunning(pod *corev1.Pod) bool {
+	for _, cs := range pod.Status.ContainerStatuses {
+		if cs.Name == naming.ScyllaContainerName {
+			return cs.State.Running != nil
+		}
+	}
+	return false
+}

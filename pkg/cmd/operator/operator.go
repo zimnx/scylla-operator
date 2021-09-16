@@ -12,6 +12,8 @@ import (
 	"github.com/scylladb/scylla-operator/pkg/cmdutil"
 	"github.com/scylladb/scylla-operator/pkg/controller/orphanedpv"
 	"github.com/scylladb/scylla-operator/pkg/controller/scyllacluster"
+	"github.com/scylladb/scylla-operator/pkg/controller/scyllanodeconfig"
+	"github.com/scylladb/scylla-operator/pkg/controller/scyllaoperatorconfig"
 	"github.com/scylladb/scylla-operator/pkg/genericclioptions"
 	"github.com/scylladb/scylla-operator/pkg/leaderelection"
 	"github.com/scylladb/scylla-operator/pkg/signals"
@@ -189,6 +191,29 @@ func (o *OperatorOptions) run(ctx context.Context, streams genericclioptions.IOS
 		return err
 	}
 
+	sncc, err := scyllanodeconfig.NewController(
+		o.kubeClient,
+		o.scyllaClient.ScyllaV1alpha1(),
+		scyllaInformers.Scylla().V1alpha1().ScyllaNodeConfigs(),
+		scyllaInformers.Scylla().V1alpha1().ScyllaOperatorConfigs(),
+		kubeInformers.Rbac().V1().ClusterRoles(),
+		kubeInformers.Rbac().V1().ClusterRoleBindings(),
+		kubeInformers.Apps().V1().DaemonSets(),
+		kubeInformers.Core().V1().ConfigMaps(),
+		kubeInformers.Core().V1().Namespaces(),
+		kubeInformers.Core().V1().Nodes(),
+		kubeInformers.Core().V1().ServiceAccounts(),
+		kubeInformers.Core().V1().Pods(),
+		kubeInformers.Batch().V1().Jobs(),
+		o.OperatorImage,
+	)
+
+	socc, err := scyllaoperatorconfig.NewController(
+		o.kubeClient,
+		o.scyllaClient.ScyllaV1alpha1(),
+		scyllaInformers.Scylla().V1alpha1().ScyllaOperatorConfigs(),
+	)
+
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
@@ -213,6 +238,18 @@ func (o *OperatorOptions) run(ctx context.Context, streams genericclioptions.IOS
 	go func() {
 		defer wg.Done()
 		opc.Run(ctx, o.ConcurrentSyncs)
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		sncc.Run(ctx, o.ConcurrentSyncs)
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		socc.Run(ctx, o.ConcurrentSyncs)
 	}()
 
 	<-ctx.Done()
