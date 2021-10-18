@@ -10,9 +10,9 @@ import (
 	scyllaversionedclient "github.com/scylladb/scylla-operator/pkg/client/scylla/clientset/versioned"
 	scyllainformers "github.com/scylladb/scylla-operator/pkg/client/scylla/informers/externalversions"
 	"github.com/scylladb/scylla-operator/pkg/cmdutil"
+	"github.com/scylladb/scylla-operator/pkg/controller/nodeconfig"
 	"github.com/scylladb/scylla-operator/pkg/controller/orphanedpv"
 	"github.com/scylladb/scylla-operator/pkg/controller/scyllacluster"
-	"github.com/scylladb/scylla-operator/pkg/controller/scyllanodeconfig"
 	"github.com/scylladb/scylla-operator/pkg/controller/scyllaoperatorconfig"
 	"github.com/scylladb/scylla-operator/pkg/genericclioptions"
 	"github.com/scylladb/scylla-operator/pkg/leaderelection"
@@ -191,10 +191,10 @@ func (o *OperatorOptions) run(ctx context.Context, streams genericclioptions.IOS
 		return err
 	}
 
-	sncc, err := scyllanodeconfig.NewController(
+	sncc, err := nodeconfig.NewController(
 		o.kubeClient,
 		o.scyllaClient.ScyllaV1alpha1(),
-		scyllaInformers.Scylla().V1alpha1().ScyllaNodeConfigs(),
+		scyllaInformers.Scylla().V1alpha1().NodeConfigs(),
 		scyllaInformers.Scylla().V1alpha1().ScyllaOperatorConfigs(),
 		kubeInformers.Rbac().V1().ClusterRoles(),
 		kubeInformers.Rbac().V1().ClusterRoleBindings(),

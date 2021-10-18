@@ -170,7 +170,7 @@ rules:
 - apiGroups:
   - scylla.scylladb.com
   resources:
-  - scyllanodeconfigs
+  - nodeconfigs
   verbs:
   - create
   - delete
@@ -218,7 +218,7 @@ rules:
 - apiGroups:
   - scylla.scylladb.com
   resources:
-  - scyllanodeconfigs/status
+  - nodeconfigs/status
   verbs:
   - create
   - delete

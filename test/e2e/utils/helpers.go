@@ -41,19 +41,12 @@ func ContextForNodeConfigRollout(parent context.Context) (context.Context, conte
 	return context.WithTimeout(parent, nodeConfigRolloutTimeout)
 }
 
-func GetAvailableCondition(conditions []scyllav1alpha1.Condition) scyllav1alpha1.Condition {
-	for _, c := range conditions {
-		if c.Type == scyllav1alpha1.ScyllaNodeConfigAvailable {
-			return c
-		}
-	}
-	return scyllav1alpha1.Condition{}
-}
-
 func ScyllaNodeConfigRolledOut(snc *scyllav1alpha1.NodeConfig) bool {
-	return snc.Generation == snc.Status.ObservedGeneration &&
-		GetAvailableCondition(snc.Status.Conditions).Status == corev1.ConditionTrue &&
-		snc.Status.Current.Desired == snc.Status.Updated.Desired &&
+
+	return snc.Status.ObservedGeneration >= snc.Generation &&
+
+		// FIXME
+		snc.Status.Updated.Desired == snc.Status.Current.Desired &&
 		snc.Status.Current.Actual == snc.Status.Updated.Actual &&
 		snc.Status.Current.Ready == snc.Status.Updated.Ready
 }
@@ -372,11 +365,11 @@ func WaitForScyllaNodeConfigRollout(ctx context.Context, client scyllav1alpha1cl
 	lw := &cache.ListWatch{
 		ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
 			options.FieldSelector = fieldSelector
-			return client.ScyllaNodeConfigs().List(ctx, options)
+			return client.NodeConfigs().List(ctx, options)
 		},
 		WatchFunc: func(options metav1.ListOptions) (i watch.Interface, e error) {
 			options.FieldSelector = fieldSelector
-			return client.ScyllaNodeConfigs().Watch(ctx, options)
+			return client.NodeConfigs().Watch(ctx, options)
 		},
 	}
 

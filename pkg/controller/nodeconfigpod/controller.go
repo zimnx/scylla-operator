@@ -58,11 +58,11 @@ type Controller struct {
 
 	criClient cri.Client
 
-	scyllaNodeConfigLister scyllav1alpha1listers.ScyllaNodeConfigLister
-	podLister              corev1listers.PodLister
-	configMapLister        corev1listers.ConfigMapLister
-	daemonSetLister        appsv1listers.DaemonSetLister
-	jobLister              batchv1listers.JobLister
+	nodeConfigLister scyllav1alpha1listers.NodeConfigLister
+	podLister        corev1listers.PodLister
+	configMapLister  corev1listers.ConfigMapLister
+	daemonSetLister  appsv1listers.DaemonSetLister
+	jobLister        batchv1listers.JobLister
 
 	nodeName       string
 	nodeConfigName string
@@ -79,7 +79,7 @@ func NewController(
 	kubeClient kubernetes.Interface,
 	scyllaClient scyllaclient.Interface,
 	criClient cri.Client,
-	nodeConfigInformer scyllav1alpha1informers.ScyllaNodeConfigInformer,
+	nodeConfigInformer scyllav1alpha1informers.NodeConfigInformer,
 	podInformer corev1informers.PodInformer,
 	configMapInformer corev1informers.ConfigMapInformer,
 	daemonSetInformer appsv1informers.DaemonSetInformer,
@@ -107,11 +107,11 @@ func NewController(
 		scyllaClient: scyllaClient,
 		criClient:    criClient,
 
-		scyllaNodeConfigLister: nodeConfigInformer.Lister(),
-		podLister:              podInformer.Lister(),
-		configMapLister:        configMapInformer.Lister(),
-		daemonSetLister:        daemonSetInformer.Lister(),
-		jobLister:              jobInformer.Lister(),
+		nodeConfigLister: nodeConfigInformer.Lister(),
+		podLister:        podInformer.Lister(),
+		configMapLister:  configMapInformer.Lister(),
+		daemonSetLister:  daemonSetInformer.Lister(),
+		jobLister:        jobInformer.Lister(),
 
 		nodeName:       nodeName,
 		nodeConfigName: nodeConfigName,
@@ -245,7 +245,7 @@ func (c *Controller) resolveNodeConfigController(obj metav1.Object) *scyllav1alp
 		return nil
 	}
 
-	snt, err := c.scyllaNodeConfigLister.Get(controllerRef.Name)
+	snt, err := c.nodeConfigLister.Get(controllerRef.Name)
 	if err != nil {
 		return nil
 	}
@@ -268,7 +268,7 @@ func (c *Controller) enqueueThroughDaemonSetControllerOrScyllaPod(pod *corev1.Po
 	}
 
 	var err error
-	snc, err := c.scyllaNodeConfigLister.Get(c.nodeConfigName)
+	snc, err := c.nodeConfigLister.Get(c.nodeConfigName)
 	if err != nil {
 		utilruntime.HandleError(err)
 		return

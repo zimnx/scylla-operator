@@ -1,6 +1,6 @@
 // Copyright (C) 2021 ScyllaDB
 
-package scyllanodeconfig
+package nodeconfig
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	scyllav1alpha1client "github.com/scylladb/scylla-operator/pkg/client/scylla/clientset/versioned/typed/scylla/v1alpha1"
 	scyllav1alpha1informers "github.com/scylladb/scylla-operator/pkg/client/scylla/informers/externalversions/scylla/v1alpha1"
 	scyllav1alpha1listers "github.com/scylladb/scylla-operator/pkg/client/scylla/listers/scylla/v1alpha1"
-	nodeconfigresources "github.com/scylladb/scylla-operator/pkg/controller/scyllanodeconfig/resource"
+	nodeconfigresources "github.com/scylladb/scylla-operator/pkg/controller/nodeconfig/resource"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	"github.com/scylladb/scylla-operator/pkg/util/resource"
 	appsv1 "k8s.io/api/apps/v1"
@@ -61,7 +61,7 @@ type Controller struct {
 	kubeClient   kubernetes.Interface
 	scyllaClient scyllav1alpha1client.ScyllaV1alpha1Interface
 
-	scyllaNodeConfigLister     scyllav1alpha1listers.ScyllaNodeConfigLister
+	scyllaNodeConfigLister     scyllav1alpha1listers.NodeConfigLister
 	scyllaOperatorConfigLister scyllav1alpha1listers.ScyllaOperatorConfigLister
 	clusterRoleLister          rbacv1listers.ClusterRoleLister
 	clusterRoleBindingLister   rbacv1listers.ClusterRoleBindingLister
@@ -86,7 +86,7 @@ type Controller struct {
 func NewController(
 	kubeClient kubernetes.Interface,
 	scyllaClient scyllav1alpha1client.ScyllaV1alpha1Interface,
-	scyllaNodeConfigInformer scyllav1alpha1informers.ScyllaNodeConfigInformer,
+	scyllaNodeConfigInformer scyllav1alpha1informers.NodeConfigInformer,
 	scyllaOperatorConfigInformer scyllav1alpha1informers.ScyllaOperatorConfigInformer,
 	clusterRoleInformer rbacv1informers.ClusterRoleInformer,
 	clusterRoleBindingInformer rbacv1informers.ClusterRoleBindingInformer,

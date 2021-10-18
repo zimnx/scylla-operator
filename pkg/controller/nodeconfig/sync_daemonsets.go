@@ -1,16 +1,15 @@
 // Copyright (C) 2021 ScyllaDB
 
-package scyllanodeconfig
+package nodeconfig
 
 import (
 	"context"
 	"fmt"
 
 	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
-	"github.com/scylladb/scylla-operator/pkg/controller/scyllanodeconfig/resource"
+	"github.com/scylladb/scylla-operator/pkg/controller/nodeconfig/resource"
 	"github.com/scylladb/scylla-operator/pkg/resourceapply"
 	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 )
@@ -64,12 +63,6 @@ func (sncc *Controller) syncDaemonSets(
 	status.Updated.Desired = updatedDaemonSet.Status.DesiredNumberScheduled
 	status.Updated.Actual = updatedDaemonSet.Status.CurrentNumberScheduled
 	status.Updated.Ready = updatedDaemonSet.Status.NumberReady
-
-	if nodeConfigAvailable(updatedDaemonSet, snc) {
-		setCondition(status, newCondition(scyllav1alpha1.ScyllaNodeConfigAvailable, corev1.ConditionTrue, scyllav1alpha1.ScyllaNodeConfigReplicasReadyReason, "All required replicas are ready"))
-	} else {
-		setCondition(status, newCondition(scyllav1alpha1.ScyllaNodeConfigAvailable, corev1.ConditionFalse, scyllav1alpha1.ScyllaNodeConfigScalingReason, "Not all required replicas are ready"))
-	}
 
 	return nil
 }
