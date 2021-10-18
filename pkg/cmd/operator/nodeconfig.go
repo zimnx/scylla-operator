@@ -171,7 +171,7 @@ func (o *NodeConfigOptions) Run(streams genericclioptions.IOStreams, commandName
 		o.kubeClient,
 		o.scyllaClient,
 		criClient,
-		scyllaNodeConfigInformer.Scylla().V1alpha1().ScyllaNodeConfigs(),
+		scyllaNodeConfigInformer.Scylla().V1alpha1().NodeConfigs(),
 		singleNodeScyllaPodsInformer.Core().V1().Pods(),
 		nodeOwnedConfigMapInformer.Core().V1().ConfigMaps(),
 		singleNamespaceInformer.Apps().V1().DaemonSets(),

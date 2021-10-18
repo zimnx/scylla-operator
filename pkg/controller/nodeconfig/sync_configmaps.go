@@ -1,4 +1,4 @@
-package scyllanodeconfig
+package nodeconfig
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
-	"github.com/scylladb/scylla-operator/pkg/controller/scyllanodeconfig/resource"
+	"github.com/scylladb/scylla-operator/pkg/controller/nodeconfig/resource"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	"github.com/scylladb/scylla-operator/pkg/resourceapply"
 	batchv1 "k8s.io/api/batch/v1"

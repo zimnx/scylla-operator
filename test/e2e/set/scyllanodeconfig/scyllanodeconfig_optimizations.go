@@ -12,7 +12,7 @@ import (
 	o "github.com/onsi/gomega"
 	scyllav1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1"
 	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
-	"github.com/scylladb/scylla-operator/pkg/controller/scyllanodeconfig/resource"
+	"github.com/scylladb/scylla-operator/pkg/controller/nodeconfig/resource"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	"github.com/scylladb/scylla-operator/test/e2e/fixture/scyllacluster"
 	"github.com/scylladb/scylla-operator/test/e2e/framework"
@@ -32,7 +32,7 @@ var _ = g.Describe("NodeConfig Optimizations [Serial]", func() {
 	f := framework.NewFramework("scyllanodeconfig")
 
 	var givenNodeConfigRunningOnAllHosts = func(ctx context.Context, name string) *scyllav1alpha1.NodeConfig {
-		snc, err := f.ScyllaAdminClient().ScyllaV1alpha1().ScyllaNodeConfigs().Create(ctx, &scyllav1alpha1.NodeConfig{
+		snc, err := f.ScyllaAdminClient().ScyllaV1alpha1().NodeConfigs().Create(ctx, &scyllav1alpha1.NodeConfig{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      name,
 				Namespace: naming.ScyllaOperatorNodeTuningNamespace,
@@ -48,7 +48,7 @@ var _ = g.Describe("NodeConfig Optimizations [Serial]", func() {
 	}
 
 	var givenNodeConfigNotRunningOnAnyHost = func(ctx context.Context, name string) *scyllav1alpha1.NodeConfig {
-		snc, err := f.ScyllaAdminClient().ScyllaV1alpha1().ScyllaNodeConfigs().Patch(
+		snc, err := f.ScyllaAdminClient().ScyllaV1alpha1().NodeConfigs().Patch(
 			ctx,
 			name,
 			types.JSONPatchType,
@@ -108,12 +108,12 @@ var _ = g.Describe("NodeConfig Optimizations [Serial]", func() {
 		defer cancel()
 
 		g.By("Restoring default NodeConfig")
-		snc, err := f.ScyllaAdminClient().ScyllaV1alpha1().ScyllaNodeConfigs().Get(ctx, resource.DefaultScyllaNodeConfig().Name, metav1.GetOptions{})
+		snc, err := f.ScyllaAdminClient().ScyllaV1alpha1().NodeConfigs().Get(ctx, resource.DefaultScyllaNodeConfig().Name, metav1.GetOptions{})
 		o.Expect(err).ToNot(o.HaveOccurred())
 
 		defaultSnc := snc.DeepCopy()
 		defaultSnc.Spec = resource.DefaultScyllaNodeConfig().Spec
-		_, err = f.ScyllaAdminClient().ScyllaV1alpha1().ScyllaNodeConfigs().Update(ctx, defaultSnc, metav1.UpdateOptions{})
+		_, err = f.ScyllaAdminClient().ScyllaV1alpha1().NodeConfigs().Update(ctx, defaultSnc, metav1.UpdateOptions{})
 		o.Expect(err).ToNot(o.HaveOccurred())
 	})
 
@@ -122,11 +122,11 @@ var _ = g.Describe("NodeConfig Optimizations [Serial]", func() {
 		defer cancel()
 
 		g.By("Default NodeConfig is available")
-		snc, err := f.ScyllaAdminClient().ScyllaV1alpha1().ScyllaNodeConfigs().Get(ctx, resource.DefaultScyllaNodeConfig().Name, metav1.GetOptions{})
+		snc, err := f.ScyllaAdminClient().ScyllaV1alpha1().NodeConfigs().Get(ctx, resource.DefaultScyllaNodeConfig().Name, metav1.GetOptions{})
 		o.Expect(err).ToNot(o.HaveOccurred())
 
 		g.By("Admin is able to modify values and these are not overwritten")
-		_, err = f.ScyllaAdminClient().ScyllaV1alpha1().ScyllaNodeConfigs().Patch(
+		_, err = f.ScyllaAdminClient().ScyllaV1alpha1().NodeConfigs().Patch(
 			ctx,
 			snc.Name,
 			types.JSONPatchType,
@@ -138,7 +138,7 @@ var _ = g.Describe("NodeConfig Optimizations [Serial]", func() {
 		snc, err = utils.WaitForScyllaNodeConfigRollout(ctx, f.ScyllaAdminClient().ScyllaV1alpha1(), snc.Name)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
-		snc, err = f.ScyllaAdminClient().ScyllaV1alpha1().ScyllaNodeConfigs().Get(ctx, snc.Name, metav1.GetOptions{})
+		snc, err = f.ScyllaAdminClient().ScyllaV1alpha1().NodeConfigs().Get(ctx, snc.Name, metav1.GetOptions{})
 		o.Expect(err).ToNot(o.HaveOccurred())
 		o.Expect(snc.Spec.DisableOptimizations).To(o.BeTrue())
 	})
@@ -185,7 +185,7 @@ var _ = g.Describe("NodeConfig Optimizations [Serial]", func() {
 		framework.By("Allowing NodeConfig to run on host")
 		snc = givenNodeConfigRunningOnAllHosts(ctx, "custom-node-config")
 		defer func() {
-			err := f.ScyllaAdminClient().ScyllaV1alpha1().ScyllaNodeConfigs().Delete(ctx, "custom-node-config", metav1.DeleteOptions{})
+			err := f.ScyllaAdminClient().ScyllaV1alpha1().NodeConfigs().Delete(ctx, "custom-node-config", metav1.DeleteOptions{})
 			o.Expect(err).NotTo(o.HaveOccurred())
 		}()
 		whenNodeConfigRollsOut(ctx, snc)
@@ -219,7 +219,7 @@ var _ = g.Describe("NodeConfig Optimizations [Serial]", func() {
 		thenTuningConfigMapHasState(ctx, sc, tolerateDelete, configMapOwnership(scyllaPod.UID), e.OptimizedConfigMapCondition)
 
 		framework.By("Disabling optimizations")
-		snc, err = f.ScyllaAdminClient().ScyllaV1alpha1().ScyllaNodeConfigs().Patch(
+		snc, err = f.ScyllaAdminClient().ScyllaV1alpha1().NodeConfigs().Patch(
 			ctx,
 			snc.Name,
 			types.JSONPatchType,

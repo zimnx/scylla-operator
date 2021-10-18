@@ -33,7 +33,7 @@ func (c *Controller) sync(ctx context.Context, key string) error {
 
 	klog.V(4).Infof("There are %d Scylla Pods running on the node", len(scyllaPods))
 
-	snc, err := c.scyllaNodeConfigLister.Get(name)
+	snc, err := c.nodeConfigLister.Get(name)
 	if err != nil {
 		return fmt.Errorf("can't fetch NodeConfig %s: %w", name, err)
 	}
@@ -65,7 +65,7 @@ func (c *Controller) getJobs(ctx context.Context, snc *scyllav1alpha1.NodeConfig
 	})
 
 	canAdoptFunc := func() error {
-		fresh, err := c.scyllaClient.ScyllaV1alpha1().ScyllaNodeConfigs().Get(ctx, snc.Name, metav1.GetOptions{})
+		fresh, err := c.scyllaClient.ScyllaV1alpha1().NodeConfigs().Get(ctx, snc.Name, metav1.GetOptions{})
 		if err != nil {
 			return err
 		}

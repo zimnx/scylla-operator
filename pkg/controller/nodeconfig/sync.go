@@ -1,13 +1,13 @@
 // Copyright (C) 2021 ScyllaDB
 
-package scyllanodeconfig
+package nodeconfig
 
 import (
 	"context"
 	"fmt"
 
 	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
-	"github.com/scylladb/scylla-operator/pkg/controller/scyllanodeconfig/resource"
+	"github.com/scylladb/scylla-operator/pkg/controller/nodeconfig/resource"
 	"github.com/scylladb/scylla-operator/pkg/controllertools"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	appsv1 "k8s.io/api/apps/v1"
@@ -24,13 +24,13 @@ import (
 func (sncc *Controller) sync(ctx context.Context, key string) error {
 	_, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
-		return fmt.Errorf("split meta namespace cache key: %w", err)
+		return fmt.Errorf("can't split meta namespace cache key: %w", err)
 	}
 
 	snc, err := sncc.scyllaNodeConfigLister.Get(name)
 	if err != nil {
 		if apierrors.IsNotFound(err) && name == resource.DefaultScyllaNodeConfig().Name {
-			snc, err = sncc.scyllaClient.ScyllaNodeConfigs().Create(ctx, resource.DefaultScyllaNodeConfig(), metav1.CreateOptions{})
+			snc, err = sncc.scyllaClient.NodeConfigs().Create(ctx, resource.DefaultScyllaNodeConfig(), metav1.CreateOptions{})
 			if err != nil {
 				return fmt.Errorf("create default NodeConfig: %w", err)
 			}
@@ -134,7 +134,7 @@ func (sncc *Controller) getDaemonSets(ctx context.Context, snc *scyllav1alpha1.N
 	})
 
 	canAdoptFunc := func() error {
-		fresh, err := sncc.scyllaClient.ScyllaNodeConfigs().Get(ctx, snc.Name, metav1.GetOptions{})
+		fresh, err := sncc.scyllaClient.NodeConfigs().Get(ctx, snc.Name, metav1.GetOptions{})
 		if err != nil {
 			return err
 		}
@@ -239,7 +239,7 @@ func (sncc *Controller) getJobs(ctx context.Context, snc *scyllav1alpha1.NodeCon
 	})
 
 	canAdoptFunc := func() error {
-		fresh, err := sncc.scyllaClient.ScyllaNodeConfigs().Get(ctx, snc.Name, metav1.GetOptions{})
+		fresh, err := sncc.scyllaClient.NodeConfigs().Get(ctx, snc.Name, metav1.GetOptions{})
 		if err != nil {
 			return err
 		}
@@ -290,7 +290,7 @@ func (sncc *Controller) getConfigMaps(ctx context.Context, snc *scyllav1alpha1.N
 	})
 
 	canAdoptFunc := func() error {
-		fresh, err := sncc.scyllaClient.ScyllaNodeConfigs().Get(ctx, snc.Name, metav1.GetOptions{})
+		fresh, err := sncc.scyllaClient.NodeConfigs().Get(ctx, snc.Name, metav1.GetOptions{})
 		if err != nil {
 			return err
 		}

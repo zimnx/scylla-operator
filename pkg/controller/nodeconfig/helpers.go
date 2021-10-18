@@ -1,71 +1,14 @@
 // Copyright (C) 2021 ScyllaDB
 
-package scyllanodeconfig
+package nodeconfig
 
 import (
-	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/thirdparty/k8s.io/kubernetes/pkg/controller/daemon/util"
 	pluginhelper "github.com/scylladb/scylla-operator/pkg/thirdparty/k8s.io/kubernetes/pkg/scheduler/framework/plugins/helper"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	corev1helpers "k8s.io/component-helpers/scheduling/corev1"
 )
-
-// setCondition updates the status to include the provided condition. If the condition that
-// we are about to add already exists and has the same status and reason then we are not going to update.
-func setCondition(status *scyllav1alpha1.NodeConfigStatus, condition scyllav1alpha1.Condition) {
-	currentCond := getCondition(*status, condition.Type)
-	if currentCond != nil && currentCond.Status == condition.Status && currentCond.Reason == condition.Reason {
-		return
-	}
-	// Do not update lastTransitionTime if the status of the condition doesn't change.
-	if currentCond != nil && currentCond.Status == condition.Status {
-		condition.LastTransitionTime = currentCond.LastTransitionTime
-	}
-	newConditions := filterOutCondition(status.Conditions, condition.Type)
-	status.Conditions = append(newConditions, condition)
-}
-
-// newCondition creates a new condition.
-func newCondition(condType scyllav1alpha1.ConditionType, status corev1.ConditionStatus, reason, message string) scyllav1alpha1.Condition {
-	return scyllav1alpha1.Condition{
-		Type:               condType,
-		Status:             status,
-		LastTransitionTime: metav1.Now(),
-		Reason:             reason,
-		Message:            message,
-	}
-}
-
-// filterOutCondition returns a new slice of conditions without conditions with the provided type.
-func filterOutCondition(conditions []scyllav1alpha1.Condition, condType scyllav1alpha1.ConditionType) []scyllav1alpha1.Condition {
-	var newConditions []scyllav1alpha1.Condition
-	for _, c := range conditions {
-		if c.Type == condType {
-			continue
-		}
-		newConditions = append(newConditions, c)
-	}
-	return newConditions
-}
-
-// getCondition returns the condition with the provided type.
-func getCondition(status scyllav1alpha1.NodeConfigStatus, condType scyllav1alpha1.ConditionType) *scyllav1alpha1.Condition {
-	for i := range status.Conditions {
-		c := status.Conditions[i]
-		if c.Type == condType {
-			return &c
-		}
-	}
-	return nil
-}
-
-func nodeConfigAvailable(ds *appsv1.DaemonSet, snc *scyllav1alpha1.NodeConfig) bool {
-	return ds.Status.ObservedGeneration == ds.Generation &&
-		snc.Status.Updated.Desired == snc.Status.Updated.Actual &&
-		snc.Status.Updated.Actual == snc.Status.Updated.Ready
-}
 
 func nodeIsTargetedByDaemonSet(node *corev1.Node, ds *appsv1.DaemonSet) bool {
 	shouldRun, shouldContinueRunning := nodeShouldRunDaemonPod(node, ds)
