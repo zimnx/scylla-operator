@@ -10,7 +10,7 @@ import (
 	corev1helpers "k8s.io/component-helpers/scheduling/corev1"
 )
 
-func nodeIsTargetedByDaemonSet(node *corev1.Node, ds *appsv1.DaemonSet) bool {
+func IsNodeTargetedByDaemonSet(node *corev1.Node, ds *appsv1.DaemonSet) bool {
 	shouldRun, shouldContinueRunning := nodeShouldRunDaemonPod(node, ds)
 	return shouldRun || shouldContinueRunning
 }

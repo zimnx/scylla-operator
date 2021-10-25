@@ -41,7 +41,7 @@ func ContextForNodeConfigRollout(parent context.Context) (context.Context, conte
 	return context.WithTimeout(parent, nodeConfigRolloutTimeout)
 }
 
-func ScyllaNodeConfigRolledOut(snc *scyllav1alpha1.NodeConfig) bool {
+func IsNodeConfigRolledOut(snc *scyllav1alpha1.NodeConfig) bool {
 
 	return snc.Status.ObservedGeneration >= snc.Generation &&
 
@@ -360,7 +360,7 @@ func GetNodeName(sc *v1.ScyllaCluster, idx int) string {
 	)
 }
 
-func WaitForScyllaNodeConfigRollout(ctx context.Context, client scyllav1alpha1client.ScyllaV1alpha1Interface, name string) (*scyllav1alpha1.NodeConfig, error) {
+func WaitForNodeConfigRollout(ctx context.Context, client scyllav1alpha1client.ScyllaV1alpha1Interface, name string) (*scyllav1alpha1.NodeConfig, error) {
 	fieldSelector := fields.OneTermEqualSelector("metadata.name", name).String()
 	lw := &cache.ListWatch{
 		ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
@@ -377,7 +377,7 @@ func WaitForScyllaNodeConfigRollout(ctx context.Context, client scyllav1alpha1cl
 		switch event.Type {
 		case watch.Added, watch.Modified:
 			snc := event.Object.(*scyllav1alpha1.NodeConfig)
-			return ScyllaNodeConfigRolledOut(snc), nil
+			return IsNodeConfigRolledOut(snc), nil
 		default:
 			return true, fmt.Errorf("unexpected event: %#v", event)
 		}

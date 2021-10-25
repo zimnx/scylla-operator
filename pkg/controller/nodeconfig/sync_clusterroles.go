@@ -15,7 +15,7 @@ import (
 
 func (ncc *Controller) makeClusterRoles() []*rbacv1.ClusterRole {
 	clusterRoles := []*rbacv1.ClusterRole{
-		resource.ScyllaNodeConfigClusterRole(),
+		resource.NodeConfigClusterRole(),
 	}
 
 	return clusterRoles
