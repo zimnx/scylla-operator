@@ -13,7 +13,7 @@ import (
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 )
 
-func (sncc *Controller) makeClusterRoles() []*rbacv1.ClusterRole {
+func (ncc *Controller) makeClusterRoles() []*rbacv1.ClusterRole {
 	clusterRoles := []*rbacv1.ClusterRole{
 		resource.ScyllaNodeConfigClusterRole(),
 	}
@@ -21,7 +21,7 @@ func (sncc *Controller) makeClusterRoles() []*rbacv1.ClusterRole {
 	return clusterRoles
 }
 
-func (sncc *Controller) pruneClusterRoles(ctx context.Context, requiredClusterRoles []*rbacv1.ClusterRole, clusterRoles map[string]*rbacv1.ClusterRole) error {
+func (ncc *Controller) pruneClusterRoles(ctx context.Context, requiredClusterRoles []*rbacv1.ClusterRole, clusterRoles map[string]*rbacv1.ClusterRole) error {
 	var errs []error
 	for _, cr := range clusterRoles {
 		if cr.DeletionTimestamp != nil {
@@ -40,7 +40,7 @@ func (sncc *Controller) pruneClusterRoles(ctx context.Context, requiredClusterRo
 		}
 
 		propagationPolicy := metav1.DeletePropagationBackground
-		err := sncc.kubeClient.RbacV1().ClusterRoles().Delete(ctx, cr.Name, metav1.DeleteOptions{
+		err := ncc.kubeClient.RbacV1().ClusterRoles().Delete(ctx, cr.Name, metav1.DeleteOptions{
 			Preconditions: &metav1.Preconditions{
 				UID: &cr.UID,
 			},
@@ -54,18 +54,18 @@ func (sncc *Controller) pruneClusterRoles(ctx context.Context, requiredClusterRo
 	return utilerrors.NewAggregate(errs)
 }
 
-func (sncc *Controller) syncClusterRoles(ctx context.Context, clusterRoles map[string]*rbacv1.ClusterRole) error {
-	requiredClusterRoles := sncc.makeClusterRoles()
+func (ncc *Controller) syncClusterRoles(ctx context.Context, clusterRoles map[string]*rbacv1.ClusterRole) error {
+	requiredClusterRoles := ncc.makeClusterRoles()
 
 	// Delete any excessive ClusterRoles.
 	// Delete has to be the first action to avoid getting stuck on quota.
-	if err := sncc.pruneClusterRoles(ctx, requiredClusterRoles, clusterRoles); err != nil {
+	if err := ncc.pruneClusterRoles(ctx, requiredClusterRoles, clusterRoles); err != nil {
 		return fmt.Errorf("can't delete ClusterRole(s): %w", err)
 	}
 
 	var errs []error
 	for _, cr := range requiredClusterRoles {
-		_, _, err := resourceapply.ApplyClusterRole(ctx, sncc.kubeClient.RbacV1(), sncc.clusterRoleLister, sncc.eventRecorder, cr, true)
+		_, _, err := resourceapply.ApplyClusterRole(ctx, ncc.kubeClient.RbacV1(), ncc.clusterRoleLister, ncc.eventRecorder, cr, true)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("can't create missing clusterrole: %w", err))
 			continue

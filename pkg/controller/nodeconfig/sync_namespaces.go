@@ -13,7 +13,7 @@ import (
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 )
 
-func (sncc *Controller) makeNamespaces() []*corev1.Namespace {
+func (ncc *Controller) makeNamespaces() []*corev1.Namespace {
 	namespaces := []*corev1.Namespace{
 		resource.ScyllaOperatorNodeTuningNamespace(),
 	}
@@ -21,7 +21,7 @@ func (sncc *Controller) makeNamespaces() []*corev1.Namespace {
 	return namespaces
 }
 
-func (sncc *Controller) pruneNamespaces(ctx context.Context, requiredNamespaces []*corev1.Namespace, namespaces map[string]*corev1.Namespace) error {
+func (ncc *Controller) pruneNamespaces(ctx context.Context, requiredNamespaces []*corev1.Namespace, namespaces map[string]*corev1.Namespace) error {
 	var errs []error
 	for _, ns := range namespaces {
 		if ns.DeletionTimestamp != nil {
@@ -40,7 +40,7 @@ func (sncc *Controller) pruneNamespaces(ctx context.Context, requiredNamespaces 
 		}
 
 		propagationPolicy := metav1.DeletePropagationBackground
-		err := sncc.kubeClient.CoreV1().Namespaces().Delete(ctx, ns.Name, metav1.DeleteOptions{
+		err := ncc.kubeClient.CoreV1().Namespaces().Delete(ctx, ns.Name, metav1.DeleteOptions{
 			Preconditions: &metav1.Preconditions{
 				UID: &ns.UID,
 			},
@@ -54,18 +54,18 @@ func (sncc *Controller) pruneNamespaces(ctx context.Context, requiredNamespaces 
 	return utilerrors.NewAggregate(errs)
 }
 
-func (sncc *Controller) syncNamespaces(ctx context.Context, namespaces map[string]*corev1.Namespace) error {
-	requiredNamespaces := sncc.makeNamespaces()
+func (ncc *Controller) syncNamespaces(ctx context.Context, namespaces map[string]*corev1.Namespace) error {
+	requiredNamespaces := ncc.makeNamespaces()
 
 	// Delete any excessive Namespaces.
 	// Delete has to be the first action to avoid getting stuck on quota.
-	if err := sncc.pruneNamespaces(ctx, requiredNamespaces, namespaces); err != nil {
+	if err := ncc.pruneNamespaces(ctx, requiredNamespaces, namespaces); err != nil {
 		return fmt.Errorf("can't delete Namespace(s): %w", err)
 	}
 
 	var errs []error
 	for _, ns := range requiredNamespaces {
-		_, _, err := resourceapply.ApplyNamespace(ctx, sncc.kubeClient.CoreV1(), sncc.namespaceLister, sncc.eventRecorder, ns, true)
+		_, _, err := resourceapply.ApplyNamespace(ctx, ncc.kubeClient.CoreV1(), ncc.namespaceLister, ncc.eventRecorder, ns, true)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("can't create missing Namespace: %w", err))
 			continue

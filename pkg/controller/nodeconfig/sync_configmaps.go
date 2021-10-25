@@ -17,23 +17,23 @@ import (
 	"k8s.io/klog/v2"
 )
 
-func (scc *Controller) makeConfigMaps(ctx context.Context, scyllaNodeConfig *scyllav1alpha1.NodeConfig, scyllaPods []*corev1.Pod, jobs map[string]*batchv1.Job, configMaps map[string]*corev1.ConfigMap) ([]*corev1.ConfigMap, error) {
+func (ncc *Controller) makeConfigMaps(ctx context.Context, scyllaNodeConfig *scyllav1alpha1.NodeConfig, scyllaPods []*corev1.Pod, jobs map[string]*batchv1.Job, configMaps map[string]*corev1.ConfigMap) ([]*corev1.ConfigMap, error) {
 	var cms []*corev1.ConfigMap
 
 	optimizedNodes := map[string]*scyllav1alpha1.NodeConfig{}
 
-	sncs, err := scc.scyllaNodeConfigLister.List(labels.Everything())
+	sncs, err := ncc.scyllaNodeConfigLister.List(labels.Everything())
 	if err != nil {
 		return nil, fmt.Errorf("list scyllanodeconfigs: %w", err)
 	}
 
-	nodes, err := scc.nodeLister.List(labels.Everything())
+	nodes, err := ncc.nodeLister.List(labels.Everything())
 	if err != nil {
 		return nil, fmt.Errorf("list nodes: %w", err)
 	}
 
 	for _, snc := range sncs {
-		ds, err := scc.daemonSetLister.DaemonSets(naming.ScyllaOperatorNodeTuningNamespace).Get(snc.Name)
+		ds, err := ncc.daemonSetLister.DaemonSets(naming.ScyllaOperatorNodeTuningNamespace).Get(snc.Name)
 		if err != nil {
 			return nil, fmt.Errorf("get daemonset '%s/%s': %w", naming.ScyllaOperatorNodeTuningNamespace, snc.Name, err)
 		}
@@ -59,7 +59,7 @@ func (scc *Controller) makeConfigMaps(ctx context.Context, scyllaNodeConfig *scy
 		if !isOptimized {
 			klog.V(4).InfoS("Scylla Pod running on non optimized Node", "Pod", klog.KObj(scyllaPod), "Node", klog.KObj(scyllaPod))
 
-			defaultSnc, err := scc.scyllaNodeConfigLister.Get(resource.DefaultScyllaNodeConfig().Name)
+			defaultSnc, err := ncc.scyllaNodeConfigLister.Get(resource.DefaultScyllaNodeConfig().Name)
 			if err != nil {
 				return nil, fmt.Errorf("get default NodeConfig: %w", err)
 			}
@@ -110,7 +110,7 @@ func (scc *Controller) makeConfigMaps(ctx context.Context, scyllaNodeConfig *scy
 	return cms, utilerrors.NewAggregate(errs)
 }
 
-func (scc *Controller) pruneConfigMaps(
+func (ncc *Controller) pruneConfigMaps(
 	ctx context.Context,
 	requiredConfigMaps []*corev1.ConfigMap,
 	configMaps map[string]*corev1.ConfigMap,
@@ -134,7 +134,7 @@ func (scc *Controller) pruneConfigMaps(
 
 		klog.InfoS("Removing stale ConfigMap", "ConfigMap", klog.KObj(cm))
 		propagationPolicy := metav1.DeletePropagationBackground
-		err := scc.kubeClient.CoreV1().ConfigMaps(cm.Namespace).Delete(ctx, cm.Name, metav1.DeleteOptions{
+		err := ncc.kubeClient.CoreV1().ConfigMaps(cm.Namespace).Delete(ctx, cm.Name, metav1.DeleteOptions{
 			Preconditions: &metav1.Preconditions{
 				UID: &cm.UID,
 			},
@@ -149,28 +149,28 @@ func (scc *Controller) pruneConfigMaps(
 	return utilerrors.NewAggregate(errs)
 }
 
-func (scc *Controller) syncConfigMaps(
+func (ncc *Controller) syncConfigMaps(
 	ctx context.Context,
 	snc *scyllav1alpha1.NodeConfig,
 	scyllaPods []*corev1.Pod,
 	configMaps map[string]*corev1.ConfigMap,
 	jobs map[string]*batchv1.Job,
 ) error {
-	requiredConfigMaps, err := scc.makeConfigMaps(ctx, snc, scyllaPods, jobs, configMaps)
+	requiredConfigMaps, err := ncc.makeConfigMaps(ctx, snc, scyllaPods, jobs, configMaps)
 	if err != nil {
 		return err
 	}
 
 	// Delete any excessive ConfigMaps.
 	// Delete has to be the first action to avoid getting stuck on quota.
-	err = scc.pruneConfigMaps(ctx, requiredConfigMaps, configMaps)
+	err = ncc.pruneConfigMaps(ctx, requiredConfigMaps, configMaps)
 	if err != nil {
 		return fmt.Errorf("can't delete ConfigMaps(s): %w", err)
 	}
 
 	var errs []error
 	for _, required := range requiredConfigMaps {
-		_, _, err := resourceapply.ApplyConfigMap(ctx, scc.kubeClient.CoreV1(), scc.configMapLister, scc.eventRecorder, required)
+		_, _, err := resourceapply.ApplyConfigMap(ctx, ncc.kubeClient.CoreV1(), ncc.configMapLister, ncc.eventRecorder, required)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("can't apply configmap update: %w", err))
 			continue
