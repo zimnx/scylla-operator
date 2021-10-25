@@ -12,7 +12,7 @@ import (
 	"k8s.io/klog/v2"
 )
 
-func (sncc *Controller) calculateStatus(snc *scyllav1alpha1.NodeConfig, daemonSets map[string]*appsv1.DaemonSet) *scyllav1alpha1.NodeConfigStatus {
+func (ncc *Controller) calculateStatus(snc *scyllav1alpha1.NodeConfig, daemonSets map[string]*appsv1.DaemonSet) *scyllav1alpha1.NodeConfigStatus {
 	status := snc.Status.DeepCopy()
 	status.ObservedGeneration = snc.Generation
 
@@ -27,7 +27,7 @@ func (sncc *Controller) calculateStatus(snc *scyllav1alpha1.NodeConfig, daemonSe
 	return status
 }
 
-func (sncc *Controller) updateStatus(ctx context.Context, currentNodeConfig *scyllav1alpha1.NodeConfig, status *scyllav1alpha1.NodeConfigStatus) error {
+func (ncc *Controller) updateStatus(ctx context.Context, currentNodeConfig *scyllav1alpha1.NodeConfig, status *scyllav1alpha1.NodeConfigStatus) error {
 	if apiequality.Semantic.DeepEqual(&currentNodeConfig.Status, status) {
 		return nil
 	}
@@ -37,7 +37,7 @@ func (sncc *Controller) updateStatus(ctx context.Context, currentNodeConfig *scy
 
 	klog.V(2).InfoS("Updating status", "NodeConfig", klog.KObj(soc))
 
-	_, err := sncc.scyllaClient.NodeConfigs().UpdateStatus(ctx, soc, metav1.UpdateOptions{})
+	_, err := ncc.scyllaClient.NodeConfigs().UpdateStatus(ctx, soc, metav1.UpdateOptions{})
 	if err != nil {
 		return err
 	}

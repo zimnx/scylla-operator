@@ -13,7 +13,7 @@ import (
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 )
 
-func (sncc *Controller) makeClusterRoleBindings() []*rbacv1.ClusterRoleBinding {
+func (ncc *Controller) makeClusterRoleBindings() []*rbacv1.ClusterRoleBinding {
 	clusterRoleBindings := []*rbacv1.ClusterRoleBinding{
 		resource.ScyllaNodeConfigClusterRoleBinding(),
 	}
@@ -21,7 +21,7 @@ func (sncc *Controller) makeClusterRoleBindings() []*rbacv1.ClusterRoleBinding {
 	return clusterRoleBindings
 }
 
-func (sncc *Controller) pruneClusterRoleBindings(ctx context.Context, requiredClusterRoleBindings []*rbacv1.ClusterRoleBinding, clusterRoleBindings map[string]*rbacv1.ClusterRoleBinding) error {
+func (ncc *Controller) pruneClusterRoleBindings(ctx context.Context, requiredClusterRoleBindings []*rbacv1.ClusterRoleBinding, clusterRoleBindings map[string]*rbacv1.ClusterRoleBinding) error {
 	var errs []error
 	for _, cr := range clusterRoleBindings {
 		if cr.DeletionTimestamp != nil {
@@ -40,7 +40,7 @@ func (sncc *Controller) pruneClusterRoleBindings(ctx context.Context, requiredCl
 		}
 
 		propagationPolicy := metav1.DeletePropagationBackground
-		err := sncc.kubeClient.RbacV1().ClusterRoleBindings().Delete(ctx, cr.Name, metav1.DeleteOptions{
+		err := ncc.kubeClient.RbacV1().ClusterRoleBindings().Delete(ctx, cr.Name, metav1.DeleteOptions{
 			Preconditions: &metav1.Preconditions{
 				UID: &cr.UID,
 			},
@@ -54,21 +54,21 @@ func (sncc *Controller) pruneClusterRoleBindings(ctx context.Context, requiredCl
 	return utilerrors.NewAggregate(errs)
 }
 
-func (sncc *Controller) syncClusterRoleBindings(
+func (ncc *Controller) syncClusterRoleBindings(
 	ctx context.Context,
 	clusterRoleBindings map[string]*rbacv1.ClusterRoleBinding,
 ) error {
-	requiredClusterRoleBindings := sncc.makeClusterRoleBindings()
+	requiredClusterRoleBindings := ncc.makeClusterRoleBindings()
 
 	// Delete any excessive ClusterRoleBindings.
 	// Delete has to be the first action to avoid getting stuck on quota.
-	if err := sncc.pruneClusterRoleBindings(ctx, requiredClusterRoleBindings, clusterRoleBindings); err != nil {
+	if err := ncc.pruneClusterRoleBindings(ctx, requiredClusterRoleBindings, clusterRoleBindings); err != nil {
 		return fmt.Errorf("can't delete ClusterRoleBinding(s): %w", err)
 	}
 
 	var errs []error
 	for _, crb := range requiredClusterRoleBindings {
-		_, _, err := resourceapply.ApplyClusterRoleBinding(ctx, sncc.kubeClient.RbacV1(), sncc.clusterRoleBindingLister, sncc.eventRecorder, crb, true)
+		_, _, err := resourceapply.ApplyClusterRoleBinding(ctx, ncc.kubeClient.RbacV1(), ncc.clusterRoleBindingLister, ncc.eventRecorder, crb, true)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("can't create missing clusterrole: %w", err))
 			continue
