@@ -1,7 +1,7 @@
 // Copyright (C) 2021 ScyllaDB
+package nodeconfig
 
-package scyllanodeconfig
-
+/*
 import (
 	"context"
 	"fmt"
@@ -29,7 +29,7 @@ import (
 var _ = g.Describe("NodeConfig Optimizations [Serial]", func() {
 	defer g.GinkgoRecover()
 
-	f := framework.NewFramework("scyllanodeconfig")
+	f := framework.NewFramework("nodeconfig")
 
 	var givenNodeConfigRunningOnAllHosts = func(ctx context.Context, name string) *scyllav1alpha1.NodeConfig {
 		snc, err := f.ScyllaAdminClient().ScyllaV1alpha1().NodeConfigs().Create(ctx, &scyllav1alpha1.NodeConfig{
@@ -63,7 +63,7 @@ var _ = g.Describe("NodeConfig Optimizations [Serial]", func() {
 	var whenNodeConfigRollsOut = func(ctx context.Context, snc *scyllav1alpha1.NodeConfig) {
 		waitCtx, cancel := utils.ContextForNodeConfigRollout(ctx)
 		defer cancel()
-		_, err := utils.WaitForScyllaNodeConfigRollout(waitCtx, f.ScyllaAdminClient().ScyllaV1alpha1(), snc.Name)
+		_, err := utils.WaitForNodeConfigRollout(waitCtx, f.ScyllaAdminClient().ScyllaV1alpha1(), snc.Name)
 		o.Expect(err).NotTo(o.HaveOccurred())
 	}
 
@@ -103,57 +103,43 @@ var _ = g.Describe("NodeConfig Optimizations [Serial]", func() {
 		o.Expect(err).NotTo(o.HaveOccurred())
 	}
 
-	g.AfterEach(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
-		defer cancel()
-
-		g.By("Restoring default NodeConfig")
-		snc, err := f.ScyllaAdminClient().ScyllaV1alpha1().NodeConfigs().Get(ctx, resource.DefaultScyllaNodeConfig().Name, metav1.GetOptions{})
-		o.Expect(err).ToNot(o.HaveOccurred())
-
-		defaultSnc := snc.DeepCopy()
-		defaultSnc.Spec = resource.DefaultScyllaNodeConfig().Spec
-		_, err = f.ScyllaAdminClient().ScyllaV1alpha1().NodeConfigs().Update(ctx, defaultSnc, metav1.UpdateOptions{})
-		o.Expect(err).ToNot(o.HaveOccurred())
-	})
-
-	g.It("Default NodeConfig", func() {
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-
-		g.By("Default NodeConfig is available")
-		snc, err := f.ScyllaAdminClient().ScyllaV1alpha1().NodeConfigs().Get(ctx, resource.DefaultScyllaNodeConfig().Name, metav1.GetOptions{})
-		o.Expect(err).ToNot(o.HaveOccurred())
-
-		g.By("Admin is able to modify values and these are not overwritten")
-		_, err = f.ScyllaAdminClient().ScyllaV1alpha1().NodeConfigs().Patch(
-			ctx,
-			snc.Name,
-			types.JSONPatchType,
-			[]byte(`[{"op":"replace", "path": "/spec/optimizationsDisabled", "value": true }]`),
-			metav1.PatchOptions{},
-		)
-		o.Expect(err).NotTo(o.HaveOccurred())
-
-		snc, err = utils.WaitForScyllaNodeConfigRollout(ctx, f.ScyllaAdminClient().ScyllaV1alpha1(), snc.Name)
-		o.Expect(err).NotTo(o.HaveOccurred())
-
-		snc, err = f.ScyllaAdminClient().ScyllaV1alpha1().NodeConfigs().Get(ctx, snc.Name, metav1.GetOptions{})
-		o.Expect(err).ToNot(o.HaveOccurred())
-		o.Expect(snc.Spec.DisableOptimizations).To(o.BeTrue())
-	})
+	// g.It("Default NodeConfig", func() {
+	// 	ctx, cancel := context.WithCancel(context.Background())
+	// 	defer cancel()
+	//
+	// 	g.By("Default NodeConfig is available")
+	// 	snc, err := f.ScyllaAdminClient().ScyllaV1alpha1().NodeConfigs().Get(ctx, resource.DefaultScyllaNodeConfig().Name, metav1.GetOptions{})
+	// 	o.Expect(err).ToNot(o.HaveOccurred())
+	//
+	// 	g.By("Admin is able to modify values and these are not overwritten")
+	// 	_, err = f.ScyllaAdminClient().ScyllaV1alpha1().NodeConfigs().Patch(
+	// 		ctx,
+	// 		snc.Name,
+	// 		types.JSONPatchType,
+	// 		[]byte(`[{"op":"replace", "path": "/spec/optimizationsDisabled", "value": true }]`),
+	// 		metav1.PatchOptions{},
+	// 	)
+	// 	o.Expect(err).NotTo(o.HaveOccurred())
+	//
+	// 	snc, err = utils.WaitForNodeConfigRollout(ctx, f.ScyllaAdminClient().ScyllaV1alpha1(), snc.Name)
+	// 	o.Expect(err).NotTo(o.HaveOccurred())
+	//
+	// 	snc, err = f.ScyllaAdminClient().ScyllaV1alpha1().NodeConfigs().Get(ctx, snc.Name, metav1.GetOptions{})
+	// 	o.Expect(err).ToNot(o.HaveOccurred())
+	// 	o.Expect(snc.Spec.DisableOptimizations).To(o.BeTrue())
+	// })
 
 	type entry struct {
 		ScyllaCluster               func() *scyllav1.ScyllaCluster
 		OptimizedConfigMapCondition func(*corev1.ConfigMap) (bool, error)
 	}
-
+/*
 	table.DescribeTable("Tuning ConfigMap ownership and content", func(e entry) {
 		ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 		defer cancel()
 
 		framework.By("Disabling default NodeConfig on every node")
-		snc := givenNodeConfigNotRunningOnAnyHost(ctx, resource.DefaultScyllaNodeConfig().Name)
+		// snc := givenNodeConfigNotRunningOnAnyHost(ctx, resource.DefaultScyllaNodeConfig().Name)
 
 		framework.By("Waiting for NodeConfig to rollout")
 		whenNodeConfigRollsOut(ctx, snc)
@@ -322,3 +308,4 @@ var _ = g.Describe("NodeConfig Optimizations [Serial]", func() {
 		o.Expect(err).NotTo(o.HaveOccurred())
 	})
 })
+*/

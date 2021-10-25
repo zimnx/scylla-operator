@@ -23,29 +23,15 @@ import (
 func ScyllaOperatorNodeTuningNamespace() *corev1.Namespace {
 	return &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: naming.ScyllaOperatorNodeTuningNamespace,
+			Name:   naming.ScyllaOperatorNodeTuningNamespace,
 			Labels: map[string]string{
-				naming.NodeConfigNameLabel: naming.NodeConfigAppName,
+				// naming.NodeConfigNameLabel: naming.NodeConfigAppName,
 			},
 		},
 	}
 }
 
-func DefaultScyllaNodeConfig() *scyllav1alpha1.NodeConfig {
-	return &scyllav1alpha1.NodeConfig{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "default-node-config",
-			Namespace: naming.ScyllaOperatorNodeTuningNamespace,
-		},
-		Spec: scyllav1alpha1.NodeConfigSpec{
-			Placement: scyllav1alpha1.NodeConfigPlacement{
-				NodeSelector: map[string]string{},
-			},
-		},
-	}
-}
-
-func ScyllaNodeConfigServiceAccount() *corev1.ServiceAccount {
+func NodeConfigServiceAccount() *corev1.ServiceAccount {
 	return &corev1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      naming.NodeConfigAppName,
@@ -57,7 +43,7 @@ func ScyllaNodeConfigServiceAccount() *corev1.ServiceAccount {
 	}
 }
 
-func ScyllaNodeConfigClusterRole() *rbacv1.ClusterRole {
+func NodeConfigClusterRole() *rbacv1.ClusterRole {
 	return &rbacv1.ClusterRole{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      naming.NodeConfigAppName,
@@ -78,18 +64,13 @@ func ScyllaNodeConfigClusterRole() *rbacv1.ClusterRole {
 				Verbs:     []string{"get", "list", "watch"},
 			},
 			{
-				APIGroups: []string{"apps"},
-				Resources: []string{"daemonsets"},
-				Verbs:     []string{"get", "list", "watch"},
-			},
-			{
 				APIGroups: []string{""},
 				Resources: []string{"configmaps"},
 				Verbs:     []string{"create", "delete", "get", "list", "patch", "update", "watch"},
 			},
 			{
-				APIGroups: []string{"scylla.scylladb.com"},
-				Resources: []string{"scyllanodeconfigs"},
+				APIGroups: []string{"apps"},
+				Resources: []string{"daemonsets"},
 				Verbs:     []string{"get", "list", "watch"},
 			},
 			{
@@ -97,11 +78,16 @@ func ScyllaNodeConfigClusterRole() *rbacv1.ClusterRole {
 				Resources: []string{"jobs"},
 				Verbs:     []string{"create", "delete", "get", "list", "patch", "update", "watch"},
 			},
+			{
+				APIGroups: []string{"scylla.scylladb.com"},
+				Resources: []string{"nodeconfigs"},
+				Verbs:     []string{"get", "list", "watch"},
+			},
 		},
 	}
 }
 
-func ScyllaNodeConfigClusterRoleBinding() *rbacv1.ClusterRoleBinding {
+func NodeConfigClusterRoleBinding() *rbacv1.ClusterRoleBinding {
 	return &rbacv1.ClusterRoleBinding{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      naming.NodeConfigAppName,
@@ -125,7 +111,7 @@ func ScyllaNodeConfigClusterRoleBinding() *rbacv1.ClusterRoleBinding {
 	}
 }
 
-func ScyllaNodeConfigDaemonSet(snc *scyllav1alpha1.NodeConfig, operatorImage, scyllaImage string) *appsv1.DaemonSet {
+func NodeConfigDaemonSet(snc *scyllav1alpha1.NodeConfig, operatorImage, scyllaImage string) *appsv1.DaemonSet {
 	labels := map[string]string{
 		"app.kubernetes.io/name":   naming.NodeConfigAppName,
 		naming.NodeConfigNameLabel: snc.Name,
@@ -225,6 +211,7 @@ func PerftuneJob(snc *scyllav1alpha1.NodeConfig, nodeName, image, ifaceName, irq
 		"--tune", "net", "--nic", ifaceName, "--irq-cpu-mask", irqMask,
 	}
 
+	// FIXME: disk shouldn't be empty
 	if len(dataHostPaths) > 0 {
 		args = append(args, "--tune", "disks")
 	}
@@ -304,7 +291,8 @@ func PerftuneJob(snc *scyllav1alpha1.NodeConfig, nodeName, image, ifaceName, irq
 	}
 
 	// Host node might not be running irqbalance. Mount config only when it's present on the host.
-	if _, err := os.Stat(path.Join(naming.HostFilesystemDirName, "/etc/sysconfig/irqbalance")); err == nil {
+	_, err := os.Stat(path.Join(naming.HostFilesystemDirName, "/etc/sysconfig/irqbalance"))
+	if err == nil {
 		perftuneJob.Spec.Template.Spec.Volumes = append(perftuneJob.Spec.Template.Spec.Volumes,
 			hostFileVolume("etc-sysconfig-irqbalance", "/etc/sysconfig/irqbalance"),
 		)

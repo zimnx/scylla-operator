@@ -86,9 +86,6 @@ const (
 	ScyllaManagerNamespace   = "scylla-manager"
 	ScyllaManagerServiceName = "scylla-manager"
 
-	ScyllaOperatorName      = "scylla-operator"
-	ScyllaOperatorNamespace = "scylla-operator"
-
 	ScyllaOperatorNodeTuningNamespace = "scylla-operator-node-tuning"
 
 	PerftuneJobPrefixName = "perftune"
