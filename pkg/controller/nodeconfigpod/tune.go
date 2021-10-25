@@ -65,6 +65,7 @@ func scyllaDataDirHostPaths(ctx context.Context, criClient cri.Client, scyllaPod
 		if err != nil && !errors.Is(err, cri.NotFoundErr) {
 			return nil, fmt.Errorf("failed to inspect container %q, %w", cid, err)
 		}
+		// FIXME: handle not found
 
 		if cs != nil {
 			for _, mount := range cs.Status.GetMounts() {

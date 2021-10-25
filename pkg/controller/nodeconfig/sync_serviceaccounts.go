@@ -15,7 +15,7 @@ import (
 
 func (ncc *Controller) makeServiceAccounts() []*corev1.ServiceAccount {
 	serviceAccounts := []*corev1.ServiceAccount{
-		resource.ScyllaNodeConfigServiceAccount(),
+		resource.NodeConfigServiceAccount(),
 	}
 
 	return serviceAccounts

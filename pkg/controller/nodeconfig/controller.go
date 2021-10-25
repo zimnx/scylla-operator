@@ -12,7 +12,6 @@ import (
 	scyllav1alpha1client "github.com/scylladb/scylla-operator/pkg/client/scylla/clientset/versioned/typed/scylla/v1alpha1"
 	scyllav1alpha1informers "github.com/scylladb/scylla-operator/pkg/client/scylla/informers/externalversions/scylla/v1alpha1"
 	scyllav1alpha1listers "github.com/scylladb/scylla-operator/pkg/client/scylla/listers/scylla/v1alpha1"
-	nodeconfigresources "github.com/scylladb/scylla-operator/pkg/controller/nodeconfig/resource"
 	"github.com/scylladb/scylla-operator/pkg/util/resource"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -57,7 +56,7 @@ type Controller struct {
 	kubeClient   kubernetes.Interface
 	scyllaClient scyllav1alpha1client.ScyllaV1alpha1Interface
 
-	scyllaNodeConfigLister     scyllav1alpha1listers.NodeConfigLister
+	nodeConfigLister           scyllav1alpha1listers.NodeConfigLister
 	scyllaOperatorConfigLister scyllav1alpha1listers.ScyllaOperatorConfigLister
 	clusterRoleLister          rbacv1listers.ClusterRoleLister
 	clusterRoleBindingLister   rbacv1listers.ClusterRoleBindingLister
@@ -78,7 +77,7 @@ type Controller struct {
 func NewController(
 	kubeClient kubernetes.Interface,
 	scyllaClient scyllav1alpha1client.ScyllaV1alpha1Interface,
-	scyllaNodeConfigInformer scyllav1alpha1informers.NodeConfigInformer,
+	nodeConfigInformer scyllav1alpha1informers.NodeConfigInformer,
 	scyllaOperatorConfigInformer scyllav1alpha1informers.ScyllaOperatorConfigInformer,
 	clusterRoleInformer rbacv1informers.ClusterRoleInformer,
 	clusterRoleBindingInformer rbacv1informers.ClusterRoleBindingInformer,
@@ -105,7 +104,7 @@ func NewController(
 		kubeClient:   kubeClient,
 		scyllaClient: scyllaClient,
 
-		scyllaNodeConfigLister:     scyllaNodeConfigInformer.Lister(),
+		nodeConfigLister:           nodeConfigInformer.Lister(),
 		scyllaOperatorConfigLister: scyllaOperatorConfigInformer.Lister(),
 		clusterRoleLister:          clusterRoleInformer.Lister(),
 		clusterRoleBindingLister:   clusterRoleBindingInformer.Lister(),
@@ -115,7 +114,7 @@ func NewController(
 		serviceAccountLister:       serviceAccountInformer.Lister(),
 
 		cachesToSync: []cache.InformerSynced{
-			scyllaNodeConfigInformer.Informer().HasSynced,
+			nodeConfigInformer.Informer().HasSynced,
 			scyllaOperatorConfigInformer.Informer().HasSynced,
 			clusterRoleInformer.Informer().HasSynced,
 			clusterRoleBindingInformer.Informer().HasSynced,
@@ -132,9 +131,9 @@ func NewController(
 		operatorImage: operatorImage,
 	}
 
-	ncc.enqueue(nodeconfigresources.DefaultScyllaNodeConfig())
+	// ncc.enqueue(nodeconfigresources.DefaultScyllaNodeConfig())
 
-	scyllaNodeConfigInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	nodeConfigInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    ncc.addNodeConfig,
 		UpdateFunc: ncc.updateNodeConfig,
 		DeleteFunc: ncc.deleteNodeConfig,
@@ -437,7 +436,7 @@ func (ncc *Controller) resolveNodeConfigController(obj metav1.Object) *scyllav1a
 		return nil
 	}
 
-	snt, err := ncc.scyllaNodeConfigLister.Get(controllerRef.Name)
+	snt, err := ncc.nodeConfigLister.Get(controllerRef.Name)
 	if err != nil {
 		return nil
 	}
@@ -477,7 +476,7 @@ func (ncc *Controller) enqueue(soc *scyllav1alpha1.NodeConfig) {
 }
 
 func (ncc *Controller) enqueueAll() {
-	socs, err := ncc.scyllaNodeConfigLister.List(labels.Everything())
+	socs, err := ncc.nodeConfigLister.List(labels.Everything())
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("couldn't list all ScyllaOperatorConfigs: %w", err))
 		return

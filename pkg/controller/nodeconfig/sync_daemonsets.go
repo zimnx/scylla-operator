@@ -47,11 +47,12 @@ func (ncc *Controller) syncDaemonSets(
 	status *scyllav1alpha1.NodeConfigStatus,
 	daemonSets map[string]*appsv1.DaemonSet,
 ) error {
-	requiredDaemonSet := resource.ScyllaNodeConfigDaemonSet(snc, ncc.operatorImage, soc.Spec.ScyllaUtilsImage)
+	requiredDaemonSet := resource.NodeConfigDaemonSet(snc, ncc.operatorImage, soc.Spec.ScyllaUtilsImage)
 
 	// Delete any excessive DaemonSets.
 	// Delete has to be the first action to avoid getting stuck on quota.
-	if err := ncc.pruneDaemonSets(ctx, requiredDaemonSet, daemonSets); err != nil {
+	err := ncc.pruneDaemonSets(ctx, requiredDaemonSet, daemonSets)
+	if err != nil {
 		return fmt.Errorf("can't delete DaemonSet(s): %w", err)
 	}
 

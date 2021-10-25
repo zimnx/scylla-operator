@@ -1,6 +1,6 @@
 // Copyright (C) 2021 ScyllaDB
 
-package scyllanodeconfig
+package nodeconfig
 
 import "time"
 

@@ -59,7 +59,8 @@ func (ncc *Controller) syncNamespaces(ctx context.Context, namespaces map[string
 
 	// Delete any excessive Namespaces.
 	// Delete has to be the first action to avoid getting stuck on quota.
-	if err := ncc.pruneNamespaces(ctx, requiredNamespaces, namespaces); err != nil {
+	err := ncc.pruneNamespaces(ctx, requiredNamespaces, namespaces)
+	if err != nil {
 		return fmt.Errorf("can't delete Namespace(s): %w", err)
 	}
 
