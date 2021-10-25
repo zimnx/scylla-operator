@@ -14,7 +14,7 @@ import (
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 )
 
-func (sncc *Controller) pruneDaemonSets(ctx context.Context, requiredDaemonSet *appsv1.DaemonSet, daemonSets map[string]*appsv1.DaemonSet) error {
+func (ncc *Controller) pruneDaemonSets(ctx context.Context, requiredDaemonSet *appsv1.DaemonSet, daemonSets map[string]*appsv1.DaemonSet) error {
 	var errs []error
 	for _, ds := range daemonSets {
 		if ds.DeletionTimestamp != nil {
@@ -26,7 +26,7 @@ func (sncc *Controller) pruneDaemonSets(ctx context.Context, requiredDaemonSet *
 		}
 
 		propagationPolicy := metav1.DeletePropagationBackground
-		err := sncc.kubeClient.AppsV1().DaemonSets(ds.Namespace).Delete(ctx, ds.Name, metav1.DeleteOptions{
+		err := ncc.kubeClient.AppsV1().DaemonSets(ds.Namespace).Delete(ctx, ds.Name, metav1.DeleteOptions{
 			Preconditions: &metav1.Preconditions{
 				UID: &ds.UID,
 			},
@@ -40,22 +40,22 @@ func (sncc *Controller) pruneDaemonSets(ctx context.Context, requiredDaemonSet *
 	return utilerrors.NewAggregate(errs)
 }
 
-func (sncc *Controller) syncDaemonSets(
+func (ncc *Controller) syncDaemonSets(
 	ctx context.Context,
 	snc *scyllav1alpha1.NodeConfig,
 	soc *scyllav1alpha1.ScyllaOperatorConfig,
 	status *scyllav1alpha1.NodeConfigStatus,
 	daemonSets map[string]*appsv1.DaemonSet,
 ) error {
-	requiredDaemonSet := resource.ScyllaNodeConfigDaemonSet(snc, sncc.operatorImage, soc.Spec.ScyllaUtilsImage)
+	requiredDaemonSet := resource.ScyllaNodeConfigDaemonSet(snc, ncc.operatorImage, soc.Spec.ScyllaUtilsImage)
 
 	// Delete any excessive DaemonSets.
 	// Delete has to be the first action to avoid getting stuck on quota.
-	if err := sncc.pruneDaemonSets(ctx, requiredDaemonSet, daemonSets); err != nil {
+	if err := ncc.pruneDaemonSets(ctx, requiredDaemonSet, daemonSets); err != nil {
 		return fmt.Errorf("can't delete DaemonSet(s): %w", err)
 	}
 
-	updatedDaemonSet, _, err := resourceapply.ApplyDaemonSet(ctx, sncc.kubeClient.AppsV1(), sncc.daemonSetLister, sncc.eventRecorder, requiredDaemonSet)
+	updatedDaemonSet, _, err := resourceapply.ApplyDaemonSet(ctx, ncc.kubeClient.AppsV1(), ncc.daemonSetLister, ncc.eventRecorder, requiredDaemonSet)
 	if err != nil {
 		return fmt.Errorf("can't apply statefulset update: %w", err)
 	}

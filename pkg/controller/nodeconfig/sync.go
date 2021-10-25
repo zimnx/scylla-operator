@@ -21,16 +21,16 @@ import (
 	"k8s.io/client-go/tools/cache"
 )
 
-func (sncc *Controller) sync(ctx context.Context, key string) error {
+func (ncc *Controller) sync(ctx context.Context, key string) error {
 	_, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		return fmt.Errorf("can't split meta namespace cache key: %w", err)
 	}
 
-	snc, err := sncc.scyllaNodeConfigLister.Get(name)
+	snc, err := ncc.scyllaNodeConfigLister.Get(name)
 	if err != nil {
 		if apierrors.IsNotFound(err) && name == resource.DefaultScyllaNodeConfig().Name {
-			snc, err = sncc.scyllaClient.NodeConfigs().Create(ctx, resource.DefaultScyllaNodeConfig(), metav1.CreateOptions{})
+			snc, err = ncc.scyllaClient.NodeConfigs().Create(ctx, resource.DefaultScyllaNodeConfig(), metav1.CreateOptions{})
 			if err != nil {
 				return fmt.Errorf("create default NodeConfig: %w", err)
 			}
@@ -40,91 +40,91 @@ func (sncc *Controller) sync(ctx context.Context, key string) error {
 		}
 	}
 
-	soc, err := sncc.scyllaOperatorConfigLister.Get(naming.ScyllaOperatorName)
+	soc, err := ncc.scyllaOperatorConfigLister.Get(naming.ScyllaOperatorName)
 	if err != nil {
 		return fmt.Errorf("get ScyllaOperatorConfig: %w", err)
 	}
 
-	scyllaPods, err := sncc.podLister.Pods(corev1.NamespaceAll).List(naming.ScyllaSelector())
+	scyllaPods, err := ncc.podLister.Pods(corev1.NamespaceAll).List(naming.ScyllaSelector())
 	if err != nil {
 		return fmt.Errorf("get Scylla Pods: %w", err)
 	}
 
-	namespaces, err := sncc.getNamespaces()
+	namespaces, err := ncc.getNamespaces()
 	if err != nil {
 		return fmt.Errorf("get Namespaces: %w", err)
 	}
 
-	clusterRoles, err := sncc.getClusterRoles()
+	clusterRoles, err := ncc.getClusterRoles()
 	if err != nil {
 		return fmt.Errorf("get ClusterRoles: %w", err)
 	}
 
-	serviceAccounts, err := sncc.getServiceAccounts()
+	serviceAccounts, err := ncc.getServiceAccounts()
 	if err != nil {
 		return fmt.Errorf("get ServiceAccounts: %w", err)
 	}
 
-	clusterRoleBindings, err := sncc.getClusterRoleBindings()
+	clusterRoleBindings, err := ncc.getClusterRoleBindings()
 	if err != nil {
 		return fmt.Errorf("get ClusterRoleBindings: %w", err)
 	}
 
-	daemonSets, err := sncc.getDaemonSets(ctx, snc)
+	daemonSets, err := ncc.getDaemonSets(ctx, snc)
 	if err != nil {
 		return fmt.Errorf("get DaemonSets: %w", err)
 	}
 
-	jobs, err := sncc.getJobs(ctx, snc)
+	jobs, err := ncc.getJobs(ctx, snc)
 	if err != nil {
 		return fmt.Errorf("get Jobs: %w", err)
 	}
 
-	configMaps, err := sncc.getConfigMaps(ctx, snc, scyllaPods)
+	configMaps, err := ncc.getConfigMaps(ctx, snc, scyllaPods)
 	if err != nil {
 		return fmt.Errorf("get ConfigMaps: %w", err)
 	}
 
-	status := sncc.calculateStatus(snc, daemonSets)
+	status := ncc.calculateStatus(snc, daemonSets)
 
 	if snc.DeletionTimestamp != nil {
-		return sncc.updateStatus(ctx, snc, status)
+		return ncc.updateStatus(ctx, snc, status)
 	}
 
 	var errs []error
 
-	if err := sncc.syncNamespaces(ctx, namespaces); err != nil {
+	if err := ncc.syncNamespaces(ctx, namespaces); err != nil {
 		errs = append(errs, fmt.Errorf("sync Namespace(s): %w", err))
 	}
 
-	if err := sncc.syncClusterRoles(ctx, clusterRoles); err != nil {
+	if err := ncc.syncClusterRoles(ctx, clusterRoles); err != nil {
 		errs = append(errs, fmt.Errorf("sync ClusterRole(s): %w", err))
 	}
 
-	if err := sncc.syncServiceAccounts(ctx, serviceAccounts); err != nil {
+	if err := ncc.syncServiceAccounts(ctx, serviceAccounts); err != nil {
 		errs = append(errs, fmt.Errorf("sync ServiceAccount(s): %w", err))
 	}
 
-	if err := sncc.syncClusterRoleBindings(ctx, clusterRoleBindings); err != nil {
+	if err := ncc.syncClusterRoleBindings(ctx, clusterRoleBindings); err != nil {
 		errs = append(errs, fmt.Errorf("sync ClusterRoleBinding(s): %w", err))
 	}
 
-	if err := sncc.syncDaemonSets(ctx, snc, soc, status, daemonSets); err != nil {
+	if err := ncc.syncDaemonSets(ctx, snc, soc, status, daemonSets); err != nil {
 		errs = append(errs, fmt.Errorf("sync DaemonSet(s): %w", err))
 	}
 
-	if err := sncc.syncConfigMaps(ctx, snc, scyllaPods, configMaps, jobs); err != nil {
+	if err := ncc.syncConfigMaps(ctx, snc, scyllaPods, configMaps, jobs); err != nil {
 		errs = append(errs, fmt.Errorf("sync ConfigMap(s): %w", err))
 	}
 
-	err = sncc.updateStatus(ctx, snc, status)
+	err = ncc.updateStatus(ctx, snc, status)
 	errs = append(errs, err)
 
 	return utilerrors.NewAggregate(errs)
 }
 
-func (sncc *Controller) getDaemonSets(ctx context.Context, snc *scyllav1alpha1.NodeConfig) (map[string]*appsv1.DaemonSet, error) {
-	dss, err := sncc.daemonSetLister.DaemonSets(naming.ScyllaOperatorNodeTuningNamespace).List(labels.Everything())
+func (ncc *Controller) getDaemonSets(ctx context.Context, snc *scyllav1alpha1.NodeConfig) (map[string]*appsv1.DaemonSet, error) {
+	dss, err := ncc.daemonSetLister.DaemonSets(naming.ScyllaOperatorNodeTuningNamespace).List(labels.Everything())
 	if err != nil {
 		return nil, fmt.Errorf("list daemonsets: %w", err)
 	}
@@ -134,7 +134,7 @@ func (sncc *Controller) getDaemonSets(ctx context.Context, snc *scyllav1alpha1.N
 	})
 
 	canAdoptFunc := func() error {
-		fresh, err := sncc.scyllaClient.NodeConfigs().Get(ctx, snc.Name, metav1.GetOptions{})
+		fresh, err := ncc.scyllaClient.NodeConfigs().Get(ctx, snc.Name, metav1.GetOptions{})
 		if err != nil {
 			return err
 		}
@@ -157,15 +157,15 @@ func (sncc *Controller) getDaemonSets(ctx context.Context, snc *scyllav1alpha1.N
 		selector,
 		canAdoptFunc,
 		controllertools.RealDaemonSetControl{
-			KubeClient: sncc.kubeClient,
-			Recorder:   sncc.eventRecorder,
+			KubeClient: ncc.kubeClient,
+			Recorder:   ncc.eventRecorder,
 		},
 	)
 	return cm.ClaimDaemonSets(dss)
 }
 
-func (sncc *Controller) getNamespaces() (map[string]*corev1.Namespace, error) {
-	nss, err := sncc.namespaceLister.List(labels.SelectorFromSet(map[string]string{
+func (ncc *Controller) getNamespaces() (map[string]*corev1.Namespace, error) {
+	nss, err := ncc.namespaceLister.List(labels.SelectorFromSet(map[string]string{
 		naming.NodeConfigNameLabel: naming.NodeConfigAppName,
 	}))
 	if err != nil {
@@ -180,8 +180,8 @@ func (sncc *Controller) getNamespaces() (map[string]*corev1.Namespace, error) {
 	return nsMap, nil
 }
 
-func (sncc *Controller) getClusterRoles() (map[string]*rbacv1.ClusterRole, error) {
-	crs, err := sncc.clusterRoleLister.List(labels.SelectorFromSet(map[string]string{
+func (ncc *Controller) getClusterRoles() (map[string]*rbacv1.ClusterRole, error) {
+	crs, err := ncc.clusterRoleLister.List(labels.SelectorFromSet(map[string]string{
 		naming.NodeConfigNameLabel: naming.NodeConfigAppName,
 	}))
 	if err != nil {
@@ -196,8 +196,8 @@ func (sncc *Controller) getClusterRoles() (map[string]*rbacv1.ClusterRole, error
 	return crMap, nil
 }
 
-func (sncc *Controller) getClusterRoleBindings() (map[string]*rbacv1.ClusterRoleBinding, error) {
-	crbs, err := sncc.clusterRoleBindingLister.List(labels.SelectorFromSet(map[string]string{
+func (ncc *Controller) getClusterRoleBindings() (map[string]*rbacv1.ClusterRoleBinding, error) {
+	crbs, err := ncc.clusterRoleBindingLister.List(labels.SelectorFromSet(map[string]string{
 		naming.NodeConfigNameLabel: naming.NodeConfigAppName,
 	}))
 	if err != nil {
@@ -212,8 +212,8 @@ func (sncc *Controller) getClusterRoleBindings() (map[string]*rbacv1.ClusterRole
 	return crbMap, nil
 }
 
-func (sncc *Controller) getServiceAccounts() (map[string]*corev1.ServiceAccount, error) {
-	sas, err := sncc.serviceAccountLister.List(labels.SelectorFromSet(map[string]string{
+func (ncc *Controller) getServiceAccounts() (map[string]*corev1.ServiceAccount, error) {
+	sas, err := ncc.serviceAccountLister.List(labels.SelectorFromSet(map[string]string{
 		naming.NodeConfigNameLabel: naming.NodeConfigAppName,
 	}))
 	if err != nil {
@@ -228,8 +228,8 @@ func (sncc *Controller) getServiceAccounts() (map[string]*corev1.ServiceAccount,
 	return sasMap, nil
 }
 
-func (sncc *Controller) getJobs(ctx context.Context, snc *scyllav1alpha1.NodeConfig) (map[string]*batchv1.Job, error) {
-	jobs, err := sncc.jobLister.Jobs(naming.ScyllaOperatorNodeTuningNamespace).List(labels.Everything())
+func (ncc *Controller) getJobs(ctx context.Context, snc *scyllav1alpha1.NodeConfig) (map[string]*batchv1.Job, error) {
+	jobs, err := ncc.jobLister.Jobs(naming.ScyllaOperatorNodeTuningNamespace).List(labels.Everything())
 	if err != nil {
 		return nil, fmt.Errorf("list jobs: %w", err)
 	}
@@ -239,7 +239,7 @@ func (sncc *Controller) getJobs(ctx context.Context, snc *scyllav1alpha1.NodeCon
 	})
 
 	canAdoptFunc := func() error {
-		fresh, err := sncc.scyllaClient.NodeConfigs().Get(ctx, snc.Name, metav1.GetOptions{})
+		fresh, err := ncc.scyllaClient.NodeConfigs().Get(ctx, snc.Name, metav1.GetOptions{})
 		if err != nil {
 			return err
 		}
@@ -262,14 +262,14 @@ func (sncc *Controller) getJobs(ctx context.Context, snc *scyllav1alpha1.NodeCon
 		selector,
 		canAdoptFunc,
 		controllertools.RealJobControl{
-			KubeClient: sncc.kubeClient,
-			Recorder:   sncc.eventRecorder,
+			KubeClient: ncc.kubeClient,
+			Recorder:   ncc.eventRecorder,
 		},
 	)
 	return cm.ClaimJobs(jobs)
 }
 
-func (sncc *Controller) getConfigMaps(ctx context.Context, snc *scyllav1alpha1.NodeConfig, scyllaPods []*corev1.Pod) (map[string]*corev1.ConfigMap, error) {
+func (ncc *Controller) getConfigMaps(ctx context.Context, snc *scyllav1alpha1.NodeConfig, scyllaPods []*corev1.Pod) (map[string]*corev1.ConfigMap, error) {
 	var configMaps []*corev1.ConfigMap
 
 	namespaces := map[string]struct{}{}
@@ -278,7 +278,7 @@ func (sncc *Controller) getConfigMaps(ctx context.Context, snc *scyllav1alpha1.N
 	}
 
 	for ns := range namespaces {
-		cms, err := sncc.configMapLister.ConfigMaps(ns).List(labels.Everything())
+		cms, err := ncc.configMapLister.ConfigMaps(ns).List(labels.Everything())
 		if err != nil {
 			return nil, fmt.Errorf("list configmaps: %w", err)
 		}
@@ -290,7 +290,7 @@ func (sncc *Controller) getConfigMaps(ctx context.Context, snc *scyllav1alpha1.N
 	})
 
 	canAdoptFunc := func() error {
-		fresh, err := sncc.scyllaClient.NodeConfigs().Get(ctx, snc.Name, metav1.GetOptions{})
+		fresh, err := ncc.scyllaClient.NodeConfigs().Get(ctx, snc.Name, metav1.GetOptions{})
 		if err != nil {
 			return err
 		}
@@ -313,8 +313,8 @@ func (sncc *Controller) getConfigMaps(ctx context.Context, snc *scyllav1alpha1.N
 		selector,
 		canAdoptFunc,
 		controllertools.RealConfigMapControl{
-			KubeClient: sncc.kubeClient,
-			Recorder:   sncc.eventRecorder,
+			KubeClient: ncc.kubeClient,
+			Recorder:   ncc.eventRecorder,
 		},
 	)
 	return cm.ClaimConfigMaps(configMaps)

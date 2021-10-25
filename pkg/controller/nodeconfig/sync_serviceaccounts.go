@@ -13,7 +13,7 @@ import (
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 )
 
-func (sncc *Controller) makeServiceAccounts() []*corev1.ServiceAccount {
+func (ncc *Controller) makeServiceAccounts() []*corev1.ServiceAccount {
 	serviceAccounts := []*corev1.ServiceAccount{
 		resource.ScyllaNodeConfigServiceAccount(),
 	}
@@ -21,7 +21,7 @@ func (sncc *Controller) makeServiceAccounts() []*corev1.ServiceAccount {
 	return serviceAccounts
 }
 
-func (sncc *Controller) pruneServiceAccounts(ctx context.Context, requiredServiceAccounts []*corev1.ServiceAccount, serviceAccounts map[string]*corev1.ServiceAccount) error {
+func (ncc *Controller) pruneServiceAccounts(ctx context.Context, requiredServiceAccounts []*corev1.ServiceAccount, serviceAccounts map[string]*corev1.ServiceAccount) error {
 	var errs []error
 	for _, sa := range serviceAccounts {
 		if sa.DeletionTimestamp != nil {
@@ -40,7 +40,7 @@ func (sncc *Controller) pruneServiceAccounts(ctx context.Context, requiredServic
 		}
 
 		propagationPolicy := metav1.DeletePropagationBackground
-		err := sncc.kubeClient.CoreV1().ServiceAccounts(sa.Namespace).Delete(ctx, sa.Name, metav1.DeleteOptions{
+		err := ncc.kubeClient.CoreV1().ServiceAccounts(sa.Namespace).Delete(ctx, sa.Name, metav1.DeleteOptions{
 			Preconditions: &metav1.Preconditions{
 				UID: &sa.UID,
 			},
@@ -54,21 +54,21 @@ func (sncc *Controller) pruneServiceAccounts(ctx context.Context, requiredServic
 	return utilerrors.NewAggregate(errs)
 }
 
-func (sncc *Controller) syncServiceAccounts(
+func (ncc *Controller) syncServiceAccounts(
 	ctx context.Context,
 	serviceAccounts map[string]*corev1.ServiceAccount,
 ) error {
-	requiredServiceAccounts := sncc.makeServiceAccounts()
+	requiredServiceAccounts := ncc.makeServiceAccounts()
 
 	// Delete any excessive ServiceAccounts.
 	// Delete has to be the first action to avoid getting stuck on quota.
-	if err := sncc.pruneServiceAccounts(ctx, requiredServiceAccounts, serviceAccounts); err != nil {
+	if err := ncc.pruneServiceAccounts(ctx, requiredServiceAccounts, serviceAccounts); err != nil {
 		return fmt.Errorf("can't delete ServiceAccount(s): %w", err)
 	}
 
 	var errs []error
 	for _, sa := range requiredServiceAccounts {
-		_, _, err := resourceapply.ApplyServiceAccount(ctx, sncc.kubeClient.CoreV1(), sncc.serviceAccountLister, sncc.eventRecorder, sa, true)
+		_, _, err := resourceapply.ApplyServiceAccount(ctx, ncc.kubeClient.CoreV1(), ncc.serviceAccountLister, ncc.eventRecorder, sa, true)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("can't create missing ServiceAccount: %w", err))
 			continue
