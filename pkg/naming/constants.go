@@ -34,9 +34,12 @@ const (
 	RackNameLabel             = "scylla/rack"
 	ScyllaVersionLabel        = "scylla/scylla-version"
 	ManagedHash               = "scylla-operator.scylladb.com/managed-hash"
+	NodeConfigJobForNodeLabel = "scylla-operator.scylladb.com/node-config-job-for-node"
+	NodeConfigJobTypeLabel    = "scylla-operator.scylladb.com/node-config-job-type"
 	NodeConfigNameLabel       = "scylla-operator.scylladb.com/node-config-name"
-	NodeConfigControllerLabel = "scylla-operator.scylladb.com/node-config-controller"
-	NodePoolLabel             = "scylla-operator.scylladb.com/node-pool"
+	NodeConfigUIDLabel        = "scylla-operator.scylladb.com/node-config-UID"
+	// NodeConfigControllerLabel = "scylla-operator.scylladb.com/node-config-controller"
+	NodePoolLabel = "scylla-operator.scylladb.com/node-pool"
 
 	AppName           = "scylla"
 	OperatorAppName   = "scylla-operator"
@@ -91,4 +94,11 @@ const (
 	PerftuneJobPrefixName = "perftune"
 
 	DefaultScyllaUtilsImage = "docker.io/scylladb/scylla:4.4.0"
+)
+
+type NodeConfigJobType string
+
+const (
+	NodeConfigJobTypeNode       NodeConfigJobType = "Node"
+	NodeConfigJobTypeContainers NodeConfigJobType = "Containers"
 )

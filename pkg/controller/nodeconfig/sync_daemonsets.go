@@ -41,12 +41,15 @@ func (ncc *Controller) pruneDaemonSets(ctx context.Context, requiredDaemonSet *a
 
 func (ncc *Controller) syncDaemonSets(
 	ctx context.Context,
-	snc *scyllav1alpha1.NodeConfig,
+	nc *scyllav1alpha1.NodeConfig,
 	soc *scyllav1alpha1.ScyllaOperatorConfig,
 	status *scyllav1alpha1.NodeConfigStatus,
 	daemonSets map[string]*appsv1.DaemonSet,
 ) error {
-	requiredDaemonSet := makeNodeConfigDaemonSet(snc, ncc.operatorImage, soc.Spec.ScyllaUtilsImage)
+	scyllaUtilsImage := soc.Spec.ScyllaUtilsImage
+	// FIXME: check that its not empty, emit event
+	// FIXME: add webhook validation for the format
+	requiredDaemonSet := makeNodeConfigDaemonSet(nc, ncc.operatorImage, scyllaUtilsImage)
 
 	// Delete any excessive DaemonSets.
 	// Delete has to be the first action to avoid getting stuck on quota.
@@ -55,14 +58,16 @@ func (ncc *Controller) syncDaemonSets(
 		return fmt.Errorf("can't delete DaemonSet(s): %w", err)
 	}
 
-	updatedDaemonSet, _, err := resourceapply.ApplyDaemonSet(ctx, ncc.kubeClient.AppsV1(), ncc.daemonSetLister, ncc.eventRecorder, requiredDaemonSet)
-	if err != nil {
-		return fmt.Errorf("can't apply statefulset update: %w", err)
-	}
+	if requiredDaemonSet != nil {
+		updatedDaemonSet, _, err := resourceapply.ApplyDaemonSet(ctx, ncc.kubeClient.AppsV1(), ncc.daemonSetLister, ncc.eventRecorder, requiredDaemonSet)
+		if err != nil {
+			return fmt.Errorf("can't apply statefulset update: %w", err)
+		}
 
-	status.Updated.Desired = updatedDaemonSet.Status.DesiredNumberScheduled
-	status.Updated.Actual = updatedDaemonSet.Status.CurrentNumberScheduled
-	status.Updated.Ready = updatedDaemonSet.Status.NumberReady
+		status.Updated.Desired = updatedDaemonSet.Status.DesiredNumberScheduled
+		status.Updated.Actual = updatedDaemonSet.Status.CurrentNumberScheduled
+		status.Updated.Ready = updatedDaemonSet.Status.NumberReady
+	}
 
 	return nil
 }
