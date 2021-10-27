@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/scylladb/scylla-operator/pkg/controller/nodeconfig/resource"
 	"github.com/scylladb/scylla-operator/pkg/resourceapply"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -15,7 +14,7 @@ import (
 
 func (ncc *Controller) makeNamespaces() []*corev1.Namespace {
 	namespaces := []*corev1.Namespace{
-		resource.ScyllaOperatorNodeTuningNamespace(),
+		makeScyllaOperatorNodeTuningNamespace(),
 	}
 
 	return namespaces

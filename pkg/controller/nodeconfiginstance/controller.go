@@ -1,6 +1,6 @@
 // Copyright (C) 2021 ScyllaDB
 
-package nodeconfigpod
+package nodeconfiginstance
 
 import (
 	"context"
@@ -13,15 +13,12 @@ import (
 	scyllav1alpha1informers "github.com/scylladb/scylla-operator/pkg/client/scylla/informers/externalversions/scylla/v1alpha1"
 	scyllav1alpha1listers "github.com/scylladb/scylla-operator/pkg/client/scylla/listers/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/cri"
-	"github.com/scylladb/scylla-operator/pkg/naming"
-	"github.com/scylladb/scylla-operator/pkg/resource"
 	"github.com/scylladb/scylla-operator/pkg/scheme"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -41,13 +38,15 @@ import (
 )
 
 const (
-	ControllerName = "NodeConfigController"
+	ControllerName = "NodeConfigInstanceController"
 
 	maxSyncDuration = 30 * time.Second
 )
 
 var (
-	keyFunc                = cache.DeletionHandlingMetaNamespaceKeyFunc
+	controllerKey = "key"
+	keyFunc       = cache.DeletionHandlingMetaNamespaceKeyFunc
+
 	controllerGVK          = scyllav1alpha1.GroupVersion.WithKind("NodeConfig")
 	daemonSetControllerGVK = appsv1.SchemeGroupVersion.WithKind("DaemonSet")
 )
@@ -64,9 +63,9 @@ type Controller struct {
 	daemonSetLister  appsv1listers.DaemonSetLister
 	jobLister        batchv1listers.JobLister
 
-	nodeName       string
-	nodeConfigName string
-	scyllaImage    string
+	nodeName      string
+	nodeConfigUID types.UID
+	scyllaImage   string
 
 	cachesToSync []cache.InformerSynced
 
@@ -81,11 +80,10 @@ func NewController(
 	criClient cri.Client,
 	nodeConfigInformer scyllav1alpha1informers.NodeConfigInformer,
 	podInformer corev1informers.PodInformer,
-	configMapInformer corev1informers.ConfigMapInformer,
 	daemonSetInformer appsv1informers.DaemonSetInformer,
 	jobInformer batchv1informers.JobInformer,
 	nodeName string,
-	nodeConfigName string,
+	nodeConfigUID types.UID,
 	scyllaImage string,
 ) (*Controller, error) {
 	eventBroadcaster := record.NewBroadcaster()
@@ -94,7 +92,7 @@ func NewController(
 
 	if kubeClient.CoreV1().RESTClient().GetRateLimiter() != nil {
 		err := ratelimiter.RegisterMetricAndTrackRateLimiterUsage(
-			"nodeconfig_controller",
+			"nodeconfiginstance_controller",
 			kubeClient.CoreV1().RESTClient().GetRateLimiter(),
 		)
 		if err != nil {
@@ -109,43 +107,34 @@ func NewController(
 
 		nodeConfigLister: nodeConfigInformer.Lister(),
 		podLister:        podInformer.Lister(),
-		configMapLister:  configMapInformer.Lister(),
 		daemonSetLister:  daemonSetInformer.Lister(),
 		jobLister:        jobInformer.Lister(),
 
-		nodeName:       nodeName,
-		nodeConfigName: nodeConfigName,
-		scyllaImage:    scyllaImage,
+		nodeName:      nodeName,
+		nodeConfigUID: nodeConfigUID,
+		scyllaImage:   scyllaImage,
 
 		cachesToSync: []cache.InformerSynced{
 			nodeConfigInformer.Informer().HasSynced,
 			podInformer.Informer().HasSynced,
-			configMapInformer.Informer().HasSynced,
 			daemonSetInformer.Informer().HasSynced,
 			jobInformer.Informer().HasSynced,
 		},
 
-		eventRecorder: eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "scyllanodeconfig-controller"}),
+		eventRecorder: eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "nodeconfig-controller"}),
 
-		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "scyllanodeconfig"),
+		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "nodeconfig"),
 	}
 
 	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    snc.addPod,
 		UpdateFunc: snc.updatePod,
-		DeleteFunc: snc.deletePod,
 	})
 
 	jobInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    snc.addJob,
 		UpdateFunc: snc.updateJob,
 		DeleteFunc: snc.deleteJob,
-	})
-
-	configMapInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    snc.addConfigMap,
-		UpdateFunc: snc.updateConfigMap,
-		DeleteFunc: snc.deleteConfigMap,
 	})
 
 	return snc, nil
@@ -208,125 +197,47 @@ func (c *Controller) Run(ctx context.Context) {
 	<-ctx.Done()
 }
 
-func (c *Controller) enqueueOwner(obj metav1.Object) {
-	snt := c.resolveNodeConfigController(obj)
-	if snt == nil {
-		return
-	}
-
-	gvk, err := resource.GetObjectGVK(obj.(runtime.Object))
-	if err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
-
-	klog.V(4).InfoS("Enqueuing owner", gvk.Kind, klog.KObj(obj), "NodeConfig", klog.KObj(snt))
-	c.enqueue(snt)
-}
-
-func (c *Controller) enqueue(snt *scyllav1alpha1.NodeConfig) {
-	key, err := keyFunc(snt)
-	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", snt, err))
-		return
-	}
-
-	klog.V(4).InfoS("Enqueuing NodeConfig", "key", key)
-	c.queue.Add(key)
-}
-
-func (c *Controller) resolveNodeConfigController(obj metav1.Object) *scyllav1alpha1.NodeConfig {
-	controllerRef := metav1.GetControllerOf(obj)
-	if controllerRef == nil {
-		return nil
-	}
-
-	if controllerRef.Kind != controllerGVK.Kind {
-		return nil
-	}
-
-	snt, err := c.nodeConfigLister.Get(controllerRef.Name)
-	if err != nil {
-		return nil
-	}
-
-	if snt.UID != controllerRef.UID {
-		return nil
-	}
-
-	return snt
-}
-
-func (c *Controller) enqueueThroughDaemonSetControllerOrScyllaPod(pod *corev1.Pod) {
-	// Informers should only notify about Scylla Pods on the same node.
-	if !naming.ScyllaSelector().Matches(labels.Set(pod.GetLabels())) {
-		return
-	}
-
-	if pod.Spec.NodeName != c.nodeName {
-		return
-	}
-
-	var err error
-	snc, err := c.nodeConfigLister.Get(c.nodeConfigName)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
-
-	klog.V(4).InfoS("Enqueuing through Scylla Pod", "Pod", klog.KObj(pod), "NodeConfig", klog.KObj(snc))
-	c.enqueue(snc)
-	return
+func (c *Controller) enqueue() {
+	c.queue.Add(controllerKey)
 }
 
 func (c *Controller) addPod(obj interface{}) {
 	pod := obj.(*corev1.Pod)
 	klog.V(4).InfoS("Observed addition of Pod", "Pod", klog.KObj(pod))
-	c.enqueueThroughDaemonSetControllerOrScyllaPod(pod)
+	c.enqueue()
 }
 
 func (c *Controller) updatePod(old, cur interface{}) {
 	oldPod := old.(*corev1.Pod)
 	currentPod := cur.(*corev1.Pod)
 
-	if currentPod.UID != oldPod.UID {
-		key, err := keyFunc(oldPod)
-		if err != nil {
-			utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", oldPod, err))
-			return
-		}
-		c.deletePod(cache.DeletedFinalStateUnknown{
-			Key: key,
-			Obj: oldPod,
-		})
-	}
-
-	klog.V(4).InfoS("Observed update of Pod", "Pod", klog.KObj(oldPod))
-	c.enqueueThroughDaemonSetControllerOrScyllaPod(currentPod)
+	klog.V(4).InfoS(
+		"Observed update of Pod",
+		"Pod", klog.KObj(currentPod),
+		"RV", fmt.Sprintf("%s-%s", oldPod.ResourceVersion, currentPod.ResourceVersion),
+		"UID", fmt.Sprintf("%s-%s", oldPod.UID, currentPod.UID),
+	)
+	c.enqueue()
 }
 
-func (c *Controller) deletePod(obj interface{}) {
-	pod, ok := obj.(*corev1.Pod)
-	if !ok {
-		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
-		if !ok {
-			utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
-			return
-		}
-		pod, ok = tombstone.Obj.(*corev1.Pod)
-		if !ok {
-			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a Pod %#v", obj))
-			return
-		}
+func (c *Controller) ownsObject(obj metav1.Object) bool {
+	ownerRef := metav1.GetControllerOfNoCopy(obj)
+	if ownerRef == nil {
+		return false
 	}
-	klog.V(4).InfoS("Observed deletion of Pod", "Pod", klog.KObj(pod))
-	c.enqueueThroughDaemonSetControllerOrScyllaPod(pod)
+
+	return ownerRef.UID == c.nodeConfigUID
 }
 
 func (c *Controller) addJob(obj interface{}) {
 	job := obj.(*batchv1.Job)
-	klog.V(4).InfoS("Observed addition of Job", "Job", klog.KObj(job))
-	c.enqueueOwner(job)
+
+	if !c.ownsObject(job) {
+		klog.V(5).InfoS("Not enqueueing Job not owned by us", "Job", klog.KObj(job), "RV", job.ResourceVersion)
+	}
+
+	klog.V(4).InfoS("Observed addition of Job", "Job", klog.KObj(job), "RV", job.ResourceVersion)
+	c.enqueue()
 }
 
 func (c *Controller) updateJob(old, cur interface{}) {
@@ -339,14 +250,23 @@ func (c *Controller) updateJob(old, cur interface{}) {
 			utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", oldJob, err))
 			return
 		}
-		c.deletePod(cache.DeletedFinalStateUnknown{
+		c.deleteJob(cache.DeletedFinalStateUnknown{
 			Key: key,
 			Obj: oldJob,
 		})
 	}
 
-	klog.V(4).InfoS("Observed update of Job", "Job", klog.KObj(oldJob))
-	c.enqueueOwner(currentJob)
+	if !c.ownsObject(currentJob) {
+		klog.V(5).InfoS("Not enqueueing Job not owned by us", "Job", klog.KObj(currentJob), "RV", currentJob.ResourceVersion)
+	}
+
+	klog.V(4).InfoS(
+		"Observed update of Job",
+		"Job", klog.KObj(currentJob),
+		"RV", fmt.Sprintf("%s->%s", oldJob.ResourceVersion, currentJob.ResourceVersion),
+		"UID", fmt.Sprintf("%s->%s", oldJob.UID, currentJob.UID),
+	)
+	c.enqueue()
 }
 
 func (c *Controller) deleteJob(obj interface{}) {
@@ -363,50 +283,11 @@ func (c *Controller) deleteJob(obj interface{}) {
 			return
 		}
 	}
-	klog.V(4).InfoS("Observed deletion of Job", "Job", klog.KObj(job))
-	c.enqueueOwner(job)
-}
 
-func (c *Controller) addConfigMap(obj interface{}) {
-	cm := obj.(*corev1.ConfigMap)
-	klog.V(4).InfoS("Observed addition of ConfigMap", "ConfigMap", klog.KObj(cm))
-	c.enqueueOwner(cm)
-}
-
-func (c *Controller) updateConfigMap(old, cur interface{}) {
-	oldConfigMap := old.(*corev1.ConfigMap)
-	currentConfigMap := cur.(*corev1.ConfigMap)
-
-	if currentConfigMap.UID != oldConfigMap.UID {
-		key, err := keyFunc(oldConfigMap)
-		if err != nil {
-			utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", oldConfigMap, err))
-			return
-		}
-		c.deletePod(cache.DeletedFinalStateUnknown{
-			Key: key,
-			Obj: oldConfigMap,
-		})
+	if !c.ownsObject(job) {
+		klog.V(5).InfoS("Not enqueueing Job not owned by us", "Job", klog.KObj(job), "RV", job.ResourceVersion)
 	}
 
-	klog.V(4).InfoS("Observed update of ConfigMap", "ConfigMap", klog.KObj(oldConfigMap))
-	c.enqueueOwner(currentConfigMap)
-}
-
-func (c *Controller) deleteConfigMap(obj interface{}) {
-	configMap, ok := obj.(*corev1.ConfigMap)
-	if !ok {
-		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
-		if !ok {
-			utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
-			return
-		}
-		configMap, ok = tombstone.Obj.(*corev1.ConfigMap)
-		if !ok {
-			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a Job %#v", obj))
-			return
-		}
-	}
-	klog.V(4).InfoS("Observed deletion of ConfigMap", "ConfigMap", klog.KObj(configMap))
-	c.enqueueOwner(configMap)
+	klog.V(4).InfoS("Observed deletion of Job", "Job", klog.KObj(job), "RV", job.ResourceVersion)
+	c.enqueue()
 }

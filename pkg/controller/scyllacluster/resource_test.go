@@ -1,4 +1,4 @@
-package resource
+package scyllacluster
 
 import (
 	"fmt"
