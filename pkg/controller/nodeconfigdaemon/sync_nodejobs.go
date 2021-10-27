@@ -9,6 +9,7 @@ import (
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	"github.com/scylladb/scylla-operator/pkg/resourceapply"
 	batchv1 "k8s.io/api/batch/v1"
+	"k8s.io/klog/v2"
 )
 
 func (ncdc *Controller) makeJobsForNode(ctx context.Context) ([]*batchv1.Job, error) {
@@ -30,23 +31,29 @@ func (ncdc *Controller) makeJobsForNode(ctx context.Context) ([]*batchv1.Job, er
 	return jobs, nil
 }
 
-func (ncdc *Controller) syncJobsForNode(ctx context.Context, jobs map[string]*batchv1.Job) error {
+func (ncdc *Controller) syncJobsForNode(ctx context.Context, jobs map[string]*batchv1.Job) (bool, error) {
 	required, err := ncdc.makeJobsForNode(ctx)
 	if err != nil {
-		return fmt.Errorf("can't make Jobs: %w", err)
+		return false, fmt.Errorf("can't make Jobs: %w", err)
 	}
 
 	err = ncdc.pruneJobs(ctx, jobs, required)
 	if err != nil {
-		return fmt.Errorf("can't delete Jobs: %w", err)
+		return false, fmt.Errorf("can't delete Jobs: %w", err)
 	}
 
+	finished := true
 	for _, j := range required {
-		_, _, err := resourceapply.ApplyJob(ctx, ncdc.kubeClient.BatchV1(), ncdc.namespacedJobLister, ncdc.eventRecorder, j)
+		updatedJob, _, err := resourceapply.ApplyJob(ctx, ncdc.kubeClient.BatchV1(), ncdc.namespacedJobLister, ncdc.eventRecorder, j)
 		if err != nil {
-			return fmt.Errorf("can't create job %s: %w", naming.ObjRef(j), err)
+			return false, fmt.Errorf("can't create job %s: %w", naming.ObjRef(j), err)
+		}
+
+		if updatedJob.Status.CompletionTime != nil {
+			klog.V(4).InfoS("Job isn't completed yet", "Job", klog.KObj(updatedJob))
+			finished = false
 		}
 	}
 
-	return nil
+	return finished, nil
 }
