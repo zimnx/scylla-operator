@@ -146,7 +146,7 @@ func makeNodeConfigDaemonSet(nc *scyllav1alpha1.NodeConfig, operatorImage, scyll
 							Image:           operatorImage,
 							ImagePullPolicy: corev1.PullIfNotPresent,
 							Args: []string{
-								"node-config-instance",
+								"node-config-daemon",
 								"--node-name=$(NODE_NAME)",
 								fmt.Sprintf("--node-config-uid=%q", nc.UID),
 								fmt.Sprintf("--scylla-image=%q", scyllaImage),

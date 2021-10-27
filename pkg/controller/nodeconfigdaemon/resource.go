@@ -1,4 +1,4 @@
-package nodeconfiginstance
+package nodeconfigdaemon
 
 import (
 	"os"
