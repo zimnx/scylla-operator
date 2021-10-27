@@ -10,7 +10,7 @@ import (
 	scyllaversionedclient "github.com/scylladb/scylla-operator/pkg/client/scylla/clientset/versioned"
 	scyllainformers "github.com/scylladb/scylla-operator/pkg/client/scylla/informers/externalversions"
 	"github.com/scylladb/scylla-operator/pkg/cmdutil"
-	"github.com/scylladb/scylla-operator/pkg/controller/nodeconfigpod"
+	"github.com/scylladb/scylla-operator/pkg/controller/nodeconfiginstance"
 	"github.com/scylladb/scylla-operator/pkg/cri"
 	"github.com/scylladb/scylla-operator/pkg/genericclioptions"
 	"github.com/scylladb/scylla-operator/pkg/naming"
@@ -19,11 +19,15 @@ import (
 	"github.com/spf13/cobra"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
-	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/types"
 	apierrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
+)
+
+var (
+	resyncPeriod = 12 * time.Hour
 )
 
 type NodeConfigOptions struct {
@@ -31,7 +35,7 @@ type NodeConfigOptions struct {
 	genericclioptions.InClusterReflection
 
 	NodeName             string
-	ScyllaNodeConfigName string
+	NodeConfigUID        string
 	ScyllaImage          string
 	DisableOptimizations bool
 
@@ -50,9 +54,9 @@ func NewNodeConfigCmd(streams genericclioptions.IOStreams) *cobra.Command {
 	o := NewNodeConfigOptions(streams)
 
 	cmd := &cobra.Command{
-		Use:   "node-config",
-		Short: "Run node setup and optimizations.",
-		Long:  "Run node setup and optimizations.",
+		Use:   "node-config-instance",
+		Short: "Runs a controller for a particular Kubernetes node.",
+		Long:  "Runs a controller for a particular Kubernetes node that configures the node and adjusts configuration that depends on active pods on this node.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			err := o.Validate()
 			if err != nil {
@@ -80,7 +84,7 @@ func NewNodeConfigCmd(streams genericclioptions.IOStreams) *cobra.Command {
 	o.InClusterReflection.AddFlags(cmd)
 
 	cmd.Flags().StringVarP(&o.NodeName, "node-name", "", o.NodeName, "Name of the node where this Pod is running.")
-	cmd.Flags().StringVarP(&o.ScyllaNodeConfigName, "scylla-node-config-name", "", o.ScyllaNodeConfigName, "Name of Scylla Node Config spec.")
+	cmd.Flags().StringVarP(&o.NodeConfigUID, "node-config-uid", "", o.NodeConfigUID, "UID of the NodeConfig that owns this subcontroller.")
 	cmd.Flags().StringVarP(&o.ScyllaImage, "scylla-image", "", o.ScyllaImage, "Scylla image used for running perftune.")
 	cmd.Flags().BoolVarP(&o.DisableOptimizations, "disable-optimizations", "", o.DisableOptimizations, "Controls if optimizations are disabled")
 
@@ -96,8 +100,8 @@ func (o *NodeConfigOptions) Validate() error {
 	if len(o.NodeName) == 0 {
 		errs = append(errs, fmt.Errorf("node-name cannot be empty"))
 	}
-	if len(o.ScyllaNodeConfigName) == 0 {
-		errs = append(errs, fmt.Errorf("scylla-node-config-name cannot be empty"))
+	if len(o.NodeConfigUID) == 0 {
+		errs = append(errs, fmt.Errorf("node-config-uid cannot be empty"))
 	}
 	if len(o.ScyllaImage) == 0 {
 		errs = append(errs, fmt.Errorf("scylla-image cannot be empty"))
@@ -147,47 +151,34 @@ func (o *NodeConfigOptions) Run(streams genericclioptions.IOStreams, commandName
 		return err
 	}
 
-	singleNamespaceInformer := informers.NewSharedInformerFactoryWithOptions(o.kubeClient, 12*time.Hour, informers.WithNamespace(naming.ScyllaOperatorNodeTuningNamespace))
-	scyllaNodeConfigInformer := scyllainformers.NewSharedInformerFactoryWithOptions(o.scyllaClient, 12*time.Hour, scyllainformers.WithTweakListOptions(
-		func(options *metav1.ListOptions) {
-			options.FieldSelector = fields.OneTermEqualSelector("metadata.name", o.ScyllaNodeConfigName).String()
-		},
-	))
-	singleNodeScyllaPodsInformer := informers.NewSharedInformerFactoryWithOptions(o.kubeClient, 12*time.Hour, informers.WithTweakListOptions(
+	singleNamespaceInformer := informers.NewSharedInformerFactoryWithOptions(o.kubeClient, resyncPeriod, informers.WithNamespace(naming.ScyllaOperatorNodeTuningNamespace))
+	nodeConfigInformer := scyllainformers.NewSharedInformerFactory(o.scyllaClient, resyncPeriod)
+	singleNodeScyllaPodsInformer := informers.NewSharedInformerFactoryWithOptions(o.kubeClient, resyncPeriod, informers.WithTweakListOptions(
 		func(options *metav1.ListOptions) {
 			options.LabelSelector = naming.ScyllaSelector().String()
 			options.FieldSelector = fields.OneTermEqualSelector("spec.nodeName", o.NodeName).String()
 		},
 	))
-	nodeOwnedConfigMapInformer := informers.NewSharedInformerFactoryWithOptions(o.kubeClient, 12*time.Hour, informers.WithTweakListOptions(
-		func(options *metav1.ListOptions) {
-			options.LabelSelector = labels.SelectorFromSet(map[string]string{
-				naming.NodeConfigNameLabel: o.ScyllaNodeConfigName,
-			}).String()
-		},
-	))
 
-	ntc, err := nodeconfigpod.NewController(
+	ntc, err := nodeconfiginstance.NewController(
 		o.kubeClient,
 		o.scyllaClient,
 		criClient,
-		scyllaNodeConfigInformer.Scylla().V1alpha1().NodeConfigs(),
+		nodeConfigInformer.Scylla().V1alpha1().NodeConfigs(),
 		singleNodeScyllaPodsInformer.Core().V1().Pods(),
-		nodeOwnedConfigMapInformer.Core().V1().ConfigMaps(),
 		singleNamespaceInformer.Apps().V1().DaemonSets(),
 		singleNamespaceInformer.Batch().V1().Jobs(),
 		o.NodeName,
-		o.ScyllaNodeConfigName,
+		types.UID(o.NodeConfigUID),
 		o.ScyllaImage,
 	)
 	if err != nil {
-		return fmt.Errorf("can't create node tuner controller: %w", err)
+		return fmt.Errorf("can't create node config instance controller: %w", err)
 	}
 
 	// Start informers.
-	scyllaNodeConfigInformer.Start(ctx.Done())
+	nodeConfigInformer.Start(ctx.Done())
 	singleNodeScyllaPodsInformer.Start(ctx.Done())
-	nodeOwnedConfigMapInformer.Start(ctx.Done())
 	singleNamespaceInformer.Start(ctx.Done())
 
 	ntc.Run(ctx)
