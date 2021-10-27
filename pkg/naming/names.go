@@ -152,10 +152,6 @@ func SidecarVersion(containers []corev1.Container) (string, error) {
 	return version, nil
 }
 
-func PerftuneJobName(nodeName string) string {
-	return fmt.Sprintf("%s-%s", PerftuneJobPrefixName, nodeName)
-}
-
 func PerftuneResultName(uid string) string {
 	return fmt.Sprintf("%s-%s", PerftuneJobPrefixName, uid)
 }
