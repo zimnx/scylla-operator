@@ -1,10 +1,10 @@
 package nodeconfigdaemon
 
 import (
+	"fmt"
 	"os"
 	"path"
 
-	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -13,42 +13,35 @@ import (
 	"k8s.io/utils/pointer"
 )
 
-func makePerftuneJob(nc *scyllav1alpha1.NodeConfig, nodeName, image, ifaceName, irqMask string, dataHostPaths []string, disableWritebackCache bool) *batchv1.Job {
+// TODO: set anti affinities so config jobs don't run on the same node at the same time
+
+func makePerftuneJobForNode(controllerRef *metav1.OwnerReference, namespace, nodeName, image string, podSpec *corev1.PodSpec) *batchv1.Job {
+	podSpec = podSpec.DeepCopy()
+
 	args := []string{
-		"--tune", "system", "--tune-clock",
-		"--tune", "net", "--nic", ifaceName, "--irq-cpu-mask", irqMask,
-	}
-
-	// FIXME: disk shouldn't be empty
-	if len(dataHostPaths) > 0 {
-		args = append(args, "--tune", "disks")
-	}
-	for _, hostPath := range dataHostPaths {
-		args = append(args, "--dir", path.Join(naming.HostFilesystemDirName, hostPath))
-	}
-
-	if disableWritebackCache {
-		args = append(args, "--write-back-cache", "false")
+		"--tune=system",
+		"--tune-clock",
+		"--tune=net",
 	}
 
 	labels := map[string]string{
-		naming.NodeConfigNameLabel:       nc.Name,
-		naming.NodeConfigControllerLabel: nodeName,
+		naming.NodeConfigNameLabel:       controllerRef.Name,
+		naming.NodeConfigJobForNodeLabel: nodeName,
+		naming.NodeConfigJobTypeLabel:    string(naming.NodeConfigJobTypeNode),
 	}
 
-	perftuneJob := &batchv1.Job{
+	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      naming.PerftuneJobName(nodeName),
-			Namespace: naming.ScyllaOperatorNodeTuningNamespace,
-			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(nc, controllerGVK),
-			},
-			Labels: labels,
+			// TODO: hash the name to avoid overflow
+			Name:            fmt.Sprintf("perftune-node-%s", nodeName),
+			Namespace:       namespace,
+			OwnerReferences: []metav1.OwnerReference{*controllerRef},
+			Labels:          labels,
 		},
 		Spec: batchv1.JobSpec{
 			Template: corev1.PodTemplateSpec{
 				Spec: corev1.PodSpec{
-					Tolerations:   nc.Spec.Placement.Tolerations,
+					Tolerations:   podSpec.Tolerations,
 					NodeName:      nodeName,
 					RestartPolicy: corev1.RestartPolicyOnFailure,
 					HostPID:       true,
@@ -70,13 +63,13 @@ func makePerftuneJob(nc *scyllav1alpha1.NodeConfig, nodeName, image, ifaceName, 
 								Privileged: pointer.BoolPtr(true),
 							},
 							VolumeMounts: []corev1.VolumeMount{
-								volumeMount("hostfs", naming.HostFilesystemDirName, false),
-								volumeMount("etc-systemd", "/etc/systemd", false),
-								volumeMount("host-sys-class", "/sys/class", false),
-								volumeMount("host-sys-devices", "/sys/devices", false),
-								volumeMount("host-lib-systemd-system", "/lib/systemd/system", true),
-								volumeMount("host-var-run-dbus", "/var/run/dbus", true),
-								volumeMount("host-run-systemd-system", "/run/systemd/system", true),
+								makeVolumeMount("hostfs", naming.HostFilesystemDirName, false),
+								makeVolumeMount("etc-systemd", "/etc/systemd", false),
+								makeVolumeMount("host-sys-class", "/sys/class", false),
+								makeVolumeMount("host-sys-devices", "/sys/devices", false),
+								makeVolumeMount("host-lib-systemd-system", "/lib/systemd/system", true),
+								makeVolumeMount("host-var-run-dbus", "/var/run/dbus", true),
+								makeVolumeMount("host-run-systemd-system", "/run/systemd/system", true),
 							},
 							Resources: corev1.ResourceRequirements{
 								Requests: corev1.ResourceList{
@@ -87,13 +80,106 @@ func makePerftuneJob(nc *scyllav1alpha1.NodeConfig, nodeName, image, ifaceName, 
 						},
 					},
 					Volumes: []corev1.Volume{
-						hostDirVolume("hostfs", "/"),
-						hostDirVolume("etc-systemd", "/etc/systemd"),
-						hostDirVolume("host-sys-class", "/sys/class"),
-						hostDirVolume("host-sys-devices", "/sys/devices"),
-						hostDirVolume("host-lib-systemd-system", "/lib/systemd/system"),
-						hostDirVolume("host-var-run-dbus", "/var/run/dbus"),
-						hostDirVolume("host-run-systemd-system", "/run/systemd/system"),
+						// FIXME: revisit which ones are actually needed
+						makeHostDirVolume("hostfs", "/"),
+						makeHostDirVolume("etc-systemd", "/etc/systemd"),
+						makeHostDirVolume("host-sys-class", "/sys/class"),
+						makeHostDirVolume("host-sys-devices", "/sys/devices"),
+						makeHostDirVolume("host-lib-systemd-system", "/lib/systemd/system"),
+						makeHostDirVolume("host-var-run-dbus", "/var/run/dbus"),
+						makeHostDirVolume("host-run-systemd-system", "/run/systemd/system"),
+					},
+				},
+			},
+		},
+	}
+
+	return job
+}
+
+func makePerftuneJobForContainers(controllerRef *metav1.OwnerReference, namespace, name, nodeName, image, ifaceName, irqMask string, dataHostPaths []string, disableWritebackCache bool, podSpec *corev1.PodSpec) *batchv1.Job {
+	podSpec = podSpec.DeepCopy()
+
+	args := []string{
+		"--tune", "net", "--nic", ifaceName, "--irq-cpu-mask", irqMask,
+	}
+
+	// FIXME: disk shouldn't be empty
+	if len(dataHostPaths) > 0 {
+		args = append(args, "--tune", "disks")
+	}
+	for _, hostPath := range dataHostPaths {
+		args = append(args, "--dir", path.Join(naming.HostFilesystemDirName, hostPath))
+	}
+
+	if disableWritebackCache {
+		args = append(args, "--write-back-cache", "false")
+	}
+
+	labels := map[string]string{
+		naming.NodeConfigNameLabel:       controllerRef.Name,
+		naming.NodeConfigJobForNodeLabel: nodeName,
+		naming.NodeConfigJobTypeLabel:    string(naming.NodeConfigJobTypeContainers),
+	}
+
+	perftuneJob := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            name,
+			Namespace:       naming.ScyllaOperatorNodeTuningNamespace,
+			OwnerReferences: []metav1.OwnerReference{*controllerRef},
+			Labels:          labels,
+			// FIXME: annotate the job with optimizable pods or containerID so we can project it into the CR when it finishes.
+		},
+		Spec: batchv1.JobSpec{
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					Tolerations:   podSpec.Tolerations,
+					NodeName:      nodeName,
+					RestartPolicy: corev1.RestartPolicyOnFailure,
+					HostPID:       true,
+					HostNetwork:   true,
+					Containers: []corev1.Container{
+						{
+							Name:            naming.PerftuneContainerName,
+							Image:           image,
+							ImagePullPolicy: corev1.PullIfNotPresent,
+							Command:         []string{"/opt/scylladb/scripts/perftune.py"},
+							Args:            args,
+							Env: []corev1.EnvVar{
+								{
+									Name:  "SYSTEMD_IGNORE_CHROOT",
+									Value: "1",
+								},
+							},
+							SecurityContext: &corev1.SecurityContext{
+								Privileged: pointer.BoolPtr(true),
+							},
+							VolumeMounts: []corev1.VolumeMount{
+								makeVolumeMount("hostfs", naming.HostFilesystemDirName, false),
+								makeVolumeMount("etc-systemd", "/etc/systemd", false),
+								makeVolumeMount("host-sys-class", "/sys/class", false),
+								makeVolumeMount("host-sys-devices", "/sys/devices", false),
+								makeVolumeMount("host-lib-systemd-system", "/lib/systemd/system", true),
+								makeVolumeMount("host-var-run-dbus", "/var/run/dbus", true),
+								makeVolumeMount("host-run-systemd-system", "/run/systemd/system", true),
+							},
+							Resources: corev1.ResourceRequirements{
+								Requests: corev1.ResourceList{
+									corev1.ResourceCPU:    resource.MustParse("10m"),
+									corev1.ResourceMemory: resource.MustParse("50Mi"),
+								},
+							},
+						},
+					},
+					Volumes: []corev1.Volume{
+						// FIXME: revisit which ones are actually needed
+						makeHostDirVolume("hostfs", "/"),
+						makeHostDirVolume("etc-systemd", "/etc/systemd"),
+						makeHostDirVolume("host-sys-class", "/sys/class"),
+						makeHostDirVolume("host-sys-devices", "/sys/devices"),
+						makeHostDirVolume("host-lib-systemd-system", "/lib/systemd/system"),
+						makeHostDirVolume("host-var-run-dbus", "/var/run/dbus"),
+						makeHostDirVolume("host-run-systemd-system", "/run/systemd/system"),
 					},
 				},
 			},
@@ -103,18 +189,20 @@ func makePerftuneJob(nc *scyllav1alpha1.NodeConfig, nodeName, image, ifaceName, 
 	// Host node might not be running irqbalance. Mount config only when it's present on the host.
 	_, err := os.Stat(path.Join(naming.HostFilesystemDirName, "/etc/sysconfig/irqbalance"))
 	if err == nil {
-		perftuneJob.Spec.Template.Spec.Volumes = append(perftuneJob.Spec.Template.Spec.Volumes,
-			hostFileVolume("etc-sysconfig-irqbalance", "/etc/sysconfig/irqbalance"),
+		perftuneJob.Spec.Template.Spec.Volumes = append(
+			perftuneJob.Spec.Template.Spec.Volumes,
+			makeHostFileVolume("etc-sysconfig-irqbalance", "/etc/sysconfig/irqbalance"),
 		)
-		perftuneJob.Spec.Template.Spec.Containers[0].VolumeMounts = append(perftuneJob.Spec.Template.Spec.Containers[0].VolumeMounts,
-			volumeMount("etc-sysconfig-irqbalance", "/etc/sysconfig/irqbalance", false),
+		perftuneJob.Spec.Template.Spec.Containers[0].VolumeMounts = append(
+			perftuneJob.Spec.Template.Spec.Containers[0].VolumeMounts,
+			makeVolumeMount("etc-sysconfig-irqbalance", "/etc/sysconfig/irqbalance", false),
 		)
 	}
 
 	return perftuneJob
 }
 
-func volumeMount(name, mountPath string, readonly bool) corev1.VolumeMount {
+func makeVolumeMount(name, mountPath string, readonly bool) corev1.VolumeMount {
 	return corev1.VolumeMount{
 		Name:      name,
 		MountPath: mountPath,
@@ -122,7 +210,7 @@ func volumeMount(name, mountPath string, readonly bool) corev1.VolumeMount {
 	}
 }
 
-func hostVolume(name, hostPath string, volumeType *corev1.HostPathType) corev1.Volume {
+func makeHostVolume(name, hostPath string, volumeType *corev1.HostPathType) corev1.Volume {
 	return corev1.Volume{
 		Name: name,
 		VolumeSource: corev1.VolumeSource{
@@ -134,12 +222,12 @@ func hostVolume(name, hostPath string, volumeType *corev1.HostPathType) corev1.V
 	}
 }
 
-func hostDirVolume(name, hostPath string) corev1.Volume {
+func makeHostDirVolume(name, hostPath string) corev1.Volume {
 	volumeType := corev1.HostPathDirectory
-	return hostVolume(name, hostPath, &volumeType)
+	return makeHostVolume(name, hostPath, &volumeType)
 }
 
-func hostFileVolume(name, hostPath string) corev1.Volume {
+func makeHostFileVolume(name, hostPath string) corev1.Volume {
 	volumeType := corev1.HostPathFile
-	return hostVolume(name, hostPath, &volumeType)
+	return makeHostVolume(name, hostPath, &volumeType)
 }

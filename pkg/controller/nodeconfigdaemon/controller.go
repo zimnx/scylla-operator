@@ -35,6 +35,7 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/component-base/metrics/prometheus/ratelimiter"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/pointer"
 )
 
 const (
@@ -57,15 +58,19 @@ type Controller struct {
 
 	criClient cri.Client
 
-	nodeConfigLister scyllav1alpha1listers.NodeConfigLister
-	podLister        corev1listers.PodLister
-	configMapLister  corev1listers.ConfigMapLister
-	daemonSetLister  appsv1listers.DaemonSetLister
-	jobLister        batchv1listers.JobLister
+	nodeConfigLister          scyllav1alpha1listers.NodeConfigLister
+	localScyllaPodsLister     corev1listers.PodLister
+	configMapLister           corev1listers.ConfigMapLister
+	namespacedDaemonSetLister appsv1listers.DaemonSetLister
+	namespacedJobLister       batchv1listers.JobLister
+	selfPodLister             corev1listers.PodLister
 
-	nodeName      string
-	nodeConfigUID types.UID
-	scyllaImage   string
+	namespace      string
+	podName        string
+	nodeName       string
+	nodeConfigName string
+	nodeConfigUID  types.UID
+	scyllaImage    string
 
 	cachesToSync []cache.InformerSynced
 
@@ -79,10 +84,14 @@ func NewController(
 	scyllaClient scyllaclient.Interface,
 	criClient cri.Client,
 	nodeConfigInformer scyllav1alpha1informers.NodeConfigInformer,
-	podInformer corev1informers.PodInformer,
-	daemonSetInformer appsv1informers.DaemonSetInformer,
-	jobInformer batchv1informers.JobInformer,
+	localScyllaPodsInformer corev1informers.PodInformer,
+	namespacedDaemonSetInformer appsv1informers.DaemonSetInformer,
+	namespacedJobInformer batchv1informers.JobInformer,
+	selfPodInformer corev1informers.PodInformer,
+	namespace string,
+	podName string,
 	nodeName string,
+	nodeConfigName string,
 	nodeConfigUID types.UID,
 	scyllaImage string,
 ) (*Controller, error) {
@@ -105,20 +114,25 @@ func NewController(
 		scyllaClient: scyllaClient,
 		criClient:    criClient,
 
-		nodeConfigLister: nodeConfigInformer.Lister(),
-		podLister:        podInformer.Lister(),
-		daemonSetLister:  daemonSetInformer.Lister(),
-		jobLister:        jobInformer.Lister(),
+		nodeConfigLister:          nodeConfigInformer.Lister(),
+		localScyllaPodsLister:     localScyllaPodsInformer.Lister(),
+		namespacedDaemonSetLister: namespacedDaemonSetInformer.Lister(),
+		namespacedJobLister:       namespacedJobInformer.Lister(),
+		selfPodLister:             selfPodInformer.Lister(),
 
-		nodeName:      nodeName,
-		nodeConfigUID: nodeConfigUID,
-		scyllaImage:   scyllaImage,
+		namespace:      namespace,
+		podName:        podName,
+		nodeName:       nodeName,
+		nodeConfigName: nodeConfigName,
+		nodeConfigUID:  nodeConfigUID,
+		scyllaImage:    scyllaImage,
 
 		cachesToSync: []cache.InformerSynced{
 			nodeConfigInformer.Informer().HasSynced,
-			podInformer.Informer().HasSynced,
-			daemonSetInformer.Informer().HasSynced,
-			jobInformer.Informer().HasSynced,
+			localScyllaPodsInformer.Informer().HasSynced,
+			namespacedDaemonSetInformer.Informer().HasSynced,
+			namespacedJobInformer.Informer().HasSynced,
+			selfPodInformer.Informer().HasSynced,
 		},
 
 		eventRecorder: eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "nodeconfig-controller"}),
@@ -126,12 +140,12 @@ func NewController(
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "nodeconfig"),
 	}
 
-	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	localScyllaPodsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    snc.addPod,
 		UpdateFunc: snc.updatePod,
 	})
 
-	jobInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	namespacedJobInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    snc.addJob,
 		UpdateFunc: snc.updateJob,
 		DeleteFunc: snc.deleteJob,
@@ -140,37 +154,37 @@ func NewController(
 	return snc, nil
 }
 
-func (c *Controller) processNextItem(ctx context.Context) bool {
-	key, quit := c.queue.Get()
+func (ncdc *Controller) processNextItem(ctx context.Context) bool {
+	key, quit := ncdc.queue.Get()
 	if quit {
 		return false
 	}
-	defer c.queue.Done(key)
+	defer ncdc.queue.Done(key)
 
 	ctx, cancel := context.WithTimeout(ctx, maxSyncDuration)
 	defer cancel()
-	err := c.sync(ctx, key.(string))
+	err := ncdc.sync(ctx, key.(string))
 	// TODO: Do smarter filtering then just Reduce to handle cases like 2 conflict errors.
 	err = utilerrors.Reduce(err)
 	switch {
 	case err == nil:
-		c.queue.Forget(key)
+		ncdc.queue.Forget(key)
 		return true
 	default:
 		utilruntime.HandleError(fmt.Errorf("syncing key '%v' failed: %v", key, err))
 	}
 
-	c.queue.AddRateLimited(key)
+	ncdc.queue.AddRateLimited(key)
 
 	return true
 }
 
-func (c *Controller) runWorker(ctx context.Context) {
-	for c.processNextItem(ctx) {
+func (ncdc *Controller) runWorker(ctx context.Context) {
+	for ncdc.processNextItem(ctx) {
 	}
 }
 
-func (c *Controller) Run(ctx context.Context) {
+func (ncdc *Controller) Run(ctx context.Context) {
 	defer utilruntime.HandleCrash()
 
 	klog.InfoS("Starting controller", "controller", ControllerName)
@@ -178,12 +192,12 @@ func (c *Controller) Run(ctx context.Context) {
 	var wg sync.WaitGroup
 	defer func() {
 		klog.InfoS("Shutting down controller", "controller", ControllerName)
-		c.queue.ShutDown()
+		ncdc.queue.ShutDown()
 		wg.Wait()
 		klog.InfoS("Shut down controller", "controller", ControllerName)
 	}()
 
-	if !cache.WaitForNamedCacheSync(ControllerName, ctx.Done(), c.cachesToSync...) {
+	if !cache.WaitForNamedCacheSync(ControllerName, ctx.Done(), ncdc.cachesToSync...) {
 		return
 	}
 
@@ -191,23 +205,23 @@ func (c *Controller) Run(ctx context.Context) {
 	// Running tuning script in parallel on the same node is pointless.
 	go func() {
 		defer wg.Done()
-		wait.UntilWithContext(ctx, c.runWorker, time.Second)
+		wait.UntilWithContext(ctx, ncdc.runWorker, time.Second)
 	}()
 
 	<-ctx.Done()
 }
 
-func (c *Controller) enqueue() {
-	c.queue.Add(controllerKey)
+func (ncdc *Controller) enqueue() {
+	ncdc.queue.Add(controllerKey)
 }
 
-func (c *Controller) addPod(obj interface{}) {
+func (ncdc *Controller) addPod(obj interface{}) {
 	pod := obj.(*corev1.Pod)
 	klog.V(4).InfoS("Observed addition of Pod", "Pod", klog.KObj(pod))
-	c.enqueue()
+	ncdc.enqueue()
 }
 
-func (c *Controller) updatePod(old, cur interface{}) {
+func (ncdc *Controller) updatePod(old, cur interface{}) {
 	oldPod := old.(*corev1.Pod)
 	currentPod := cur.(*corev1.Pod)
 
@@ -217,30 +231,30 @@ func (c *Controller) updatePod(old, cur interface{}) {
 		"RV", fmt.Sprintf("%s-%s", oldPod.ResourceVersion, currentPod.ResourceVersion),
 		"UID", fmt.Sprintf("%s-%s", oldPod.UID, currentPod.UID),
 	)
-	c.enqueue()
+	ncdc.enqueue()
 }
 
-func (c *Controller) ownsObject(obj metav1.Object) bool {
+func (ncdc *Controller) ownsObject(obj metav1.Object) bool {
 	ownerRef := metav1.GetControllerOfNoCopy(obj)
 	if ownerRef == nil {
 		return false
 	}
 
-	return ownerRef.UID == c.nodeConfigUID
+	return ownerRef.UID == ncdc.nodeConfigUID
 }
 
-func (c *Controller) addJob(obj interface{}) {
+func (ncdc *Controller) addJob(obj interface{}) {
 	job := obj.(*batchv1.Job)
 
-	if !c.ownsObject(job) {
+	if !ncdc.ownsObject(job) {
 		klog.V(5).InfoS("Not enqueueing Job not owned by us", "Job", klog.KObj(job), "RV", job.ResourceVersion)
 	}
 
 	klog.V(4).InfoS("Observed addition of Job", "Job", klog.KObj(job), "RV", job.ResourceVersion)
-	c.enqueue()
+	ncdc.enqueue()
 }
 
-func (c *Controller) updateJob(old, cur interface{}) {
+func (ncdc *Controller) updateJob(old, cur interface{}) {
 	oldJob := old.(*batchv1.Job)
 	currentJob := cur.(*batchv1.Job)
 
@@ -250,13 +264,13 @@ func (c *Controller) updateJob(old, cur interface{}) {
 			utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", oldJob, err))
 			return
 		}
-		c.deleteJob(cache.DeletedFinalStateUnknown{
+		ncdc.deleteJob(cache.DeletedFinalStateUnknown{
 			Key: key,
 			Obj: oldJob,
 		})
 	}
 
-	if !c.ownsObject(currentJob) {
+	if !ncdc.ownsObject(currentJob) {
 		klog.V(5).InfoS("Not enqueueing Job not owned by us", "Job", klog.KObj(currentJob), "RV", currentJob.ResourceVersion)
 	}
 
@@ -266,10 +280,10 @@ func (c *Controller) updateJob(old, cur interface{}) {
 		"RV", fmt.Sprintf("%s->%s", oldJob.ResourceVersion, currentJob.ResourceVersion),
 		"UID", fmt.Sprintf("%s->%s", oldJob.UID, currentJob.UID),
 	)
-	c.enqueue()
+	ncdc.enqueue()
 }
 
-func (c *Controller) deleteJob(obj interface{}) {
+func (ncdc *Controller) deleteJob(obj interface{}) {
 	job, ok := obj.(*batchv1.Job)
 	if !ok {
 		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
@@ -284,10 +298,21 @@ func (c *Controller) deleteJob(obj interface{}) {
 		}
 	}
 
-	if !c.ownsObject(job) {
+	if !ncdc.ownsObject(job) {
 		klog.V(5).InfoS("Not enqueueing Job not owned by us", "Job", klog.KObj(job), "RV", job.ResourceVersion)
 	}
 
 	klog.V(4).InfoS("Observed deletion of Job", "Job", klog.KObj(job), "RV", job.ResourceVersion)
-	c.enqueue()
+	ncdc.enqueue()
+}
+
+func (ncdc *Controller) newControllerRef() *metav1.OwnerReference {
+	return &metav1.OwnerReference{
+		APIVersion:         controllerGVK.Version,
+		Kind:               controllerGVK.Kind,
+		Name:               ncdc.nodeConfigName,
+		UID:                ncdc.nodeConfigUID,
+		BlockOwnerDeletion: pointer.Bool(true),
+		Controller:         pointer.Bool(true),
+	}
 }
