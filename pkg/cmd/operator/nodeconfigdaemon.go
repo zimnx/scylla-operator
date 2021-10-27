@@ -10,7 +10,7 @@ import (
 	scyllaversionedclient "github.com/scylladb/scylla-operator/pkg/client/scylla/clientset/versioned"
 	scyllainformers "github.com/scylladb/scylla-operator/pkg/client/scylla/informers/externalversions"
 	"github.com/scylladb/scylla-operator/pkg/cmdutil"
-	"github.com/scylladb/scylla-operator/pkg/controller/nodeconfiginstance"
+	"github.com/scylladb/scylla-operator/pkg/controller/nodeconfigdaemon"
 	"github.com/scylladb/scylla-operator/pkg/cri"
 	"github.com/scylladb/scylla-operator/pkg/genericclioptions"
 	"github.com/scylladb/scylla-operator/pkg/naming"
@@ -54,7 +54,7 @@ func NewNodeConfigCmd(streams genericclioptions.IOStreams) *cobra.Command {
 	o := NewNodeConfigOptions(streams)
 
 	cmd := &cobra.Command{
-		Use:   "node-config-instance",
+		Use:   "node-config-daemon",
 		Short: "Runs a controller for a particular Kubernetes node.",
 		Long:  "Runs a controller for a particular Kubernetes node that configures the node and adjusts configuration that depends on active pods on this node.",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -160,7 +160,7 @@ func (o *NodeConfigOptions) Run(streams genericclioptions.IOStreams, commandName
 		},
 	))
 
-	ntc, err := nodeconfiginstance.NewController(
+	ntc, err := nodeconfigdaemon.NewController(
 		o.kubeClient,
 		o.scyllaClient,
 		criClient,
