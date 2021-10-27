@@ -7,7 +7,6 @@ import (
 	"fmt"
 
 	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
-	"github.com/scylladb/scylla-operator/pkg/controller/nodeconfig/resource"
 	"github.com/scylladb/scylla-operator/pkg/resourceapply"
 	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -47,7 +46,7 @@ func (ncc *Controller) syncDaemonSets(
 	status *scyllav1alpha1.NodeConfigStatus,
 	daemonSets map[string]*appsv1.DaemonSet,
 ) error {
-	requiredDaemonSet := resource.NodeConfigDaemonSet(snc, ncc.operatorImage, soc.Spec.ScyllaUtilsImage)
+	requiredDaemonSet := makeNodeConfigDaemonSet(snc, ncc.operatorImage, soc.Spec.ScyllaUtilsImage)
 
 	// Delete any excessive DaemonSets.
 	// Delete has to be the first action to avoid getting stuck on quota.

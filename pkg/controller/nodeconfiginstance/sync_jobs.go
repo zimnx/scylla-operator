@@ -1,6 +1,6 @@
 // Copyright (C) 2021 ScyllaDB
 
-package nodeconfigpod
+package nodeconfiginstance
 
 import (
 	"context"
@@ -10,7 +10,6 @@ import (
 	"github.com/c9s/goprocinfo/linux"
 	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/controller/helpers"
-	"github.com/scylladb/scylla-operator/pkg/controller/nodeconfig/resource"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	"github.com/scylladb/scylla-operator/pkg/resourceapply"
 	"github.com/scylladb/scylla-operator/pkg/semver"
@@ -110,7 +109,7 @@ func (c *Controller) makeJobs(ctx context.Context, snt *scyllav1alpha1.NodeConfi
 		}
 	}
 
-	jobs = append(jobs, resource.PerftuneJob(snt, c.nodeName, c.scyllaImage, iface.Name, irqCPUs.FormatMask(), dataHostPaths, disableWritebackCache))
+	jobs = append(jobs, makePerftuneJob(snt, c.nodeName, c.scyllaImage, iface.Name, irqCPUs.FormatMask(), dataHostPaths, disableWritebackCache))
 
 	return jobs, nil
 }

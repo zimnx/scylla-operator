@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/scylladb/scylla-operator/pkg/controller/nodeconfig/resource"
 	"github.com/scylladb/scylla-operator/pkg/resourceapply"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -15,7 +14,7 @@ import (
 
 func (ncc *Controller) makeClusterRoleBindings() []*rbacv1.ClusterRoleBinding {
 	clusterRoleBindings := []*rbacv1.ClusterRoleBinding{
-		resource.NodeConfigClusterRoleBinding(),
+		makeNodeConfigClusterRoleBinding(),
 	}
 
 	return clusterRoleBindings

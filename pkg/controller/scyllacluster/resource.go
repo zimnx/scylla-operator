@@ -1,4 +1,4 @@
-package resource
+package scyllacluster
 
 import (
 	"fmt"
@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	scyllav1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1"
-	"github.com/scylladb/scylla-operator/pkg/controller/scyllacluster/util"
 	"github.com/scylladb/scylla-operator/pkg/helpers"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	appsv1 "k8s.io/api/apps/v1"
@@ -26,10 +25,12 @@ const (
 func HeadlessServiceForCluster(c *scyllav1.ScyllaCluster) *corev1.Service {
 	return &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            naming.HeadlessServiceNameForCluster(c),
-			Namespace:       c.Namespace,
-			Labels:          naming.ClusterLabels(c),
-			OwnerReferences: []metav1.OwnerReference{util.NewControllerRef(c)},
+			Name:      naming.HeadlessServiceNameForCluster(c),
+			Namespace: c.Namespace,
+			Labels:    naming.ClusterLabels(c),
+			OwnerReferences: []metav1.OwnerReference{
+				*metav1.NewControllerRef(c, controllerGVK),
+			},
 		},
 		Spec: corev1.ServiceSpec{
 			ClusterIP: corev1.ClusterIPNone,
@@ -83,10 +84,12 @@ func MemberService(sc *scyllav1.ScyllaCluster, rackName, name string, oldService
 
 	return &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            name,
-			Namespace:       sc.Namespace,
-			OwnerReferences: []metav1.OwnerReference{util.NewControllerRef(sc)},
-			Labels:          labels,
+			Name:      name,
+			Namespace: sc.Namespace,
+			OwnerReferences: []metav1.OwnerReference{
+				*metav1.NewControllerRef(sc, controllerGVK),
+			},
+			Labels: labels,
 		},
 		Spec: corev1.ServiceSpec{
 			Type:                     corev1.ServiceTypeClusterIP,
@@ -158,10 +161,12 @@ func StatefulSetForRack(r scyllav1.RackSpec, c *scyllav1.ScyllaCluster, existing
 
 	sts := &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            naming.StatefulSetNameForRack(r, c),
-			Namespace:       c.Namespace,
-			Labels:          rackLabels,
-			OwnerReferences: []metav1.OwnerReference{util.NewControllerRef(c)},
+			Name:      naming.StatefulSetNameForRack(r, c),
+			Namespace: c.Namespace,
+			Labels:    rackLabels,
+			OwnerReferences: []metav1.OwnerReference{
+				*metav1.NewControllerRef(c, controllerGVK),
+			},
 		},
 		Spec: appsv1.StatefulSetSpec{
 			Replicas: pointer.Int32Ptr(r.Members),
@@ -563,10 +568,12 @@ func MakePodDisruptionBudget(c *scyllav1.ScyllaCluster) *v1beta1.PodDisruptionBu
 	maxUnavailable := intstr.FromInt(1)
 	return &v1beta1.PodDisruptionBudget{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            naming.PodDisruptionBudgetName(c),
-			Namespace:       c.Namespace,
-			OwnerReferences: []metav1.OwnerReference{util.NewControllerRef(c)},
-			Labels:          naming.ClusterLabels(c),
+			Name:      naming.PodDisruptionBudgetName(c),
+			Namespace: c.Namespace,
+			OwnerReferences: []metav1.OwnerReference{
+				*metav1.NewControllerRef(c, controllerGVK),
+			},
+			Labels: naming.ClusterLabels(c),
 		},
 		Spec: v1beta1.PodDisruptionBudgetSpec{
 			MaxUnavailable: &maxUnavailable,
@@ -583,10 +590,12 @@ func MakeAgentAuthTokenSecret(c *scyllav1.ScyllaCluster, authToken string) (*cor
 
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            naming.AgentAuthTokenSecretName(c.Name),
-			Namespace:       c.Namespace,
-			OwnerReferences: []metav1.OwnerReference{util.NewControllerRef(c)},
-			Labels:          naming.ClusterLabels(c),
+			Name:      naming.AgentAuthTokenSecretName(c.Name),
+			Namespace: c.Namespace,
+			OwnerReferences: []metav1.OwnerReference{
+				*metav1.NewControllerRef(c, controllerGVK),
+			},
+			Labels: naming.ClusterLabels(c),
 		},
 		Type: corev1.SecretTypeOpaque,
 		Data: map[string][]byte{

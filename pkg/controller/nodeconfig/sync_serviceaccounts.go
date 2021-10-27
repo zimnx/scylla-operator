@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/scylladb/scylla-operator/pkg/controller/nodeconfig/resource"
 	"github.com/scylladb/scylla-operator/pkg/resourceapply"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -15,7 +14,7 @@ import (
 
 func (ncc *Controller) makeServiceAccounts() []*corev1.ServiceAccount {
 	serviceAccounts := []*corev1.ServiceAccount{
-		resource.NodeConfigServiceAccount(),
+		makeNodeConfigServiceAccount(),
 	}
 
 	return serviceAccounts

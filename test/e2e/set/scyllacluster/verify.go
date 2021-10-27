@@ -7,7 +7,6 @@ import (
 
 	o "github.com/onsi/gomega"
 	scyllav1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1"
-	"github.com/scylladb/scylla-operator/pkg/controller/scyllacluster/util"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	"github.com/scylladb/scylla-operator/test/e2e/framework"
 	"github.com/scylladb/scylla-operator/test/e2e/utils"
@@ -16,6 +15,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
+	"k8s.io/utils/pointer"
 )
 
 func verifyPersistentVolumeClaims(ctx context.Context, coreClient corev1client.CoreV1Interface, sc *scyllav1.ScyllaCluster) {
@@ -64,7 +64,18 @@ func verifyStatefulset(sts *appsv1.StatefulSet) {
 }
 
 func verifyPodDisruptionBudget(sc *scyllav1.ScyllaCluster, pdb *policyv1beta1.PodDisruptionBudget) {
-	o.Expect(pdb.ObjectMeta.OwnerReferences).To(o.ConsistOf(util.NewControllerRef(sc)))
+	o.Expect(pdb.ObjectMeta.OwnerReferences).To(o.BeEquivalentTo(
+		[]metav1.OwnerReference{
+			{
+				APIVersion:         "v1",
+				Kind:               "ScyllaCluster",
+				Name:               sc.Name,
+				UID:                sc.UID,
+				BlockOwnerDeletion: pointer.Bool(true),
+				Controller:         pointer.Bool(true),
+			},
+		}),
+	)
 	o.Expect(pdb.Spec.MaxUnavailable.IntValue()).To(o.Equal(1))
 	o.Expect(pdb.Spec.Selector).To(o.Equal(metav1.SetAsLabelSelector(naming.ClusterLabels(sc))))
 }
