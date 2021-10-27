@@ -5,6 +5,7 @@ package nodeconfigdaemon
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/scylladb/scylla-operator/pkg/controllertools"
 	"github.com/scylladb/scylla-operator/pkg/naming"
@@ -12,6 +13,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/klog/v2"
 )
 
 func (ncdc *Controller) getCanAdoptFunc(ctx context.Context) func() error {
@@ -75,36 +77,34 @@ func (ncdc *Controller) getJobsForNode(ctx context.Context) (map[string]*batchv1
 }
 
 func (ncdc *Controller) sync(ctx context.Context, key string) error {
-	// // Cache contains only Pods running on the same Node so it's cheap.
-	// scyllaPods, err := c.podLister.Pods(corev1.NamespaceAll).List(naming.ScyllaSelector())
-	// if err != nil {
-	// 	return fmt.Errorf("can't list all Pods on the node: %w", err)
-	// }
-	//
-	// // Sanity check.
-	// var errs []error
-	// for _, pod := range scyllaPods {
-	// 	if pod.Spec.NodeName != c.nodeName {
-	// 		errs = append(errs, fmt.Errorf("pod"))
-	// 	}
-	// }
-
-	// klog.V(4).Infof("There are %d Scylla Pods running on the node", len(scyllaPods))
+	startTime := time.Now()
+	klog.V(4).InfoS("Started sync", "startTime", startTime)
+	defer func() {
+		klog.V(4).InfoS("Finished sync", "duration", time.Since(startTime))
+	}()
 
 	nodeJobs, err := ncdc.getJobsForNode(ctx)
 	if err != nil {
-		fmt.Errorf("can't get Jobs: %w", err)
+		return fmt.Errorf("can't get Jobs: %w", err)
 	}
 
-	// We configure the node first. Doing it serially avoid the need to check the node
+	// We configure the node first. Doing it serially avoids the need to check the node
 	// configuration status as it always precedes the pod level configuration.
-	err = ncdc.syncJobsForNode(ctx, nodeJobs)
+	jobsForNodeFinished, err := ncdc.syncJobsForNode(ctx, nodeJobs)
+	if err != nil {
+		return fmt.Errorf("can't sync jobs for node: %w", err)
+	}
+
+	if !jobsForNodeFinished {
+		klog.V(4).InfoS("Waiting for node jobs to finish")
+		return nil
+	}
 
 	// jobs, err := c.getJobs(ctx, snc)
 	// if err != nil {
 	// 	return fmt.Errorf("can't get Jobs: %w", err)
 	// }
-	//
+
 	var errs []error
 	// if err = c.syncJobs(ctx, snc, scyllaPods, jobs); err != nil {
 	// 	errs = append(errs, fmt.Errorf("can't sync Jobs: %w", err))
