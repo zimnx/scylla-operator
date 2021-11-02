@@ -7,9 +7,12 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
+	"github.com/scylladb/scylla-operator/pkg/controller/helpers"
 	"github.com/scylladb/scylla-operator/pkg/controllertools"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	batchv1 "k8s.io/api/batch/v1"
+	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
@@ -72,8 +75,59 @@ func (ncdc *Controller) getJobsForNode(ctx context.Context) (map[string]*batchv1
 		ctx,
 		labels.SelectorFromSet(labels.Set{
 			naming.NodeConfigJobForNodeLabel: ncdc.nodeName,
+			naming.NodeConfigJobTypeLabel:    string(naming.NodeConfigJobTypeNode),
 		}),
 	)
+}
+
+func (ncdc *Controller) getPerftuneJobsForContainers(ctx context.Context) (map[string]*batchv1.Job, error) {
+	return ncdc.getJobs(
+		ctx,
+		labels.SelectorFromSet(labels.Set{
+			naming.NodeConfigJobForNodeLabel: ncdc.nodeName,
+			naming.NodeConfigJobTypeLabel:    string(naming.NodeConfigJobTypeContainers),
+		}),
+	)
+}
+
+func (ncdc *Controller) getCurrentNodeConfig(ctx context.Context) (*v1alpha1.NodeConfig, error) {
+	nc, err := ncdc.nodeConfigLister.Get(ncdc.nodeConfigName)
+	if err != nil {
+		return nil, err
+	}
+
+	if nc.UID != ncdc.nodeConfigUID {
+		// In normal circumstances we should be deleted first by GC because of an ownerRef to the NodeConfig.
+		return nil, fmt.Errorf("nodeConfig UID %q doesn't match the expected UID %q", nc.UID, nc.UID)
+	}
+
+	return nc, nil
+}
+
+func (ncdc *Controller) updateNodeStatus(ctx context.Context, nodeStatus *v1alpha1.NodeStatus) error {
+	oldNC, err := ncdc.getCurrentNodeConfig(ctx)
+	if err != nil {
+		return err
+	}
+
+	nc := oldNC.DeepCopy()
+
+	nc.Status.NodeStatuses = helpers.SetNodeStatus(nc.Status.NodeStatuses, nodeStatus)
+
+	if apiequality.Semantic.DeepEqual(nc.Status.NodeStatuses, oldNC.Status.NodeStatuses) {
+		return nil
+	}
+
+	klog.V(2).InfoS("Updating status", "NodeConfig", klog.KObj(oldNC), "Node", nodeStatus.Name)
+
+	_, err = ncdc.scyllaClient.ScyllaV1alpha1().NodeConfigs().UpdateStatus(ctx, nc, metav1.UpdateOptions{})
+	if err != nil {
+		return err
+	}
+
+	klog.V(2).InfoS("Status updated", "NodeConfig", klog.KObj(oldNC), "Node", nodeStatus.Name)
+
+	return nil
 }
 
 func (ncdc *Controller) sync(ctx context.Context, key string) error {
@@ -83,32 +137,36 @@ func (ncdc *Controller) sync(ctx context.Context, key string) error {
 		klog.V(4).InfoS("Finished sync", "duration", time.Since(startTime))
 	}()
 
-	nodeJobs, err := ncdc.getJobsForNode(ctx)
+	jobsForNode, err := ncdc.getJobsForNode(ctx)
 	if err != nil {
-		return fmt.Errorf("can't get Jobs: %w", err)
+		return fmt.Errorf("can't get Jobs for node: %w", err)
 	}
 
-	// We configure the node first. Doing it serially avoids the need to check the node
-	// configuration status as it always precedes the pod level configuration.
-	jobsForNodeFinished, err := ncdc.syncJobsForNode(ctx, nodeJobs)
+	perftuneJobsForContainers, err := ncdc.getPerftuneJobsForContainers(ctx)
 	if err != nil {
-		return fmt.Errorf("can't sync jobs for node: %w", err)
+		return fmt.Errorf("can't get Jobs for containers: %w", err)
 	}
 
-	if !jobsForNodeFinished {
-		klog.V(4).InfoS("Waiting for node jobs to finish")
-		return nil
+	nodeStatus := &v1alpha1.NodeStatus{
+		Name: ncdc.nodeName,
 	}
-
-	// jobs, err := c.getJobs(ctx, snc)
-	// if err != nil {
-	// 	return fmt.Errorf("can't get Jobs: %w", err)
-	// }
 
 	var errs []error
-	// if err = c.syncJobs(ctx, snc, scyllaPods, jobs); err != nil {
-	// 	errs = append(errs, fmt.Errorf("can't sync Jobs: %w", err))
-	// }
+
+	err = ncdc.syncJobsForNode(ctx, jobsForNode, nodeStatus)
+	if err != nil {
+		errs = append(errs, fmt.Errorf("can't sync jobs for node: %w", err))
+	}
+
+	err = ncdc.syncPertuneJobForContainers(ctx, perftuneJobsForContainers, nodeStatus)
+	if err != nil {
+		errs = append(errs, fmt.Errorf("can't sync Jobs for containers: %w", err))
+	}
+
+	err = ncdc.updateNodeStatus(ctx, nodeStatus)
+	if err != nil {
+		errs = append(errs, fmt.Errorf("can't update status: %w", err))
+	}
 
 	return utilerrors.NewAggregate(errs)
 }

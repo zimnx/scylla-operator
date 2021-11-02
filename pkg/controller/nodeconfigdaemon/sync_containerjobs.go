@@ -4,13 +4,12 @@ package nodeconfigdaemon
 
 import (
 	"context"
-	"crypto/sha512"
-	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"path"
 
 	"github.com/c9s/goprocinfo/linux"
-	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
+	"github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/controller/helpers"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	"github.com/scylladb/scylla-operator/pkg/resourceapply"
@@ -20,31 +19,21 @@ import (
 	"github.com/scylladb/scylla-operator/pkg/util/network"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
-	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/klog/v2"
 )
 
-func (ncdc *Controller) makePerftuneJobForContainers(ctx context.Context, snt *scyllav1alpha1.NodeConfig, optimizablePods []*corev1.Pod, podSpec *corev1.PodSpec) (*batchv1.Job, error) {
-	if len(optimizablePods) == 0 {
-		klog.V(4).InfoS("No optimizable pod found on this node")
-		return nil, nil
-	}
-
-	hasher := sha512.New()
-	for _, p := range optimizablePods {
-		hasher.Write([]byte(fmt.Sprintf("%s-%s\n", p.Namespace, p.Name)))
-	}
-	jobName := fmt.Sprintf("perftune-%s", base64.URLEncoding.EncodeToString(hasher.Sum(nil)))
-
+func (ncdc *Controller) makePerftuneJobForContainers(ctx context.Context, podSpec *corev1.PodSpec, optimizablePods []*corev1.Pod, scyllaContainerIDs []string) (*batchv1.Job, error) {
 	cpuInfo, err := linux.ReadCPUInfo(path.Join(naming.HostFilesystemDirName, "/proc/cpuinfo"))
 	if err != nil {
-		return nil, fmt.Errorf("couldn't parse cpuinfo from %q: %w", "/proc/cpuinfo", err)
+		return nil, fmt.Errorf("can't parse cpuinfo from %q: %w", "/proc/cpuinfo", err)
 	}
 
 	hostFullCpuset, err := cpuset.Parse(fmt.Sprintf("0-%d", cpuInfo.NumCPU()-1))
 	if err != nil {
 		return nil, fmt.Errorf("can't parse full mask: %w", err)
 	}
+
+	// TODO: see if we can plumb in the container IDs we already have.
 
 	irqCPUs, err := getIRQCPUs(ctx, ncdc.criClient, optimizablePods, hostFullCpuset)
 	if err != nil {
@@ -77,7 +66,6 @@ func (ncdc *Controller) makePerftuneJobForContainers(ctx context.Context, snt *s
 	return makePerftuneJobForContainers(
 		ncdc.newControllerRef(),
 		ncdc.namespace,
-		jobName,
 		ncdc.nodeName,
 		ncdc.scyllaImage,
 		iface.Name,
@@ -85,59 +73,87 @@ func (ncdc *Controller) makePerftuneJobForContainers(ctx context.Context, snt *s
 		dataHostPaths,
 		disableWritebackCache,
 		podSpec,
-	), nil
+		scyllaContainerIDs,
+	)
 }
 
-func (ncdc *Controller) makeJobsForContainers(ctx context.Context, snt *scyllav1alpha1.NodeConfig, scyllaPods []*corev1.Pod, existingJobs map[string]*batchv1.Job) ([]*batchv1.Job, error) {
-	var optimizablePods []*corev1.Pod
-	for i := range scyllaPods {
-		pod := scyllaPods[i]
+func (ncdc *Controller) makeJobForContainers(ctx context.Context) (*batchv1.Job, error) {
+	localScyllaPods, err := ncdc.localScyllaPodsLister.List(naming.ScyllaSelector())
+	if err != nil {
+		return nil, fmt.Errorf("can't list local scylla pods: %w", err)
+	}
 
-		if pod.Status.QOSClass != corev1.PodQOSGuaranteed {
-			klog.V(4).Infof("Pod %s is not subject for optimizations", naming.ObjRef(pod))
+	var optimizablePods []*corev1.Pod
+	var scyllaContainerIDs []string
+	for i := range localScyllaPods {
+		scyllaPod := localScyllaPods[i]
+
+		if scyllaPod.Status.QOSClass != corev1.PodQOSGuaranteed {
+			klog.V(4).Infof("Pod %q isn't a subject for optimizations", naming.ObjRef(scyllaPod))
 			continue
 		}
 
-		if !helpers.IsScyllaContainerRunning(pod) {
-			klog.V(4).Infof("Pod %s is a candidate for optimizations but scylla container isn't running yet", naming.ObjRef(pod))
+		if !helpers.IsScyllaContainerRunning(scyllaPod) {
+			klog.V(4).Infof("Pod %q is a candidate for optimizations but scylla container isn't running yet", naming.ObjRef(scyllaPod))
 		}
 
-		klog.V(4).Infof("Pod %s is subject for optimizations", naming.ObjRef(pod))
-		optimizablePods = append(optimizablePods, pod)
+		klog.V(4).Infof("Pod %s is subject for optimizations", naming.ObjRef(scyllaPod))
+		optimizablePods = append(optimizablePods, scyllaPod)
+
+		for _, cs := range scyllaPod.Status.ContainerStatuses {
+			if cs.Name == naming.ScyllaContainerName {
+				if len(cs.ContainerID) == 0 {
+					ncdc.eventRecorder.Event(ncdc.newObjectRef(), corev1.EventTypeWarning, "MissingContainerID", "Scylla container status is missing a containerID. Scylla won't wait for tuning to finish.")
+					continue
+				}
+
+				scyllaContainerIDs = append(scyllaContainerIDs, cs.ContainerID)
+			}
+		}
 	}
 
-	pod, err := ncdc.selfPodLister.Pods(ncdc.namespace).Get(ncdc.podName)
+	if len(optimizablePods) == 0 {
+		klog.V(2).InfoS("No optimizable pod found on this node")
+		return nil, nil
+	}
+
+	selfPod, err := ncdc.selfPodLister.Pods(ncdc.namespace).Get(ncdc.podName)
 	if err != nil {
-		return nil, fmt.Errorf("can't get Pod %s/%s: %w", ncdc.namespace, ncdc.podName, err)
+		return nil, fmt.Errorf("can't get Pod %q: %w", naming.ManualRef(ncdc.namespace, ncdc.podName), err)
 	}
 
-	var errs []error
-	var jobs []*batchv1.Job
-
-	perftuneJob, err := ncdc.makePerftuneJobForContainers(ctx, snt, optimizablePods, &pod.Spec)
-	errs = append(errs, err)
-	if perftuneJob != nil {
-		jobs = append(jobs, perftuneJob)
-	}
-
-	return jobs, utilerrors.NewAggregate(errs)
+	return ncdc.makePerftuneJobForContainers(ctx, &selfPod.Spec, optimizablePods, scyllaContainerIDs)
 }
 
-func (ncdc *Controller) syncJobsForContainers(ctx context.Context, snt *scyllav1alpha1.NodeConfig, scyllaPods []*corev1.Pod, jobs map[string]*batchv1.Job) error {
-	required, err := ncdc.makeJobsForContainers(ctx, snt, scyllaPods, jobs)
+func (ncdc *Controller) syncPertuneJobForContainers(ctx context.Context, existingJobs map[string]*batchv1.Job, nodeStatus *v1alpha1.NodeStatus) error {
+	required, err := ncdc.makeJobForContainers(ctx)
 	if err != nil {
-		return fmt.Errorf("can't make Jobs: %w", err)
-	}
-	err = ncdc.pruneJobs(ctx, jobs, required)
-	if err != nil {
-		return fmt.Errorf("can't delete Jobs: %w", err)
+		return fmt.Errorf("can't make preftune Job for containers: %w", err)
 	}
 
-	for _, j := range required {
-		_, _, err := resourceapply.ApplyJob(ctx, ncdc.kubeClient.BatchV1(), ncdc.namespacedJobLister, ncdc.eventRecorder, j)
-		if err != nil {
-			return fmt.Errorf("can't create job %s: %w", naming.ObjRef(j), err)
-		}
+	err = ncdc.pruneJobs(ctx, existingJobs, []*batchv1.Job{required})
+	if err != nil {
+		return fmt.Errorf("can't prune perftune Jobs: %w", err)
 	}
+
+	fresh, _, err := resourceapply.ApplyJob(ctx, ncdc.kubeClient.BatchV1(), ncdc.namespacedJobLister, ncdc.eventRecorder, required)
+	if err != nil {
+		return fmt.Errorf("can't apply job %q: %w", naming.ObjRef(required), err)
+	}
+
+	// We have successfully applied the job definition so the data should always be present at this point.
+	nodeConfigJobDataString, found := fresh.Annotations[naming.NodeConfigJobData]
+	if !found {
+		return fmt.Errorf("internal error: job %q is missing %q annotation", klog.KObj(fresh), naming.NodeConfigJobData)
+	}
+
+	jobData := &perftuneJobForContainersData{}
+	err = json.Unmarshal([]byte(nodeConfigJobDataString), jobData)
+	if err != nil {
+		return fmt.Errorf("internal error: can't unmarshal node config data for job %q: %w", klog.KObj(fresh), err)
+	}
+
+	nodeStatus.TunedContainers = jobData.ContainerIDs
+
 	return nil
 }

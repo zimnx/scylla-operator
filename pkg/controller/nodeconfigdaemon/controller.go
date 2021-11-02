@@ -316,3 +316,14 @@ func (ncdc *Controller) newControllerRef() *metav1.OwnerReference {
 		Controller:         pointer.Bool(true),
 	}
 }
+
+func (ncdc *Controller) newObjectRef() *corev1.ObjectReference {
+	return &corev1.ObjectReference{
+		APIVersion:      controllerGVK.Version,
+		Kind:            controllerGVK.Kind,
+		Name:            ncdc.nodeConfigName,
+		Namespace:       corev1.NamespaceAll,
+		UID:             ncdc.nodeConfigUID,
+		ResourceVersion: "",
+	}
+}
