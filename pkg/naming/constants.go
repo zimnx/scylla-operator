@@ -38,6 +38,8 @@ const (
 	NodeConfigJobTypeLabel    = "scylla-operator.scylladb.com/node-config-job-type"
 	NodeConfigJobData         = "scylla-operator.scylladb.com/node-config-job-data"
 	NodeConfigNameLabel       = "scylla-operator.scylladb.com/node-config-name"
+	ConfigMapTypeLabel        = "scylla-operator.scylladb.com/config-map-type"
+	OwnerUIDLabel             = "scylla-operator.scylladb.com/owner-uid"
 	// NodeConfigControllerLabel = "scylla-operator.scylladb.com/node-config-controller"
 	NodePoolLabel = "scylla-operator.scylladb.com/node-pool"
 
@@ -101,4 +103,10 @@ type NodeConfigJobType string
 const (
 	NodeConfigJobTypeNode       NodeConfigJobType = "Node"
 	NodeConfigJobTypeContainers NodeConfigJobType = "Containers"
+)
+
+type ConfigMapType string
+
+const (
+	NodeConfigDataConfigMapType ConfigMapType = "NodeConfigData"
 )

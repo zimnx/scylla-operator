@@ -3214,6 +3214,20 @@ spec:
                       format: int32
                       type: integer
                   type: object
+                nodeStatuses:
+                  description: NodeStatuses hold the status for each tuned node.
+                  items:
+                    properties:
+                      name:
+                        type: string
+                      tunedContainers:
+                        items:
+                          type: string
+                        type: array
+                      tunedNode:
+                        type: boolean
+                    type: object
+                  type: array
                 observedGeneration:
                   description: observedGeneration indicates the most recent generation observed by the controller.
                   format: int64
