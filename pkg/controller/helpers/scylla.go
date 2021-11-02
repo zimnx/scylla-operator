@@ -2,16 +2,21 @@ package helpers
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/scylladb/go-log"
 	scyllav1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1"
+	"github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/helpers"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	"github.com/scylladb/scylla-operator/pkg/scyllaclient"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/errors"
+	corev1schedulinghelpers "k8s.io/component-helpers/scheduling/corev1"
+	"k8s.io/component-helpers/scheduling/corev1/nodeaffinity"
 )
 
 func GetScyllaIPFromService(svc *corev1.Service) (string, error) {
@@ -99,4 +104,82 @@ func SetRackCondition(rackStatus *scyllav1.RackStatus, newCondition scyllav1.Rac
 		rackStatus.Conditions,
 		scyllav1.RackCondition{Type: newCondition, Status: corev1.ConditionTrue},
 	)
+}
+
+func FindNodeStatus(nodeStatuses []v1alpha1.NodeStatus, nodeName string) *v1alpha1.NodeStatus {
+	for i := range nodeStatuses {
+		ns := &nodeStatuses[i]
+		if ns.Name == nodeName {
+			return ns
+		}
+	}
+
+	return nil
+}
+
+func SetNodeStatus(nodeStatuses []v1alpha1.NodeStatus, status *v1alpha1.NodeStatus) []v1alpha1.NodeStatus {
+	for i, ns := range nodeStatuses {
+		if ns.Name == status.Name {
+			nodeStatuses[i] = *status
+			return nodeStatuses
+		}
+	}
+
+	nodeStatuses = append(nodeStatuses, *status)
+
+	sort.SliceStable(nodeStatuses, func(i, j int) bool {
+		return nodeStatuses[i].Name < nodeStatuses[j].Name
+	})
+
+	return nodeStatuses
+}
+
+func IsNodeConfigSelectingNode(nc *v1alpha1.NodeConfig, node *corev1.Node) (bool, error) {
+	// TODO: split into dedicated functions.
+	// Check nodeSelector.
+	if !labels.SelectorFromSet(nc.Spec.Placement.NodeSelector).Matches(labels.Set(node.Labels)) {
+		return false, nil
+	}
+
+	// Check affinity.
+
+	affinityNodeSelector, err := nodeaffinity.NewNodeSelector(
+		nc.Spec.Placement.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution,
+	)
+	if err != nil {
+		return false, fmt.Errorf("can't construct node affinity node selector: %w", err)
+	}
+
+	if !affinityNodeSelector.Match(node) {
+		return false, nil
+	}
+
+	// Check taints and tolerations.
+
+	_, isUntolerated := corev1schedulinghelpers.FindMatchingUntoleratedTaint(
+		node.Spec.Taints,
+		nc.Spec.Placement.Tolerations,
+		func(t *corev1.Taint) bool {
+			// We are only interested in NoSchedule and NoExecute taints.
+			return t.Effect == corev1.TaintEffectNoSchedule || t.Effect == corev1.TaintEffectNoExecute
+		},
+	)
+	if !isUntolerated {
+		return false, nil
+	}
+
+	return true, nil
+}
+
+func IsNodeTunedForContainer(nc *v1alpha1.NodeConfig, nodeName string, containerID string) bool {
+	ns := FindNodeStatus(nc.Status.NodeStatuses, nodeName)
+	if ns == nil {
+		return false
+	}
+
+	if !ns.TunedNode {
+		return false
+	}
+
+	return true
 }

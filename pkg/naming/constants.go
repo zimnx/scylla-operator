@@ -36,8 +36,8 @@ const (
 	ManagedHash               = "scylla-operator.scylladb.com/managed-hash"
 	NodeConfigJobForNodeLabel = "scylla-operator.scylladb.com/node-config-job-for-node"
 	NodeConfigJobTypeLabel    = "scylla-operator.scylladb.com/node-config-job-type"
+	NodeConfigJobData         = "scylla-operator.scylladb.com/node-config-job-data"
 	NodeConfigNameLabel       = "scylla-operator.scylladb.com/node-config-name"
-	NodeConfigUIDLabel        = "scylla-operator.scylladb.com/node-config-UID"
 	// NodeConfigControllerLabel = "scylla-operator.scylladb.com/node-config-controller"
 	NodePoolLabel = "scylla-operator.scylladb.com/node-pool"
 
