@@ -135,23 +135,26 @@ func SetNodeStatus(nodeStatuses []v1alpha1.NodeStatus, status *v1alpha1.NodeStat
 }
 
 func IsNodeConfigSelectingNode(nc *v1alpha1.NodeConfig, node *corev1.Node) (bool, error) {
-	// TODO: split into dedicated functions.
 	// Check nodeSelector.
+
 	if !labels.SelectorFromSet(nc.Spec.Placement.NodeSelector).Matches(labels.Set(node.Labels)) {
 		return false, nil
 	}
 
 	// Check affinity.
 
-	affinityNodeSelector, err := nodeaffinity.NewNodeSelector(
-		nc.Spec.Placement.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution,
-	)
-	if err != nil {
-		return false, fmt.Errorf("can't construct node affinity node selector: %w", err)
-	}
+	if nc.Spec.Placement.Affinity.NodeAffinity != nil &&
+		nc.Spec.Placement.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution != nil {
+		affinityNodeSelector, err := nodeaffinity.NewNodeSelector(
+			nc.Spec.Placement.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution,
+		)
+		if err != nil {
+			return false, fmt.Errorf("can't construct node affinity node selector: %w", err)
+		}
 
-	if !affinityNodeSelector.Match(node) {
-		return false, nil
+		if !affinityNodeSelector.Match(node) {
+			return false, nil
+		}
 	}
 
 	// Check taints and tolerations.
@@ -164,7 +167,7 @@ func IsNodeConfigSelectingNode(nc *v1alpha1.NodeConfig, node *corev1.Node) (bool
 			return t.Effect == corev1.TaintEffectNoSchedule || t.Effect == corev1.TaintEffectNoExecute
 		},
 	)
-	if !isUntolerated {
+	if isUntolerated {
 		return false, nil
 	}
 
