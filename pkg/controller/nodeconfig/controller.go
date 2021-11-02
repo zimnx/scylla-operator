@@ -93,7 +93,7 @@ func NewController(
 
 	if kubeClient.CoreV1().RESTClient().GetRateLimiter() != nil {
 		err := ratelimiter.RegisterMetricAndTrackRateLimiterUsage(
-			"scyllanodeconfig_controller",
+			"nodeconfig_controller",
 			kubeClient.CoreV1().RESTClient().GetRateLimiter(),
 		)
 		if err != nil {
