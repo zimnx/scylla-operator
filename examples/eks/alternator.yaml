@@ -2,7 +2,7 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: scylla
+  name: alternator
 
 ---
 
@@ -10,8 +10,8 @@ metadata:
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: scylla-cluster-member
-  namespace: scylla
+  name: alternator-cluster-member
+  namespace: alternator
 
 ---
 
@@ -19,16 +19,16 @@ metadata:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: scylla-cluster-member
-  namespace: scylla
+  name: alternator-cluster-member
+  namespace: alternator
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: scyllacluster-member
 subjects:
   - kind: ServiceAccount
-    name: scylla-cluster-member
-    namespace: scylla
+    name: alternator-cluster-member
+    namespace: alternator
 
 ---
 
@@ -36,14 +36,17 @@ subjects:
 apiVersion: scylla.scylladb.com/v1
 kind: ScyllaCluster
 metadata:
-  name: scylla-cluster
-  namespace: scylla
+  name: alternator-cluster
+  namespace: alternator
 spec:
   version: 4.4.5
   agentVersion: 2.5.1
   cpuset: true
   network:
     hostNetworking: true
+  alternator:
+    port: 8000
+    writeIsolation: always
   sysctls:
   - "fs.aio-max-nr=30000000"
   datacenter:
@@ -69,7 +72,7 @@ spec:
                 - key: pool
                   operator: In
                   values:
-                  - scylla-pool
+                  - alternator-pool
         tolerations:
           - key: role
             operator: Equal
@@ -95,7 +98,7 @@ spec:
               - key: pool
                 operator: In
                 values:
-                - scylla-pool
+                - alternator-pool
         tolerations:
         - key: role
           operator: Equal
@@ -121,7 +124,7 @@ spec:
               - key: pool
                 operator: In
                 values:
-                - scylla-pool
+                - alternator-pool
         tolerations:
         - key: role
           operator: Equal

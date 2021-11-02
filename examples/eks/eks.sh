@@ -120,7 +120,7 @@ check_prerequisites
 
 EKS_ZONES_QUOTED=$(printf ',"%s"' "${EKS_ZONES[@]}")
 EKS_ZONES_QUOTED="${EKS_ZONES_QUOTED:1}"
-yq eval -P ".metadata.region = \"${EKS_REGION}\" | .metadata.name = \"${CLUSTER_NAME}\" | .availabilityZones |= [${EKS_ZONES_QUOTED}] | (.nodeGroups[] | select(.name==\"scylla-pool\") | .availabilityZones) |= [${EKS_ZONES_QUOTED}]" eks-cluster.yaml | eksctl create cluster -f -
+yq eval -P ".metadata.region = \"${EKS_REGION}\" | .metadata.name = \"${CLUSTER_NAME}\" | .availabilityZones |= [${EKS_ZONES_QUOTED}] | (.nodeGroups[] | select(.name==\"scylla-pool\") | .availabilityZones) |= [${EKS_ZONES_QUOTED}] | (.nodeGroups[] | select(.name==\"alternator-pool\") | .availabilityZones) |= [${EKS_ZONES_QUOTED}]" eks-cluster.yaml | eksctl create cluster -f -
 
 # Configure node disks and network
 kubectl apply -f node-setup-daemonset.yaml
@@ -146,3 +146,15 @@ kubectl -n scylla-operator rollout status --timeout=5m deployment.apps/scylla-op
 
 echo "Starting the scylla cluster..."
 kubectl apply -f cluster.yaml
+kubectl apply -f alternator.yaml
+
+kubectl apply -f ../common/manager.yaml
+
+helm install monitoring prometheus-community/kube-prometheus-stack --values ../common/monitoring/values.yaml --create-namespace --namespace scylla-monitoring
+
+kubectl -n scylla-monitoring create configmap scylla-dashboards --from-file=scylla-monitoring-scylla-monitoring-3.6.3/grafana/build/ver_4.3
+kubectl -n scylla-monitoring patch configmap scylla-dashboards  -p '{"metadata":{"labels":{"grafana_dashboard": "1"}}}'
+
+kubectl apply -f ../common/monitoring/scylla-service-monitor.yaml
+kubectl apply -f ../common/monitoring/alternator-service-monitor.yaml
+kubectl apply -f ../common/monitoring/scylla-manager-service-monitor.yaml

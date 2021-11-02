@@ -16,6 +16,8 @@ nodeGroups:
     pool: "scylla-pool"
   taints:
     role: "scylla-clusters:NoSchedule"
+  tags:
+    keep: alive
   ssh:
     allow: true
   kubeletExtraConfig:
@@ -23,23 +25,43 @@ nodeGroups:
   availabilityZones:
   - <eks_zone>
 
-- name: cassandra-stress-pool
+- name: alternator-pool
+  instanceType: i3.2xlarge
+  desiredCapacity: 3
+  labels:
+    pool: "alternator-pool"
+  taints:
+    role: "scylla-clusters:NoSchedule"
+  tags:
+    keep: alive
+  ssh:
+    allow: true
+  kubeletExtraConfig:
+    cpuManagerPolicy: static
+  availabilityZones:
+  - <eks_zone>
+
+- name: apps-pool
   instanceType: c4.2xlarge
   desiredCapacity: 4
   labels:
     pool: "cassandra-stress-pool"
   taints:
     role: "cassandra-stress:NoSchedule"
+  tags:
+    keep: alive
   ssh:
     allow: true
   preBootstrapCommands:
   - curl -o /etc/yum.repos.d/scylla.repo -L http://repositories.scylladb.com/scylla/repo/3e3ec6ec-92b2-46ec-b64f-5b2338bc47de/centos/scylladb-4.0.repo
   - yum install -y scylla-tools
 
-- name: monitoring-pool
+- name: utilities-pool
   instanceType: i3.large
   desiredCapacity: 1
+  tags:
+    keep: alive
   labels:
-    pool: "monitoring-pool"
+    pool: "utilities-pool"
   ssh:
     allow: true

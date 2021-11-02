@@ -1,0 +1,157 @@
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: cassandra-stress-0
+  namespace: default
+  labels:
+    app: cassandra-stress
+spec:
+  template:
+    spec:
+      containers:
+      - name: cassandra-stress
+        image: scylladb/scylla:4.4.1
+        command:
+          - "/bin/bash"
+          - "-c"
+          - 'cassandra-stress write no-warmup cl=QUORUM duration=30m -schema keyspace=keyspace1 "replication(factor=3)" -port jmx=6868 -mode cql3 native -rate "threads=100 throttle=15000/s" -col "size=FIXED(1024) n=FIXED(1)" -pop "dist=gauss(1..500000000,250000000,25000000)"  -node "scylla-cluster-us-east-1-a-1.scylla.svc" -errors skip-unsupported-columns'
+        resources:
+          limits:
+            cpu: 7
+            memory: 12Gi
+      restartPolicy: Never
+      tolerations:
+        - key: role
+          operator: Equal
+          value: cassandra-stress
+          effect: NoSchedule
+      affinity:
+        podAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app: cassandra-stress
+
+
+---
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: cassandra-stress-1
+  namespace: default
+  labels:
+    app: cassandra-stress
+spec:
+  template:
+    spec:
+      containers:
+      - name: cassandra-stress
+        image: scylladb/scylla:4.4.1
+        command:
+          - "/bin/bash"
+          - "-c"
+          - 'cassandra-stress write no-warmup cl=QUORUM duration=30m -schema keyspace=keyspace1 "replication(factor=3)" -port jmx=6868 -mode cql3 native -rate "threads=100 throttle=15000/s" -col "size=FIXED(1024) n=FIXED(1)" -pop "dist=gauss(1..500000000,250000000,25000000)"  -node "scylla-cluster-us-east-1-a-1.scylla.svc" -errors skip-unsupported-columns'
+        resources:
+          limits:
+            cpu: 7
+            memory: 12Gi
+      restartPolicy: Never
+      tolerations:
+        - key: role
+          operator: Equal
+          value: cassandra-stress
+          effect: NoSchedule
+      affinity:
+        podAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app: cassandra-stress
+
+
+---
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: cassandra-stress-2
+  namespace: default
+  labels:
+    app: cassandra-stress
+spec:
+  template:
+    spec:
+      containers:
+      - name: cassandra-stress
+        image: scylladb/scylla:4.4.1
+        command:
+          - "/bin/bash"
+          - "-c"
+          - 'cassandra-stress write no-warmup cl=QUORUM duration=30m -schema keyspace=keyspace1 "replication(factor=3)" -port jmx=6868 -mode cql3 native -rate "threads=100 throttle=15000/s" -col "size=FIXED(1024) n=FIXED(1)" -pop "dist=gauss(1..500000000,250000000,25000000)"  -node "scylla-cluster-us-east-1-a-1.scylla.svc" -errors skip-unsupported-columns'
+        resources:
+          limits:
+            cpu: 7
+            memory: 12Gi
+      restartPolicy: Never
+      tolerations:
+        - key: role
+          operator: Equal
+          value: cassandra-stress
+          effect: NoSchedule
+      affinity:
+        podAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app: cassandra-stress
+
+
+---
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: cassandra-stress-3
+  namespace: default
+  labels:
+    app: cassandra-stress
+spec:
+  template:
+    spec:
+      containers:
+      - name: cassandra-stress
+        image: scylladb/scylla:4.4.1
+        command:
+          - "/bin/bash"
+          - "-c"
+          - 'cassandra-stress write no-warmup cl=QUORUM duration=30m -schema keyspace=keyspace1 "replication(factor=3)" -port jmx=6868 -mode cql3 native -rate "threads=100 throttle=15000/s" -col "size=FIXED(1024) n=FIXED(1)" -pop "dist=gauss(1..500000000,250000000,25000000)"  -node "scylla-cluster-us-east-1-a-1.scylla.svc" -errors skip-unsupported-columns'
+        resources:
+          limits:
+            cpu: 7
+            memory: 12Gi
+      restartPolicy: Never
+      tolerations:
+        - key: role
+          operator: Equal
+          value: cassandra-stress
+          effect: NoSchedule
+      affinity:
+        podAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app: cassandra-stress
