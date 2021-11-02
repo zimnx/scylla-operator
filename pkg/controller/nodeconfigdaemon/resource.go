@@ -1,6 +1,7 @@
 package nodeconfigdaemon
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path"
@@ -32,9 +33,9 @@ func makePerftuneJobForNode(controllerRef *metav1.OwnerReference, namespace, nod
 
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			// TODO: hash the name to avoid overflow
-			Name:            fmt.Sprintf("perftune-node-%s", nodeName),
-			Namespace:       namespace,
+			Namespace: namespace,
+			// TODO: hash the name to avoid overflow.
+			Name:            fmt.Sprintf("perftune-%s-node", nodeName),
 			OwnerReferences: []metav1.OwnerReference{*controllerRef},
 			Labels:          labels,
 		},
@@ -97,7 +98,11 @@ func makePerftuneJobForNode(controllerRef *metav1.OwnerReference, namespace, nod
 	return job
 }
 
-func makePerftuneJobForContainers(controllerRef *metav1.OwnerReference, namespace, name, nodeName, image, ifaceName, irqMask string, dataHostPaths []string, disableWritebackCache bool, podSpec *corev1.PodSpec) *batchv1.Job {
+type perftuneJobForContainersData struct {
+	ContainerIDs []string `json:"containerIDs"`
+}
+
+func makePerftuneJobForContainers(controllerRef *metav1.OwnerReference, namespace, nodeName, image, ifaceName, irqMask string, dataHostPaths []string, disableWritebackCache bool, podSpec *corev1.PodSpec, scyllaContainerIDs []string) (*batchv1.Job, error) {
 	podSpec = podSpec.DeepCopy()
 
 	args := []string{
@@ -122,13 +127,24 @@ func makePerftuneJobForContainers(controllerRef *metav1.OwnerReference, namespac
 		naming.NodeConfigJobTypeLabel:    string(naming.NodeConfigJobTypeContainers),
 	}
 
+	jobData := perftuneJobForContainersData{
+		ContainerIDs: scyllaContainerIDs,
+	}
+	jobDataBytes, err := json.Marshal(jobData)
+	if err != nil {
+		return nil, fmt.Errorf("can't marshal job data: %w", err)
+	}
+
 	perftuneJob := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            name,
-			Namespace:       naming.ScyllaOperatorNodeTuningNamespace,
+			Namespace: namespace,
+			// TODO: hash the name to avoid overflow
+			Name:            fmt.Sprintf("perftune-%s-containers", nodeName),
 			OwnerReferences: []metav1.OwnerReference{*controllerRef},
 			Labels:          labels,
-			// FIXME: annotate the job with optimizable pods or containerID so we can project it into the CR when it finishes.
+			Annotations: map[string]string{
+				naming.NodeConfigJobData: string(jobDataBytes),
+			},
 		},
 		Spec: batchv1.JobSpec{
 			Template: corev1.PodTemplateSpec{
@@ -187,7 +203,7 @@ func makePerftuneJobForContainers(controllerRef *metav1.OwnerReference, namespac
 	}
 
 	// Host node might not be running irqbalance. Mount config only when it's present on the host.
-	_, err := os.Stat(path.Join(naming.HostFilesystemDirName, "/etc/sysconfig/irqbalance"))
+	_, err = os.Stat(path.Join(naming.HostFilesystemDirName, "/etc/sysconfig/irqbalance"))
 	if err == nil {
 		perftuneJob.Spec.Template.Spec.Volumes = append(
 			perftuneJob.Spec.Template.Spec.Volumes,
@@ -199,7 +215,7 @@ func makePerftuneJobForContainers(controllerRef *metav1.OwnerReference, namespac
 		)
 	}
 
-	return perftuneJob
+	return perftuneJob, nil
 }
 
 func makeVolumeMount(name, mountPath string, readonly bool) corev1.VolumeMount {

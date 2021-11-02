@@ -59,6 +59,12 @@ type ReplicaCount struct {
 	Ready int32 `json:"ready"`
 }
 
+type NodeStatus struct {
+	Name            string   `json:"name"`
+	TunedNode       bool     `json:"tunedNode"`
+	TunedContainers []string `json:"tunedContainers"`
+}
+
 type NodeConfigStatus struct {
 	// observedGeneration indicates the most recent generation observed by the controller.
 	ObservedGeneration int64 `json:"observedGeneration"`
@@ -69,6 +75,9 @@ type NodeConfigStatus struct {
 	Current ReplicaCount `json:"current"`
 
 	Updated ReplicaCount `json:"updated"`
+
+	// NodeStatuses hold the status for each tuned node.
+	NodeStatuses []NodeStatus `json:"nodeStatuses"`
 }
 
 type NodeConfigPlacement struct {
