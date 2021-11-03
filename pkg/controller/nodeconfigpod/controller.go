@@ -102,7 +102,7 @@ func NewController(
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "NodeConfigCM"),
 	}
 
-	nodeConfigInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    ncpc.addPod,
 		UpdateFunc: ncpc.updatePod,
 	})
@@ -179,7 +179,7 @@ func (ncpc *Controller) enqueueOwner(obj metav1.Object) {
 func (ncpc *Controller) addPod(obj interface{}) {
 	pod := obj.(*corev1.Pod)
 	klog.V(4).InfoS("Observed addition of Pod", "Pod", klog.KObj(pod))
-	ncpc.enqueueOwner(pod)
+	ncpc.enqueue(pod)
 }
 
 func (ncpc *Controller) updatePod(old, cur interface{}) {
@@ -187,7 +187,7 @@ func (ncpc *Controller) updatePod(old, cur interface{}) {
 	currentPod := cur.(*corev1.Pod)
 
 	klog.V(4).InfoS("Observed update of Pod", "Pod", klog.KObj(oldPod))
-	ncpc.enqueueOwner(currentPod)
+	ncpc.enqueue(currentPod)
 }
 
 func (ncpc *Controller) addConfigMap(obj interface{}) {

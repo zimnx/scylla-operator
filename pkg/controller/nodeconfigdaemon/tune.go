@@ -148,18 +148,17 @@ func podCpusetPaths(podID, containerID string) []string {
 }
 
 func scyllaContainerID(pod *corev1.Pod) (string, error) {
-	for _, cs := range pod.Status.ContainerStatuses {
-		if cs.Name != naming.ScyllaContainerName {
-			continue
-		}
-
-		cid, err := stripContainerID(cs.ContainerID)
-		if err != nil {
-			return "", fmt.Errorf("cannot strip container ID prefix from %q, %w", cs.ContainerID, err)
-		}
-		return cid, nil
+	cidURI, err := helpers.GetScyllaContainerID(pod)
+	if err != nil {
+		return "", err
 	}
-	return "", fmt.Errorf("cannot find Scylla container ID in '%s/%s' Pod", pod.Namespace, pod.Name)
+
+	cid, err := stripContainerID(cidURI)
+	if err != nil {
+		return "", fmt.Errorf("can't strip container ID prefix from %q: %w", cidURI, err)
+	}
+
+	return cid, nil
 }
 
 var containerIDRe = regexp.MustCompile(`[a-z]+://([a-z0-9]+)`)
