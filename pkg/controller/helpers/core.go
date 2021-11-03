@@ -2,6 +2,7 @@ package helpers
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	corev1 "k8s.io/api/core/v1"
@@ -74,11 +75,30 @@ func IsOrphanedPV(pv *corev1.PersistentVolume, nodes []*corev1.Node) (bool, erro
 	return true, nil
 }
 
-func IsScyllaContainerRunning(pod *corev1.Pod) bool {
+func FindScyllaContainerStatus(pod *corev1.Pod) *corev1.ContainerStatus {
 	for _, cs := range pod.Status.ContainerStatuses {
 		if cs.Name == naming.ScyllaContainerName {
-			return cs.State.Running != nil
+			return &cs
 		}
 	}
-	return false
+
+	return nil
+}
+
+func IsScyllaContainerRunning(pod *corev1.Pod) bool {
+	cs := FindScyllaContainerStatus(pod)
+	if cs == nil {
+		return false
+	}
+
+	return cs.State.Running != nil
+}
+
+func GetScyllaContainerID(pod *corev1.Pod) (string, error) {
+	cs := FindScyllaContainerStatus(pod)
+	if cs == nil {
+		return "", fmt.Errorf("no scylla container found in pod %q", naming.ObjRef(pod))
+	}
+
+	return cs.ContainerID, nil
 }

@@ -110,3 +110,7 @@ type ConfigMapType string
 const (
 	NodeConfigDataConfigMapType ConfigMapType = "NodeConfigData"
 )
+
+const (
+	ScyllaRuntimeConfigKey string = "ScyllaRuntimeConfig"
+)
