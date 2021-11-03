@@ -3,6 +3,8 @@
 package nodeconfigpod
 
 import (
+	"fmt"
+
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -12,7 +14,7 @@ func makeConfigMap(pod *corev1.Pod, data map[string]string) *corev1.ConfigMap {
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: pod.Namespace,
-			Name:      pod.Name,
+			Name:      fmt.Sprintf("nodeconfig-podinfo-%s", pod.UID),
 			OwnerReferences: []metav1.OwnerReference{
 				*metav1.NewControllerRef(pod, controllerGVK),
 			},

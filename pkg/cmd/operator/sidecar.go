@@ -2,6 +2,7 @@ package operator
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -9,12 +10,12 @@ import (
 	"syscall"
 	"time"
 
-	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	scyllaversionedclient "github.com/scylladb/scylla-operator/pkg/client/scylla/clientset/versioned"
 	"github.com/scylladb/scylla-operator/pkg/cmdutil"
 	"github.com/scylladb/scylla-operator/pkg/controller/helpers"
 	sidecarcontroller "github.com/scylladb/scylla-operator/pkg/controller/sidecar"
 	"github.com/scylladb/scylla-operator/pkg/genericclioptions"
+	"github.com/scylladb/scylla-operator/pkg/internalapi"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	"github.com/scylladb/scylla-operator/pkg/sidecar"
 	"github.com/scylladb/scylla-operator/pkg/sidecar/config"
@@ -28,6 +29,7 @@ import (
 	apimachineryvalidation "k8s.io/apimachinery/pkg/api/validation"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -182,111 +184,6 @@ func (o *SidecarOptions) Run(streams genericclioptions.IOStreams, commandName st
 	singleServiceInformer := singleServiceKubeInformers.Core().V1().Services()
 	secretsInformer := namespacedKubeInformers.Core().V1().Secrets()
 
-	member, err := identity.Retrieve(ctx, o.ServiceName, o.Namespace, o.kubeClient)
-	if err != nil {
-		return fmt.Errorf("can't get member info: %w", err)
-	}
-
-	// FIXME
-	containerID := ""
-	nodeName := ""
-
-	var ncList *scyllav1alpha1.NodeConfigList
-	err = wait.ExponentialBackoff(retry.DefaultBackoff, func() (bool, error) {
-		ncList, err = o.scyllaClient.ScyllaV1alpha1().NodeConfigs().List(ctx, metav1.ListOptions{})
-		if err != nil {
-			klog.ErrorS(err, "Can't list nodeconfigs")
-			return false, nil
-		}
-
-		return true, nil
-	})
-	if err != nil {
-		return fmt.Errorf("can't list nodeconfigs: %w", err)
-	}
-
-	var node *corev1.Node
-	err = wait.ExponentialBackoff(retry.DefaultBackoff, func() (bool, error) {
-		node, err = o.kubeClient.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
-		if err != nil {
-			klog.ErrorS(err, "Can't get node", "Name", nodeName)
-			return false, nil
-		}
-
-		return true, nil
-	})
-	if err != nil {
-		return fmt.Errorf("can't get node: %w", err)
-	}
-
-	// Filter nodeconfig selecting this node.
-	var ncs []*scyllav1alpha1.NodeConfig
-	for _, nc := range ncList.Items {
-		isSelectingNode, err := helpers.IsNodeConfigSelectingNode(&nc, node)
-		if err != nil {
-			return fmt.Errorf(
-				"can't check if nodecondig %q is selecting node %q: %w",
-				naming.ObjRef(&nc),
-				naming.ObjRef(node),
-				err,
-			)
-		}
-		if isSelectingNode {
-			ncs = append(ncs, &nc)
-		}
-	}
-
-	klog.V(2).InfoS("%d nodeconfig affect tuning on this node")
-
-	// Wait for optimization status for each matching nodeconfig.
-	for _, nc := range ncs {
-		fieldSelector := fields.OneTermEqualSelector("metadata.name", nc.Name).String()
-		lw := &cache.ListWatch{
-			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
-				options.FieldSelector = fieldSelector
-				return o.scyllaClient.ScyllaV1alpha1().NodeConfigs().List(ctx, options)
-			},
-			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
-				options.FieldSelector = fieldSelector
-				return o.scyllaClient.ScyllaV1alpha1().NodeConfigs().Watch(ctx, options)
-			},
-		}
-		// TODO: extract into a function, use defer
-		klog.V(2).InfoS("Waiting for optimizations", "NodeConfig", klog.KObj(nc))
-		_, err := watchtools.UntilWithSync(
-			ctx,
-			lw,
-			&scyllav1alpha1.NodeConfig{},
-			nil,
-			func(e watch.Event) (bool, error) {
-				switch t := e.Type; t {
-				case watch.Added, watch.Modified:
-					return helpers.IsNodeTunedForContainer(nc, nodeName, containerID), nil
-				case watch.Error:
-					return true, apierrors.FromObject(e.Object)
-				default:
-					return true, fmt.Errorf("unexpected event type %v", t)
-				}
-			},
-		)
-		if err != nil {
-			return fmt.Errorf("can't wait for optimization: %w", err)
-		}
-		klog.V(2).InfoS("Optimizations ready", "NodeConfig", klog.KObj(nc))
-	}
-
-	klog.V(2).InfoS("Starting scylla")
-
-	cfg := config.NewScyllaConfig(member, o.kubeClient, o.scyllaClient, o.CPUCount)
-	cmd, err := cfg.Setup(ctx)
-	if err != nil {
-		return fmt.Errorf("can't set up scylla: %w", err)
-	}
-	// Make sure to propagate the signal if we die.
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Pdeathsig: syscall.SIGKILL,
-	}
-
 	hostIP, err := network.FindFirstNonLocalIP()
 	if err != nil {
 		return fmt.Errorf("can't get node ip: %w", err)
@@ -319,6 +216,127 @@ func (o *SidecarOptions) Run(streams genericclioptions.IOStreams, commandName st
 	// Start informers.
 	singleServiceKubeInformers.Start(ctx.Done())
 	namespacedKubeInformers.Start(ctx.Done())
+
+	klog.V(2).InfoS("Waiting for single service informer caches to sync")
+	if !cache.WaitForCacheSync(ctx.Done(), singleServiceInformer.Informer().HasSynced) {
+		return fmt.Errorf("failed to wait for caches to sync")
+	}
+
+	service, err := singleServiceInformer.Lister().Services(o.Namespace).Get(o.ServiceName)
+	if err != nil {
+		return fmt.Errorf("can't get service %q", naming.ManualRef(o.Namespace, o.ServiceName))
+	}
+
+	var pod *corev1.Pod
+	err = wait.ExponentialBackoff(retry.DefaultBackoff, func() (bool, error) {
+		pod, err = o.kubeClient.CoreV1().Pods(o.Namespace).Get(ctx, o.ServiceName, metav1.GetOptions{})
+		if err != nil {
+			klog.ErrorS(err, "Can't get pod", "Pod", naming.ManualRef(o.Namespace, o.ServiceName))
+			return false, nil
+		}
+
+		return true, nil
+	})
+	if err != nil {
+		return fmt.Errorf("can't get pod %q: %w", naming.ManualRef(o.Namespace, o.ServiceName), err)
+	}
+
+	member := identity.NewMemberFromObjects(service, pod)
+
+	containerID, err := helpers.GetScyllaContainerID(pod)
+	if err != nil {
+		return fmt.Errorf("can't get scylla container id in pod %q: %w", naming.ObjRef(pod), err)
+	}
+
+	labelSelector := labels.Set{
+		naming.OwnerUIDLabel:      string(pod.UID),
+		naming.ConfigMapTypeLabel: string(naming.NodeConfigDataConfigMapType),
+	}.AsSelector()
+	lw := &cache.ListWatch{
+		ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
+			options.LabelSelector = labelSelector.String()
+			return o.kubeClient.CoreV1().ConfigMaps(pod.Namespace).List(ctx, options)
+		},
+		WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
+			options.LabelSelector = labelSelector.String()
+			return o.kubeClient.CoreV1().ConfigMaps(pod.Namespace).Watch(ctx, options)
+		},
+	}
+	klog.V(2).InfoS("Waiting for NodeConfig's data ConfigMap ", "Selector", labelSelector.String())
+	_, err = watchtools.UntilWithSync(
+		ctx,
+		lw,
+		&corev1.ConfigMap{},
+		nil,
+		func(e watch.Event) (bool, error) {
+			switch t := e.Type; t {
+			case watch.Added, watch.Modified:
+				cm := e.Object.(*corev1.ConfigMap)
+
+				if cm.Data == nil {
+					klog.V(4).InfoS("ConfigMap missing data", "ConfigMap", klog.KObj(cm))
+					return false, nil
+				}
+
+				srcData, found := cm.Data[naming.ScyllaRuntimeConfigKey]
+				if !found {
+					klog.V(4).InfoS("ConfigMap is missing key", "ConfigMap", klog.KObj(cm), "Key", naming.ScyllaRuntimeConfigKey)
+					return false, nil
+				}
+
+				src := &internalapi.SidecarRuntimeConfig{}
+				err = json.Unmarshal([]byte(srcData), src)
+				if err != nil {
+					if !found {
+						klog.V(4).ErrorS(err, "Can't unmarshal scylla runtime config", "ConfigMap", klog.KObj(cm), "Key", naming.ScyllaRuntimeConfigKey)
+						return false, nil
+					}
+				}
+
+				if src.ContainerID != containerID {
+					klog.V(4).InfoS("Scylla runtime config is not yet updated with our container id",
+						"ConfigMap", klog.KObj(cm),
+						"ConfigContainerID", src.ContainerID,
+						"SidecarContainerID", containerID,
+					)
+				}
+
+				if len(src.BlockingNodeConfigs) > 0 {
+					klog.V(4).InfoS("Waiting on NodeConfig(s)",
+						"ConfigMap", klog.KObj(cm),
+						"ContainerID", containerID,
+						"NodeConfig", src.BlockingNodeConfigs,
+					)
+					return false, nil
+
+				}
+
+				klog.V(4).InfoS("ConfigMap container ready", "ConfigMap", klog.KObj(cm), "ContainerID", containerID)
+				return true, nil
+
+			case watch.Error:
+				return true, apierrors.FromObject(e.Object)
+
+			default:
+				return true, fmt.Errorf("unexpected event type %v", t)
+			}
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("can't wait for optimization: %w", err)
+	}
+
+	klog.V(2).InfoS("Starting scylla")
+
+	cfg := config.NewScyllaConfig(member, o.kubeClient, o.scyllaClient, o.CPUCount)
+	cmd, err := cfg.Setup(ctx)
+	if err != nil {
+		return fmt.Errorf("can't set up scylla: %w", err)
+	}
+	// Make sure to propagate the signal if we die.
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Pdeathsig: syscall.SIGKILL,
+	}
 
 	var wg sync.WaitGroup
 	defer wg.Wait()
