@@ -131,13 +131,18 @@ func NewController(
 		operatorImage: operatorImage,
 	}
 
-	// ncc.enqueue(nodeconfigresources.DefaultScyllaNodeConfig())
-
 	nodeConfigInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    ncc.addNodeConfig,
 		UpdateFunc: ncc.updateNodeConfig,
 		DeleteFunc: ncc.deleteNodeConfig,
 	})
+
+	// TODO: react to label changes on nodes
+	// nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	// 	AddFunc:    ncc.addNode,
+	// 	UpdateFunc: ncc.updateNode,
+	// 	DeleteFunc: ncc.deleteNode,
+	// })
 
 	scyllaOperatorConfigInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    ncc.addOperatorConfig,
