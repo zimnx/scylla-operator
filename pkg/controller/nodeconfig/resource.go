@@ -151,15 +151,24 @@ func makeNodeConfigDaemonSet(nc *scyllav1alpha1.NodeConfig, operatorImage, scyll
 							ImagePullPolicy: corev1.PullIfNotPresent,
 							Args: []string{
 								"node-config-daemon",
+								"--pod-name=$(POD_NAME)",
 								"--node-name=$(NODE_NAME)",
-								fmt.Sprintf("--node-config-name=%q", nc.Name),
 								fmt.Sprintf("--node-config-uid=%q", nc.UID),
 								fmt.Sprintf("--scylla-image=%q", scyllaImage),
-								fmt.Sprintf("--disable-optimizations=%q", strconv.FormatBool(nc.Spec.DisableOptimizations)),
+								fmt.Sprintf("--disable-optimizations=%s", strconv.FormatBool(nc.Spec.DisableOptimizations)),
 								// TODO: add to Spec
 								fmt.Sprintf("--loglevel=%d", 4),
 							},
 							Env: []corev1.EnvVar{
+								{
+									Name: "POD_NAME",
+									ValueFrom: &corev1.EnvVarSource{
+										FieldRef: &corev1.ObjectFieldSelector{
+											APIVersion: "v1",
+											FieldPath:  "metadata.name",
+										},
+									},
+								},
 								{
 									Name: "NODE_NAME",
 									ValueFrom: &corev1.EnvVarSource{
