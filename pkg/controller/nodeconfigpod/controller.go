@@ -12,6 +12,7 @@ import (
 	scyllav1alpha1client "github.com/scylladb/scylla-operator/pkg/client/scylla/clientset/versioned/typed/scylla/v1alpha1"
 	scyllav1alpha1informers "github.com/scylladb/scylla-operator/pkg/client/scylla/informers/externalversions/scylla/v1alpha1"
 	scyllav1alpha1listers "github.com/scylladb/scylla-operator/pkg/client/scylla/listers/scylla/v1alpha1"
+	"github.com/scylladb/scylla-operator/pkg/naming"
 	"github.com/scylladb/scylla-operator/pkg/util/resource"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -178,6 +179,17 @@ func (ncpc *Controller) enqueueOwner(obj metav1.Object) {
 
 func (ncpc *Controller) addPod(obj interface{}) {
 	pod := obj.(*corev1.Pod)
+
+	// TODO: extract and use a better label, verify the container
+	if pod.Labels == nil {
+		return
+	}
+
+	_, isScyllaPod := pod.Labels[naming.ClusterNameLabel]
+	if !isScyllaPod {
+		return
+	}
+
 	klog.V(4).InfoS("Observed addition of Pod", "Pod", klog.KObj(pod))
 	ncpc.enqueue(pod)
 }
@@ -185,6 +197,16 @@ func (ncpc *Controller) addPod(obj interface{}) {
 func (ncpc *Controller) updatePod(old, cur interface{}) {
 	oldPod := old.(*corev1.Pod)
 	currentPod := cur.(*corev1.Pod)
+
+	// TODO: extract and use a better label, verify the container
+	if currentPod.Labels == nil {
+		return
+	}
+
+	_, isScyllaPod := currentPod.Labels[naming.ClusterNameLabel]
+	if !isScyllaPod {
+		return
+	}
 
 	klog.V(4).InfoS("Observed update of Pod", "Pod", klog.KObj(oldPod))
 	ncpc.enqueue(currentPod)
