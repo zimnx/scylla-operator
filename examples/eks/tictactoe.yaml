@@ -1,0 +1,52 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tictactoe
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tictactoe
+  namespace: tictactoe
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tictactoe
+  template:
+    metadata:
+      labels:
+        app: tictactoe
+    spec:
+      tolerations:
+      - key: role
+        operator: Equal
+        value: application
+        effect: NoSchedule
+      nodeSelector:
+        pool: "application-pool"
+      containers:
+      - name: tictactoe
+        image: scyllazimnx/tictactoe:latest
+        ports:
+        - containerPort: 5000
+        command: ["python"]
+        args: ["application.py", "--mode", "local", "--endpoint", "alternator-cluster-client.alternator.svc","--port", "8000"]
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: tictactoe
+  namespace: tictactoe
+spec:
+  type: LoadBalancer
+  selector:
+    app: tictactoe
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 5000

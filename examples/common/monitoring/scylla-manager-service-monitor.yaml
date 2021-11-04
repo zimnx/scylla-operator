@@ -7,7 +7,7 @@ spec:
   jobLabel: "app"
   selector:
     matchLabels:
-      app: scylla-manager
+      app.kubernetes.io/name: scylla-manager
   endpoints:
     - port: metrics
       metricRelabelings:
