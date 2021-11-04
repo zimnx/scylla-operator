@@ -2283,12 +2283,15 @@ spec:
             metadata:
               type: object
             spec:
+              description: ScyllaOperatorConfigSpec defines the desired state of the operator.
               properties:
                 scyllaUtilsImage:
-                  description: scyllaUtilsImage is an Scylla image used in containers requiring running scripts from Scylla image.
+                  description: scyllaUtilsImage is a Scylla image used for running scylla utilities.
+                  minLength: 1
                   type: string
               type: object
             status:
+              description: ScyllaOperatorConfigStatus defines the observed state of the operator.
               type: object
           type: object
       served: true
