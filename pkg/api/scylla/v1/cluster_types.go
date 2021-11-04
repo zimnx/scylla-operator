@@ -360,7 +360,7 @@ type BackupTaskStatus struct {
 	Error string `json:"error"`
 }
 
-// ScyllaClusterStatus defines the observed state of ScyllaCluster
+// ScyllaClusterStatus defines the observed state of ScyllaCluster.
 type ScyllaClusterStatus struct {
 	// observedGeneration is the most recent generation observed for this ScyllaCluster. It corresponds to the
 	// ScyllaCluster's generation, which is updated on mutation by the API Server.

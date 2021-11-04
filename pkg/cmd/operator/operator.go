@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"time"
 
 	scyllaversionedclient "github.com/scylladb/scylla-operator/pkg/client/scylla/clientset/versioned"
 	scyllainformers "github.com/scylladb/scylla-operator/pkg/client/scylla/informers/externalversions"
@@ -14,11 +13,14 @@ import (
 	"github.com/scylladb/scylla-operator/pkg/controller/nodeconfigpod"
 	"github.com/scylladb/scylla-operator/pkg/controller/orphanedpv"
 	"github.com/scylladb/scylla-operator/pkg/controller/scyllacluster"
+	"github.com/scylladb/scylla-operator/pkg/controller/scyllaoperatorconfig"
 	"github.com/scylladb/scylla-operator/pkg/genericclioptions"
 	"github.com/scylladb/scylla-operator/pkg/leaderelection"
 	"github.com/scylladb/scylla-operator/pkg/signals"
 	"github.com/scylladb/scylla-operator/pkg/version"
 	"github.com/spf13/cobra"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
 	apierrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
@@ -162,8 +164,14 @@ func (o *OperatorOptions) Run(streams genericclioptions.IOStreams, commandName s
 }
 
 func (o *OperatorOptions) run(ctx context.Context, streams genericclioptions.IOStreams) error {
-	kubeInformers := informers.NewSharedInformerFactory(o.kubeClient, 12*time.Hour)
-	scyllaInformers := scyllainformers.NewSharedInformerFactory(o.scyllaClient, 12*time.Hour)
+	kubeInformers := informers.NewSharedInformerFactory(o.kubeClient, resyncPeriod)
+	scyllaInformers := scyllainformers.NewSharedInformerFactory(o.scyllaClient, resyncPeriod)
+
+	scyllaOperatorConfigInformers := scyllainformers.NewSharedInformerFactoryWithOptions(o.scyllaClient, resyncPeriod, scyllainformers.WithTweakListOptions(
+		func(options *metav1.ListOptions) {
+			options.FieldSelector = fields.OneTermEqualSelector("metadata.name", "cluster").String()
+		},
+	))
 
 	scc, err := scyllacluster.NewController(
 		o.kubeClient,
@@ -214,6 +222,12 @@ func (o *OperatorOptions) run(ctx context.Context, streams genericclioptions.IOS
 		scyllaInformers.Scylla().V1alpha1().NodeConfigs(),
 	)
 
+	socc, err := scyllaoperatorconfig.NewController(
+		o.kubeClient,
+		o.scyllaClient.ScyllaV1alpha1(),
+		scyllaOperatorConfigInformers.Scylla().V1alpha1().ScyllaOperatorConfigs(),
+	)
+
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
@@ -222,10 +236,17 @@ func (o *OperatorOptions) run(ctx context.Context, streams genericclioptions.IOS
 		defer wg.Done()
 		kubeInformers.Start(ctx.Done())
 	}()
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		scyllaInformers.Start(ctx.Done())
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		scyllaOperatorConfigInformers.Start(ctx.Done())
 	}()
 
 	wg.Add(1)
@@ -250,6 +271,12 @@ func (o *OperatorOptions) run(ctx context.Context, streams genericclioptions.IOS
 	go func() {
 		defer wg.Done()
 		ncpc.Run(ctx, o.ConcurrentSyncs)
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		socc.Run(ctx, o.ConcurrentSyncs)
 	}()
 
 	<-ctx.Done()

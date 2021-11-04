@@ -130,7 +130,7 @@ func (ncdc *Controller) updateNodeStatus(ctx context.Context, nodeStatus *v1alph
 	return nil
 }
 
-func (ncdc *Controller) sync(ctx context.Context, key string) error {
+func (ncdc *Controller) sync(ctx context.Context) error {
 	startTime := time.Now()
 	klog.V(4).InfoS("Started sync", "startTime", startTime)
 	defer func() {

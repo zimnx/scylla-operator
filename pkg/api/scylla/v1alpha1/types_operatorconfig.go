@@ -5,7 +5,8 @@ package v1alpha1
 import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 type ScyllaOperatorConfigSpec struct {
-	// scyllaUtilsImage is an Scylla image used in containers requiring running scripts from Scylla image.
+	// scyllaUtilsImage is a Scylla image used for running scylla utilities.
+	// +kubebuilder:validation:MinLength=1
 	ScyllaUtilsImage string `json:"scyllaUtilsImage"`
 }
 
@@ -24,12 +25,16 @@ type ScyllaOperatorConfig struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   ScyllaOperatorConfigSpec   `json:"spec,omitempty"`
+	// spec defines the desired state of the operator.
+	Spec ScyllaOperatorConfigSpec `json:"spec,omitempty"`
+
+	// status defines the observed state of the operator.
 	Status ScyllaOperatorConfigStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
 type ScyllaOperatorConfigList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
