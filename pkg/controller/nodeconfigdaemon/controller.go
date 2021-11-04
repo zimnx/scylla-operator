@@ -39,7 +39,7 @@ import (
 )
 
 const (
-	ControllerName = "NodeConfigInstanceController"
+	ControllerName = "NodeConfigDaemonController"
 
 	maxSyncDuration = 30 * time.Second
 )
@@ -101,7 +101,7 @@ func NewController(
 
 	if kubeClient.CoreV1().RESTClient().GetRateLimiter() != nil {
 		err := ratelimiter.RegisterMetricAndTrackRateLimiterUsage(
-			"nodeconfiginstance_controller",
+			"nodeconfigdaemon_controller",
 			kubeClient.CoreV1().RESTClient().GetRateLimiter(),
 		)
 		if err != nil {
@@ -135,9 +135,9 @@ func NewController(
 			selfPodInformer.Informer().HasSynced,
 		},
 
-		eventRecorder: eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "nodeconfig-controller"}),
+		eventRecorder: eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "nodeconfigdaemon-controller"}),
 
-		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "nodeconfig"),
+		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "nodeconfigdaemon"),
 	}
 
 	localScyllaPodsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -202,7 +202,6 @@ func (ncdc *Controller) Run(ctx context.Context) {
 	}
 
 	wg.Add(1)
-	// Running tuning script in parallel on the same node is pointless.
 	go func() {
 		defer wg.Done()
 		wait.UntilWithContext(ctx, ncdc.runWorker, time.Second)
