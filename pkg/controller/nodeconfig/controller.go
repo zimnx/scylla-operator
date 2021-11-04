@@ -144,6 +144,11 @@ func NewController(
 		UpdateFunc: ncc.updateOperatorConfig,
 	})
 
+	scyllaOperatorConfigInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    ncc.addOperatorConfig,
+		UpdateFunc: ncc.updateOperatorConfig,
+	})
+
 	clusterRoleInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    ncc.addClusterRole,
 		UpdateFunc: ncc.updateClusterRole,
