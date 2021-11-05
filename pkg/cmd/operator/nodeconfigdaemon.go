@@ -9,7 +9,6 @@ import (
 
 	scyllaversionedclient "github.com/scylladb/scylla-operator/pkg/client/scylla/clientset/versioned"
 	scyllainformers "github.com/scylladb/scylla-operator/pkg/client/scylla/informers/externalversions"
-	"github.com/scylladb/scylla-operator/pkg/cmdutil"
 	"github.com/scylladb/scylla-operator/pkg/controller/nodeconfigdaemon"
 	"github.com/scylladb/scylla-operator/pkg/cri"
 	"github.com/scylladb/scylla-operator/pkg/genericclioptions"
@@ -23,6 +22,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/klog/v2"
 )
 
@@ -36,9 +36,12 @@ type NodeConfigDaemonOptions struct {
 
 	PodName              string
 	NodeName             string
+	NodeConfigName       string
 	NodeConfigUID        string
 	ScyllaImage          string
 	DisableOptimizations bool
+
+	CRIEndpoints []string
 
 	kubeClient   kubernetes.Interface
 	scyllaClient scyllaversionedclient.Interface
@@ -48,6 +51,11 @@ func NewNodeConfigOptions(streams genericclioptions.IOStreams) *NodeConfigDaemon
 	return &NodeConfigDaemonOptions{
 		ClientConfig:        genericclioptions.NewClientConfig("node-config"),
 		InClusterReflection: genericclioptions.InClusterReflection{},
+		CRIEndpoints: []string{
+			"unix:///var/run/dockershim.sock",
+			"unix:///run/containerd/containerd.sock",
+			"unix:///run/crio/crio.sock",
+		},
 	}
 }
 
@@ -69,7 +77,7 @@ func NewNodeConfigCmd(streams genericclioptions.IOStreams) *cobra.Command {
 				return err
 			}
 
-			err = o.Run(streams, cmd.Name())
+			err = o.Run(streams, cmd)
 			if err != nil {
 				return err
 			}
@@ -86,9 +94,11 @@ func NewNodeConfigCmd(streams genericclioptions.IOStreams) *cobra.Command {
 
 	cmd.Flags().StringVarP(&o.PodName, "pod-name", "", o.PodName, "Name of the pod this container this running in.")
 	cmd.Flags().StringVarP(&o.NodeName, "node-name", "", o.NodeName, "Name of the node where this Pod is running.")
+	cmd.Flags().StringVarP(&o.NodeConfigName, "node-config-name", "", o.NodeConfigName, "Name of the NodeConfig that owns this subcontroller.")
 	cmd.Flags().StringVarP(&o.NodeConfigUID, "node-config-uid", "", o.NodeConfigUID, "UID of the NodeConfig that owns this subcontroller.")
 	cmd.Flags().StringVarP(&o.ScyllaImage, "scylla-image", "", o.ScyllaImage, "Scylla image used for running perftune.")
 	cmd.Flags().BoolVarP(&o.DisableOptimizations, "disable-optimizations", "", o.DisableOptimizations, "Controls if optimizations are disabled")
+	cmd.Flags().StringArrayVarP(&o.CRIEndpoints, "cri-endpoint", "", o.CRIEndpoints, "CRI endpoint to connect to. It will try to connect to any of them, in the given order.")
 
 	return cmd
 }
@@ -105,6 +115,10 @@ func (o *NodeConfigDaemonOptions) Validate() error {
 
 	if len(o.NodeName) == 0 {
 		errs = append(errs, fmt.Errorf("node-name can't be empty"))
+	}
+
+	if len(o.NodeConfigName) == 0 {
+		errs = append(errs, fmt.Errorf("node-config-name can't be empty"))
 	}
 
 	if len(o.NodeConfigUID) == 0 {
@@ -142,9 +156,9 @@ func (o *NodeConfigDaemonOptions) Complete() error {
 	return nil
 }
 
-func (o *NodeConfigDaemonOptions) Run(streams genericclioptions.IOStreams, commandName string) error {
-	klog.Infof("%s version %s", commandName, version.Get())
-	klog.Infof("loglevel is set to %q", cmdutil.GetLoglevel())
+func (o *NodeConfigDaemonOptions) Run(streams genericclioptions.IOStreams, cmd *cobra.Command) error {
+	klog.Infof("%s version %s", cmd.Name(), version.Get())
+	cliflag.PrintFlags(cmd.Flags())
 
 	stopCh := signals.StopChannel()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -154,9 +168,9 @@ func (o *NodeConfigDaemonOptions) Run(streams genericclioptions.IOStreams, comma
 		cancel()
 	}()
 
-	criClient, err := cri.NewClient(ctx, naming.HostFilesystemDirName)
+	criClient, err := cri.NewClient(ctx, o.CRIEndpoints)
 	if err != nil {
-		return err
+		return fmt.Errorf("can't create cri client: %w", err)
 	}
 
 	namespacedKubeInformers := informers.NewSharedInformerFactoryWithOptions(o.kubeClient, resyncPeriod, informers.WithNamespace(o.Namespace))
@@ -182,10 +196,10 @@ func (o *NodeConfigDaemonOptions) Run(streams genericclioptions.IOStreams, comma
 		namespacedKubeInformers.Apps().V1().DaemonSets(),
 		namespacedKubeInformers.Batch().V1().Jobs(),
 		selfPodInformers.Core().V1().Pods(),
-		o.PodName,
 		o.Namespace,
 		o.PodName,
 		o.NodeName,
+		o.NodeConfigName,
 		types.UID(o.NodeConfigUID),
 		o.ScyllaImage,
 	)
