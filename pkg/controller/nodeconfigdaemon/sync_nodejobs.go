@@ -16,7 +16,7 @@ import (
 func (ncdc *Controller) makeJobsForNode(ctx context.Context) ([]*batchv1.Job, error) {
 	pod, err := ncdc.selfPodLister.Pods(ncdc.namespace).Get(ncdc.podName)
 	if err != nil {
-		return nil, fmt.Errorf("can't get Pod %s/%s: %w", ncdc.namespace, ncdc.podName, err)
+		return nil, fmt.Errorf("can't get self Pod %q: %w", naming.ManualRef(ncdc.namespace, ncdc.podName), err)
 	}
 
 	var jobs []*batchv1.Job

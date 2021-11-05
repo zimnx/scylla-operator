@@ -136,24 +136,25 @@ func (ncdc *Controller) syncPertuneJobForContainers(ctx context.Context, existin
 		return fmt.Errorf("can't prune perftune Jobs: %w", err)
 	}
 
-	fresh, _, err := resourceapply.ApplyJob(ctx, ncdc.kubeClient.BatchV1(), ncdc.namespacedJobLister, ncdc.eventRecorder, required)
-	if err != nil {
-		return fmt.Errorf("can't apply job %q: %w", naming.ObjRef(required), err)
-	}
+	if required != nil {
+		fresh, _, err := resourceapply.ApplyJob(ctx, ncdc.kubeClient.BatchV1(), ncdc.namespacedJobLister, ncdc.eventRecorder, required)
+		if err != nil {
+			return fmt.Errorf("can't apply job %q: %w", naming.ObjRef(required), err)
+		}
 
-	// We have successfully applied the job definition so the data should always be present at this point.
-	nodeConfigJobDataString, found := fresh.Annotations[naming.NodeConfigJobData]
-	if !found {
-		return fmt.Errorf("internal error: job %q is missing %q annotation", klog.KObj(fresh), naming.NodeConfigJobData)
-	}
+		// We have successfully applied the job definition so the data should always be present at this point.
+		nodeConfigJobDataString, found := fresh.Annotations[naming.NodeConfigJobData]
+		if !found {
+			return fmt.Errorf("internal error: job %q is missing %q annotation", klog.KObj(fresh), naming.NodeConfigJobData)
+		}
 
-	jobData := &perftuneJobForContainersData{}
-	err = json.Unmarshal([]byte(nodeConfigJobDataString), jobData)
-	if err != nil {
-		return fmt.Errorf("internal error: can't unmarshal node config data for job %q: %w", klog.KObj(fresh), err)
+		jobData := &perftuneJobForContainersData{}
+		err = json.Unmarshal([]byte(nodeConfigJobDataString), jobData)
+		if err != nil {
+			return fmt.Errorf("internal error: can't unmarshal node config data for job %q: %w", klog.KObj(fresh), err)
+		}
+		nodeStatus.TunedContainers = jobData.ContainerIDs
 	}
-
-	nodeStatus.TunedContainers = jobData.ContainerIDs
 
 	return nil
 }
