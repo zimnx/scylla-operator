@@ -11,7 +11,6 @@ import (
 	"time"
 
 	scyllaversionedclient "github.com/scylladb/scylla-operator/pkg/client/scylla/clientset/versioned"
-	"github.com/scylladb/scylla-operator/pkg/cmdutil"
 	"github.com/scylladb/scylla-operator/pkg/controller/helpers"
 	sidecarcontroller "github.com/scylladb/scylla-operator/pkg/controller/sidecar"
 	"github.com/scylladb/scylla-operator/pkg/genericclioptions"
@@ -39,6 +38,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	watchtools "k8s.io/client-go/tools/watch"
 	"k8s.io/client-go/util/retry"
+	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/klog/v2"
 )
 
@@ -83,7 +83,7 @@ func NewSidecarCmd(streams genericclioptions.IOStreams) *cobra.Command {
 				return err
 			}
 
-			err = o.Run(streams, cmd.Name())
+			err = o.Run(streams, cmd)
 			if err != nil {
 				return err
 			}
@@ -156,9 +156,9 @@ func (o *SidecarOptions) Complete() error {
 	return nil
 }
 
-func (o *SidecarOptions) Run(streams genericclioptions.IOStreams, commandName string) error {
-	klog.Infof("%s version %s", commandName, version.Get())
-	klog.Infof("loglevel is set to %q", cmdutil.GetLoglevel())
+func (o *SidecarOptions) Run(streams genericclioptions.IOStreams, cmd *cobra.Command) error {
+	klog.Infof("%s version %s", cmd.Name(), version.Get())
+	cliflag.PrintFlags(cmd.Flags())
 
 	stopCh := signals.StopChannel()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -329,12 +329,12 @@ func (o *SidecarOptions) Run(streams genericclioptions.IOStreams, commandName st
 	klog.V(2).InfoS("Starting scylla")
 
 	cfg := config.NewScyllaConfig(member, o.kubeClient, o.scyllaClient, o.CPUCount)
-	cmd, err := cfg.Setup(ctx)
+	scyllaCmd, err := cfg.Setup(ctx)
 	if err != nil {
 		return fmt.Errorf("can't set up scylla: %w", err)
 	}
 	// Make sure to propagate the signal if we die.
-	cmd.SysProcAttr = &syscall.SysProcAttr{
+	scyllaCmd.SysProcAttr = &syscall.SysProcAttr{
 		Pdeathsig: syscall.SIGKILL,
 	}
 
@@ -391,7 +391,7 @@ func (o *SidecarOptions) Run(streams genericclioptions.IOStreams, commandName st
 	}()
 
 	// Run scylla in a new process.
-	err = cmd.Start()
+	err = scyllaCmd.Start()
 	if err != nil {
 		return fmt.Errorf("can't start scylla: %w", err)
 	}
@@ -400,7 +400,7 @@ func (o *SidecarOptions) Run(streams genericclioptions.IOStreams, commandName st
 		klog.InfoS("Waiting for scylla process to finish")
 		defer klog.InfoS("Scylla process finished")
 
-		err := cmd.Wait()
+		err := scyllaCmd.Wait()
 		if err != nil {
 			klog.ErrorS(err, "Can't wait for scylla process to finish")
 		}
@@ -414,7 +414,7 @@ func (o *SidecarOptions) Run(streams genericclioptions.IOStreams, commandName st
 		<-ctx.Done()
 
 		klog.InfoS("Sending SIGTERM to the scylla process")
-		err := cmd.Process.Signal(syscall.SIGTERM)
+		err := scyllaCmd.Process.Signal(syscall.SIGTERM)
 		if err != nil {
 			klog.ErrorS(err, "Can't send SIGTERM to the scylla process")
 			return

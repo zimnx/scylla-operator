@@ -8,7 +8,6 @@ import (
 
 	scyllaversionedclient "github.com/scylladb/scylla-operator/pkg/client/scylla/clientset/versioned"
 	scyllainformers "github.com/scylladb/scylla-operator/pkg/client/scylla/informers/externalversions"
-	"github.com/scylladb/scylla-operator/pkg/cmdutil"
 	"github.com/scylladb/scylla-operator/pkg/controller/nodeconfig"
 	"github.com/scylladb/scylla-operator/pkg/controller/nodeconfigpod"
 	"github.com/scylladb/scylla-operator/pkg/controller/orphanedpv"
@@ -24,6 +23,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/klog/v2"
 )
 
@@ -68,7 +68,7 @@ func NewOperatorCmd(streams genericclioptions.IOStreams) *cobra.Command {
 				return err
 			}
 
-			err = o.Run(streams, cmd.Name())
+			err = o.Run(streams, cmd)
 			if err != nil {
 				return err
 			}
@@ -133,9 +133,9 @@ func (o *OperatorOptions) Complete() error {
 	return nil
 }
 
-func (o *OperatorOptions) Run(streams genericclioptions.IOStreams, commandName string) error {
-	klog.Infof("%s version %s", commandName, version.Get())
-	klog.Infof("loglevel is set to %q", cmdutil.GetLoglevel())
+func (o *OperatorOptions) Run(streams genericclioptions.IOStreams, cmd *cobra.Command) error {
+	klog.Infof("%s version %s", cmd.Name(), version.Get())
+	cliflag.PrintFlags(cmd.Flags())
 
 	stopCh := signals.StopChannel()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -150,7 +150,7 @@ func (o *OperatorOptions) Run(streams genericclioptions.IOStreams, commandName s
 
 	return leaderelection.Run(
 		ctx,
-		commandName,
+		cmd.Name(),
 		lockName,
 		o.Namespace,
 		o.kubeClient,

@@ -79,6 +79,11 @@ func NodeConfigClusterRole() *rbacv1.ClusterRole {
 				Resources: []string{"nodeconfigs"},
 				Verbs:     []string{"get", "list", "watch"},
 			},
+			{
+				APIGroups: []string{"scylla.scylladb.com"},
+				Resources: []string{"nodeconfigs/status"},
+				Verbs:     []string{"update"},
+			},
 		},
 	}
 }
@@ -153,9 +158,13 @@ func makeNodeConfigDaemonSet(nc *scyllav1alpha1.NodeConfig, operatorImage, scyll
 								"node-config-daemon",
 								"--pod-name=$(POD_NAME)",
 								"--node-name=$(NODE_NAME)",
-								fmt.Sprintf("--node-config-uid=%q", nc.UID),
-								fmt.Sprintf("--scylla-image=%q", scyllaImage),
+								fmt.Sprintf("--node-config-name=%s", nc.Name),
+								fmt.Sprintf("--node-config-uid=%s", nc.UID),
+								fmt.Sprintf("--scylla-image=%s", scyllaImage),
 								fmt.Sprintf("--disable-optimizations=%s", strconv.FormatBool(nc.Spec.DisableOptimizations)),
+								fmt.Sprintf("--cri-endpoint=unix://%s/var/run/dockershim.sock", naming.HostFilesystemDirName),
+								fmt.Sprintf("--cri-endpoint=unix://%s/run/containerd/containerd.sock", naming.HostFilesystemDirName),
+								fmt.Sprintf("--cri-endpoint=unix://%s/run/crio/crio.sock", naming.HostFilesystemDirName),
 								// TODO: add to Spec
 								fmt.Sprintf("--loglevel=%d", 4),
 							},

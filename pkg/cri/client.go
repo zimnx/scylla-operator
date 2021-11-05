@@ -7,25 +7,97 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"sync"
 	"time"
 
-	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	apierrors "k8s.io/apimachinery/pkg/util/errors"
 	pb "k8s.io/cri-api/pkg/apis/runtime/v1alpha2"
 	"k8s.io/klog/v2"
 )
 
 const (
-	dialTimeout = time.Second
+	dialTimeout = 2 * time.Second
 )
 
 var (
-	runtimeEndpoints = []string{"/var/run/dockershim.sock", "/run/containerd/containerd.sock", "/run/crio/crio.sock"}
-
 	NotFoundErr = fmt.Errorf("not found")
 )
+
+type endpointState struct {
+	endpoint   string
+	connection *grpc.ClientConn
+	err        error
+}
+
+func connectToEndpoint(ctx context.Context, endpoint string) *endpointState {
+	connCtx, connCtxCancel := context.WithTimeout(ctx, dialTimeout)
+	defer connCtxCancel()
+
+	klog.V(4).InfoS("Connecting to CRI", "Endpoint", endpoint)
+	conn, err := grpc.DialContext(connCtx, endpoint, grpc.WithInsecure(), grpc.WithBlock(), grpc.WithContextDialer(unixContextDialer(net.Dialer{})))
+	return &endpointState{
+		endpoint:   endpoint,
+		connection: conn,
+		err:        err,
+	}
+}
+
+func connectToEndpoints(ctx context.Context, endpoints []string) []*endpointState {
+	connCtx, connCtxCancel := context.WithTimeout(ctx, dialTimeout)
+	defer connCtxCancel()
+
+	// We need to keep the order, so we'll use an array instead of a channel.
+	results := make([]*endpointState, len(endpoints))
+
+	var wg sync.WaitGroup
+	defer wg.Wait()
+	for i := range endpoints {
+		wg.Add(1)
+
+		go func(i int) {
+			defer wg.Done()
+
+			results[i] = connectToEndpoint(connCtx, endpoints[i])
+		}(i)
+	}
+
+	return results
+}
+
+func getConnection(ctx context.Context, endpoints []string, timeout time.Duration) (conn *grpc.ClientConn, err error) {
+	if len(endpoints) == 0 {
+		return nil, fmt.Errorf("at least one cri endpoint is needed")
+	}
+
+	results := connectToEndpoints(ctx, endpoints)
+
+	klog.V(2).InfoS("checkpit 1")
+	defer klog.V(2).InfoS("checkpit 10")
+	var successfulConns []*grpc.ClientConn
+	var successfulEndpoints []string
+	var errs []error
+	for _, s := range results {
+		klog.V(2).InfoS("checkpit 2")
+		if s.err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", s.endpoint, s.err))
+			continue
+		}
+
+		successfulConns = append(successfulConns, s.connection)
+		successfulEndpoints = append(successfulEndpoints, s.endpoint)
+	}
+
+	if len(successfulConns) == 0 {
+		return nil, apierrors.NewAggregate(errs)
+	}
+
+	klog.V(2).InfoS("CRI connect", "Successful", successfulEndpoints, "Other attempts", apierrors.NewAggregate(errs))
+
+	return successfulConns[0], nil
+}
 
 type Client interface {
 	Inspect(ctx context.Context, containerID string) (*ContainerStatus, error)
@@ -37,11 +109,12 @@ type client struct {
 	client pb.RuntimeServiceClient
 }
 
-func NewClient(ctx context.Context, endpointPrefix string) (*client, error) {
-	conn, err := getConnection(ctx, endpointPrefix, runtimeEndpoints, dialTimeout)
+func NewClient(ctx context.Context, endpoints []string) (*client, error) {
+	conn, err := getConnection(ctx, endpoints, dialTimeout)
 	if err != nil {
-		return nil, errors.Wrap(err, "connect")
+		return nil, fmt.Errorf("can't create connection: %w", err)
 	}
+
 	return &client{
 		conn:   conn,
 		client: pb.NewRuntimeServiceClient(conn),
@@ -110,27 +183,4 @@ func unixContextDialer(d net.Dialer) func(ctx context.Context, addr string) (net
 	return func(ctx context.Context, addr string) (net.Conn, error) {
 		return d.DialContext(ctx, "unix", addr)
 	}
-}
-
-func getConnection(ctx context.Context, endpointPrefix string, endpoints []string, timeout time.Duration) (conn *grpc.ClientConn, err error) {
-	if len(endpoints) == 0 {
-		return nil, fmt.Errorf("endpoint is not set")
-	}
-	for indx, endpoint := range endpoints {
-		addr := endpointPrefix + endpoint
-		klog.V(4).InfoS("connecting to container runtime service", "address", addr, "timeout", timeout)
-		connCtx, connCtxCancel := context.WithTimeout(ctx, timeout)
-		defer connCtxCancel()
-		conn, err = grpc.DialContext(connCtx, addr, grpc.WithInsecure(), grpc.WithBlock(), grpc.WithContextDialer(unixContextDialer(net.Dialer{})))
-		if err != nil {
-			if indx == len(endpoints)-1 {
-				return nil, err
-			}
-			klog.V(4).InfoS("failed to connect to container runtime service", "address", addr, "error", err)
-		} else {
-			klog.V(2).InfoS("connected successfully using endpoint", "address", addr)
-			break
-		}
-	}
-	return conn, nil
 }
