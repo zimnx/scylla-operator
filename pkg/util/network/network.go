@@ -25,27 +25,31 @@ func FindFirstNonLocalIP() (net.IP, error) {
 
 var knownInterfaceNamesPrefixes = []string{"eth", "eno", "ens", "enp"}
 
-func FindEthernetInterface() (net.Interface, error) {
-	ifaces, err := net.Interfaces()
+func FindEthernetInterfaces() ([]net.Interface, error) {
+	hostInterfaces, err := net.Interfaces()
 	if err != nil {
-		return net.Interface{}, err
+		return nil, err
 	}
 
-	// Return iface if it's one of the known.
-	for _, knownPrefix := range knownInterfaceNamesPrefixes {
-		for _, iface := range ifaces {
-			if strings.HasPrefix(iface.Name, knownPrefix) {
-				return iface, nil
+	var ethInterfaces []net.Interface
+	for _, iface := range hostInterfaces {
+		// Skip loopback interfaces
+		if iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+
+		// Tune only known prefixes
+		for _, prefix := range knownInterfaceNamesPrefixes {
+			if strings.HasPrefix(iface.Name, prefix) {
+				ethInterfaces = append(ethInterfaces, iface)
+				break
 			}
 		}
 	}
 
-	// Fallback to non-loopback iface.
-	for _, iface := range ifaces {
-		if iface.Flags&net.FlagLoopback == 0 {
-			return iface, nil
-		}
+	if len(ethInterfaces) != 0 {
+		return ethInterfaces, nil
 	}
 
-	return net.Interface{}, fmt.Errorf("local ethernet interface not found")
+	return nil, fmt.Errorf("local ethernet interface not found")
 }
