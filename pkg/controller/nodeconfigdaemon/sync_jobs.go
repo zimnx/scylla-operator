@@ -28,6 +28,16 @@ func (ncdc *Controller) makeJobsForNode(ctx context.Context) ([]*batchv1.Job, er
 		return nil, fmt.Errorf("can't get self Pod %q: %w", naming.ManualRef(ncdc.namespace, ncdc.podName), err)
 	}
 
+	ifaces, err := network.FindEthernetInterfaces()
+	if err != nil {
+		return nil, fmt.Errorf("can't find local interface")
+	}
+	ifaceNames := make([]string, 0, len(ifaces))
+	for _, iface := range ifaces {
+		ifaceNames = append(ifaceNames, iface.Name)
+	}
+	klog.V(4).Info("Tuning network interfaces", "ifaces", ifaceNames)
+
 	var jobs []*batchv1.Job
 
 	jobs = append(jobs, makePerftuneJobForNode(
@@ -35,6 +45,7 @@ func (ncdc *Controller) makeJobsForNode(ctx context.Context) ([]*batchv1.Job, er
 		ncdc.namespace,
 		ncdc.nodeName,
 		ncdc.scyllaImage,
+		ifaceNames,
 		&pod.Spec,
 	))
 
@@ -64,11 +75,6 @@ func (ncdc *Controller) makePerftuneJobForContainers(ctx context.Context, podSpe
 		return nil, fmt.Errorf("can't find data dir host path: %w", err)
 	}
 
-	iface, err := network.FindEthernetInterface()
-	if err != nil {
-		return nil, fmt.Errorf("can't find local interface")
-	}
-
 	disableWritebackCache := false
 	if cloud.OnGKE() {
 		scyllaVersion, err := naming.ImageToVersion(ncdc.scyllaImage)
@@ -87,7 +93,6 @@ func (ncdc *Controller) makePerftuneJobForContainers(ctx context.Context, podSpe
 		ncdc.namespace,
 		ncdc.nodeName,
 		ncdc.scyllaImage,
-		iface.Name,
 		irqCPUs.FormatMask(),
 		dataHostPaths,
 		disableWritebackCache,
