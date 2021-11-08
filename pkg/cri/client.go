@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"net/url"
 	"sync"
 	"time"
 
@@ -36,8 +37,30 @@ func connectToEndpoint(ctx context.Context, endpoint string) *endpointState {
 	connCtx, connCtxCancel := context.WithTimeout(ctx, dialTimeout)
 	defer connCtxCancel()
 
-	klog.V(4).InfoS("Connecting to CRI", "Endpoint", endpoint)
-	conn, err := grpc.DialContext(connCtx, endpoint, grpc.WithInsecure(), grpc.WithBlock(), grpc.WithContextDialer(unixContextDialer(net.Dialer{})))
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return &endpointState{
+			endpoint:   endpoint,
+			connection: nil,
+			err:        fmt.Errorf("invalid url: %w", err),
+		}
+	}
+
+	var dialer func(context.Context, string) (net.Conn, error)
+	switch u.Scheme {
+	case "unix":
+		dialer = unixContextDialer(net.Dialer{})
+
+	default:
+		return &endpointState{
+			endpoint:   endpoint,
+			connection: nil,
+			err:        fmt.Errorf("invalid scheme %q", u.Scheme),
+		}
+	}
+
+	klog.V(4).InfoS("Connecting to CRI endpoint", "Scheme", u.Scheme, "Path", u.Path)
+	conn, err := grpc.DialContext(connCtx, u.Path, grpc.WithInsecure(), grpc.WithBlock(), grpc.WithContextDialer(dialer))
 	return &endpointState{
 		endpoint:   endpoint,
 		connection: conn,
@@ -46,9 +69,6 @@ func connectToEndpoint(ctx context.Context, endpoint string) *endpointState {
 }
 
 func connectToEndpoints(ctx context.Context, endpoints []string) []*endpointState {
-	connCtx, connCtxCancel := context.WithTimeout(ctx, dialTimeout)
-	defer connCtxCancel()
-
 	// We need to keep the order, so we'll use an array instead of a channel.
 	results := make([]*endpointState, len(endpoints))
 
@@ -60,27 +80,24 @@ func connectToEndpoints(ctx context.Context, endpoints []string) []*endpointStat
 		go func(i int) {
 			defer wg.Done()
 
-			results[i] = connectToEndpoint(connCtx, endpoints[i])
+			results[i] = connectToEndpoint(ctx, endpoints[i])
 		}(i)
 	}
 
 	return results
 }
 
-func getConnection(ctx context.Context, endpoints []string, timeout time.Duration) (conn *grpc.ClientConn, err error) {
+func getConnection(ctx context.Context, endpoints []string) (conn *grpc.ClientConn, err error) {
 	if len(endpoints) == 0 {
 		return nil, fmt.Errorf("at least one cri endpoint is needed")
 	}
 
 	results := connectToEndpoints(ctx, endpoints)
 
-	klog.V(2).InfoS("checkpit 1")
-	defer klog.V(2).InfoS("checkpit 10")
 	var successfulConns []*grpc.ClientConn
 	var successfulEndpoints []string
 	var errs []error
 	for _, s := range results {
-		klog.V(2).InfoS("checkpit 2")
 		if s.err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", s.endpoint, s.err))
 			continue
@@ -94,7 +111,7 @@ func getConnection(ctx context.Context, endpoints []string, timeout time.Duratio
 		return nil, apierrors.NewAggregate(errs)
 	}
 
-	klog.V(2).InfoS("CRI connect", "Successful", successfulEndpoints, "Other attempts", apierrors.NewAggregate(errs))
+	klog.V(2).InfoS("Connected to CRI endpoint", "Successful", successfulEndpoints, "Other attempts", apierrors.NewAggregate(errs))
 
 	return successfulConns[0], nil
 }
@@ -110,7 +127,7 @@ type client struct {
 }
 
 func NewClient(ctx context.Context, endpoints []string) (*client, error) {
-	conn, err := getConnection(ctx, endpoints, dialTimeout)
+	conn, err := getConnection(ctx, endpoints)
 	if err != nil {
 		return nil, fmt.Errorf("can't create connection: %w", err)
 	}
