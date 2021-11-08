@@ -22,6 +22,25 @@ import (
 	"k8s.io/klog/v2"
 )
 
+func (ncdc *Controller) makeJobsForNode(ctx context.Context) ([]*batchv1.Job, error) {
+	pod, err := ncdc.selfPodLister.Pods(ncdc.namespace).Get(ncdc.podName)
+	if err != nil {
+		return nil, fmt.Errorf("can't get self Pod %q: %w", naming.ManualRef(ncdc.namespace, ncdc.podName), err)
+	}
+
+	var jobs []*batchv1.Job
+
+	jobs = append(jobs, makePerftuneJobForNode(
+		ncdc.newControllerRef(),
+		ncdc.namespace,
+		ncdc.nodeName,
+		ncdc.scyllaImage,
+		&pod.Spec,
+	))
+
+	return jobs, nil
+}
+
 func (ncdc *Controller) makePerftuneJobForContainers(ctx context.Context, podSpec *corev1.PodSpec, optimizablePods []*corev1.Pod, scyllaContainerIDs []string) (*batchv1.Job, error) {
 	cpuInfo, err := linux.ReadCPUInfo(path.Join(naming.HostFilesystemDirName, "/proc/cpuinfo"))
 	if err != nil {
@@ -125,36 +144,68 @@ func (ncdc *Controller) makeJobForContainers(ctx context.Context) (*batchv1.Job,
 	return ncdc.makePerftuneJobForContainers(ctx, &selfPod.Spec, optimizablePods, scyllaContainerIDs)
 }
 
-func (ncdc *Controller) syncPertuneJobForContainers(ctx context.Context, existingJobs map[string]*batchv1.Job, nodeStatus *v1alpha1.NodeStatus) error {
-	required, err := ncdc.makeJobForContainers(ctx)
+func (ncdc *Controller) syncJobs(ctx context.Context, jobs map[string]*batchv1.Job, nodeStatus *v1alpha1.NodeStatus) error {
+	requiredForNode, err := ncdc.makeJobsForNode(ctx)
 	if err != nil {
-		return fmt.Errorf("can't make preftune Job for containers: %w", err)
+		return fmt.Errorf("can't make Jobs for node: %w", err)
 	}
 
-	err = ncdc.pruneJobs(ctx, existingJobs, []*batchv1.Job{required})
+	requiredForContainers, err := ncdc.makeJobForContainers(ctx)
 	if err != nil {
-		return fmt.Errorf("can't prune perftune Jobs: %w", err)
+		return fmt.Errorf("can't make Jobs for containers: %w", err)
 	}
 
-	if required != nil {
-		fresh, _, err := resourceapply.ApplyJob(ctx, ncdc.kubeClient.BatchV1(), ncdc.namespacedJobLister, ncdc.eventRecorder, required)
+	required := make([]*batchv1.Job, 0, len(requiredForNode))
+	required = append(required, requiredForNode...)
+	if requiredForContainers != nil {
+		required = append(required, requiredForContainers)
+	}
+
+	err = ncdc.pruneJobs(ctx, jobs, required)
+	if err != nil {
+		return fmt.Errorf("can't prune Jobs: %w", err)
+	}
+
+	finished := true
+	for _, j := range required {
+		fresh, _, err := resourceapply.ApplyJob(ctx, ncdc.kubeClient.BatchV1(), ncdc.namespacedJobLister, ncdc.eventRecorder, j)
 		if err != nil {
-			return fmt.Errorf("can't apply job %q: %w", naming.ObjRef(required), err)
+			return fmt.Errorf("can't create job %s: %w", naming.ObjRef(j), err)
 		}
 
-		// We have successfully applied the job definition so the data should always be present at this point.
-		nodeConfigJobDataString, found := fresh.Annotations[naming.NodeConfigJobData]
+		t, found := j.Labels[naming.NodeConfigJobTypeLabel]
 		if !found {
-			return fmt.Errorf("internal error: job %q is missing %q annotation", klog.KObj(fresh), naming.NodeConfigJobData)
+			return fmt.Errorf("job %q is missing %q label", naming.ObjRef(j), naming.NodeConfigJobTypeLabel)
 		}
 
-		jobData := &perftuneJobForContainersData{}
-		err = json.Unmarshal([]byte(nodeConfigJobDataString), jobData)
-		if err != nil {
-			return fmt.Errorf("internal error: can't unmarshal node config data for job %q: %w", klog.KObj(fresh), err)
+		switch naming.NodeConfigJobType(t) {
+		case naming.NodeConfigJobTypeNode:
+			// FIXME: Extract into a function and double check how jobs report status.
+			if fresh.Status.CompletionTime != nil && fresh.Status.Succeeded > 0 {
+				klog.V(4).InfoS("Job isn't completed yet", "Job", klog.KObj(fresh))
+				finished = false
+			}
+
+		case naming.NodeConfigJobTypeContainers:
+			// We have successfully applied the job definition so the data should always be present at this point.
+			nodeConfigJobDataString, found := fresh.Annotations[naming.NodeConfigJobData]
+			if !found {
+				return fmt.Errorf("internal error: job %q is missing %q annotation", klog.KObj(fresh), naming.NodeConfigJobData)
+			}
+
+			jobData := &perftuneJobForContainersData{}
+			err = json.Unmarshal([]byte(nodeConfigJobDataString), jobData)
+			if err != nil {
+				return fmt.Errorf("internal error: can't unmarshal node config data for job %q: %w", klog.KObj(fresh), err)
+			}
+			nodeStatus.TunedContainers = jobData.ContainerIDs
+
+		default:
+			return fmt.Errorf("job %q has an unkown type %q", naming.ObjRef(j), t)
 		}
-		nodeStatus.TunedContainers = jobData.ContainerIDs
 	}
+
+	nodeStatus.TunedNode = finished
 
 	return nil
 }

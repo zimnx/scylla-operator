@@ -38,13 +38,17 @@ func (ncdc *Controller) getCanAdoptFunc(ctx context.Context) func() error {
 	}
 }
 
-func (ncdc *Controller) getJobs(ctx context.Context, selector labels.Selector) (map[string]*batchv1.Job, error) {
+func (ncdc *Controller) getJobs(ctx context.Context) (map[string]*batchv1.Job, error) {
 	// List all Job to find even those that no longer match our selector.
 	// They will be orphaned in ClaimJob().
 	jobs, err := ncdc.namespacedJobLister.Jobs(ncdc.namespace).List(labels.Everything())
 	if err != nil {
 		return nil, fmt.Errorf("can't list Jobs: %w", err)
 	}
+
+	selector := labels.SelectorFromSet(labels.Set{
+		naming.NodeConfigJobForNodeLabel: ncdc.nodeName,
+	})
 
 	cm := controllertools.NewJobControllerRefManager(
 		ctx,
@@ -70,25 +74,25 @@ func (ncdc *Controller) getJobs(ctx context.Context, selector labels.Selector) (
 	return claimedJobs, nil
 }
 
-func (ncdc *Controller) getJobsForNode(ctx context.Context) (map[string]*batchv1.Job, error) {
-	return ncdc.getJobs(
-		ctx,
-		labels.SelectorFromSet(labels.Set{
-			naming.NodeConfigJobForNodeLabel: ncdc.nodeName,
-			naming.NodeConfigJobTypeLabel:    string(naming.NodeConfigJobTypeNode),
-		}),
-	)
-}
-
-func (ncdc *Controller) getPerftuneJobsForContainers(ctx context.Context) (map[string]*batchv1.Job, error) {
-	return ncdc.getJobs(
-		ctx,
-		labels.SelectorFromSet(labels.Set{
-			naming.NodeConfigJobForNodeLabel: ncdc.nodeName,
-			naming.NodeConfigJobTypeLabel:    string(naming.NodeConfigJobTypeContainers),
-		}),
-	)
-}
+// func (ncdc *Controller) getJobsForNode(ctx context.Context) (map[string]*batchv1.Job, error) {
+// 	return ncdc.getJobs(
+// 		ctx,
+// 		labels.SelectorFromSet(labels.Set{
+// 			naming.NodeConfigJobForNodeLabel: ncdc.nodeName,
+// 			naming.NodeConfigJobTypeLabel:    string(naming.NodeConfigJobTypeNode),
+// 		}),
+// 	)
+// }
+//
+// func (ncdc *Controller) getPerftuneJobsForContainers(ctx context.Context) (map[string]*batchv1.Job, error) {
+// 	return ncdc.getJobs(
+// 		ctx,
+// 		labels.SelectorFromSet(labels.Set{
+// 			naming.NodeConfigJobForNodeLabel: ncdc.nodeName,
+// 			naming.NodeConfigJobTypeLabel:    string(naming.NodeConfigJobTypeContainers),
+// 		}),
+// 	)
+// }
 
 func (ncdc *Controller) getCurrentNodeConfig(ctx context.Context) (*v1alpha1.NodeConfig, error) {
 	nc, err := ncdc.nodeConfigLister.Get(ncdc.nodeConfigName)
@@ -137,14 +141,9 @@ func (ncdc *Controller) sync(ctx context.Context) error {
 		klog.V(4).InfoS("Finished sync", "duration", time.Since(startTime))
 	}()
 
-	jobsForNode, err := ncdc.getJobsForNode(ctx)
+	jobs, err := ncdc.getJobs(ctx)
 	if err != nil {
-		return fmt.Errorf("can't get Jobs for node: %w", err)
-	}
-
-	perftuneJobsForContainers, err := ncdc.getPerftuneJobsForContainers(ctx)
-	if err != nil {
-		return fmt.Errorf("can't get Jobs for containers: %w", err)
+		return fmt.Errorf("can't get Jobs: %w", err)
 	}
 
 	nodeStatus := &v1alpha1.NodeStatus{
@@ -153,14 +152,9 @@ func (ncdc *Controller) sync(ctx context.Context) error {
 
 	var errs []error
 
-	err = ncdc.syncJobsForNode(ctx, jobsForNode, nodeStatus)
+	err = ncdc.syncJobs(ctx, jobs, nodeStatus)
 	if err != nil {
-		errs = append(errs, fmt.Errorf("can't sync jobs for node: %w", err))
-	}
-
-	err = ncdc.syncPertuneJobForContainers(ctx, perftuneJobsForContainers, nodeStatus)
-	if err != nil {
-		errs = append(errs, fmt.Errorf("can't sync Jobs for containers: %w", err))
+		errs = append(errs, fmt.Errorf("can't sync jobs: %w", err))
 	}
 
 	err = ncdc.updateNodeStatus(ctx, nodeStatus)
