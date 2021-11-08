@@ -67,13 +67,8 @@ func makePerftuneJobForNode(controllerRef *metav1.OwnerReference, namespace, nod
 								Privileged: pointer.BoolPtr(true),
 							},
 							VolumeMounts: []corev1.VolumeMount{
-								makeVolumeMount("hostfs", naming.HostFilesystemDirName, false),
-								makeVolumeMount("etc-systemd", "/etc/systemd", false),
 								makeVolumeMount("host-sys-class", "/sys/class", false),
 								makeVolumeMount("host-sys-devices", "/sys/devices", false),
-								makeVolumeMount("host-lib-systemd-system", "/lib/systemd/system", true),
-								makeVolumeMount("host-var-run-dbus", "/var/run/dbus", true),
-								makeVolumeMount("host-run-systemd-system", "/run/systemd/system", true),
 							},
 							Resources: corev1.ResourceRequirements{
 								Requests: corev1.ResourceList{
@@ -84,14 +79,9 @@ func makePerftuneJobForNode(controllerRef *metav1.OwnerReference, namespace, nod
 						},
 					},
 					Volumes: []corev1.Volume{
-						// FIXME: revisit which ones are actually needed
-						makeHostDirVolume("hostfs", "/"),
-						makeHostDirVolume("etc-systemd", "/etc/systemd"),
+						// Network device and clock tuning
 						makeHostDirVolume("host-sys-class", "/sys/class"),
 						makeHostDirVolume("host-sys-devices", "/sys/devices"),
-						makeHostDirVolume("host-lib-systemd-system", "/lib/systemd/system"),
-						makeHostDirVolume("host-var-run-dbus", "/var/run/dbus"),
-						makeHostDirVolume("host-run-systemd-system", "/run/systemd/system"),
 					},
 				},
 			},
@@ -193,11 +183,12 @@ func makePerftuneJobForContainers(controllerRef *metav1.OwnerReference, namespac
 						},
 					},
 					Volumes: []corev1.Volume{
-						// FIXME: revisit which ones are actually needed
+						// Storage device tuning
 						makeHostDirVolume("hostfs", "/"),
-						makeHostDirVolume("etc-systemd", "/etc/systemd"),
 						makeHostDirVolume("host-sys-class", "/sys/class"),
 						makeHostDirVolume("host-sys-devices", "/sys/devices"),
+						// Plumb host systemd to restart irqbalancer running on host
+						makeHostDirVolume("etc-systemd", "/etc/systemd"),
 						makeHostDirVolume("host-lib-systemd-system", "/lib/systemd/system"),
 						makeHostDirVolume("host-var-run-dbus", "/var/run/dbus"),
 						makeHostDirVolume("host-run-systemd-system", "/run/systemd/system"),
