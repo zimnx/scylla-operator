@@ -3,6 +3,7 @@ package nodeconfigdaemon
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path"
 
@@ -40,6 +41,8 @@ func makePerftuneJobForNode(controllerRef *metav1.OwnerReference, namespace, nod
 			Labels:          labels,
 		},
 		Spec: batchv1.JobSpec{
+			// TODO: handle failed jobs and retry.
+			BackoffLimit: pointer.Int32Ptr(math.MaxInt32),
 			Template: corev1.PodTemplateSpec{
 				Spec: corev1.PodSpec{
 					Tolerations:   podSpec.Tolerations,
@@ -147,6 +150,8 @@ func makePerftuneJobForContainers(controllerRef *metav1.OwnerReference, namespac
 			},
 		},
 		Spec: batchv1.JobSpec{
+			// TODO: handle failed jobs and retry.
+			BackoffLimit: pointer.Int32Ptr(math.MaxInt32),
 			Template: corev1.PodTemplateSpec{
 				Spec: corev1.PodSpec{
 					Tolerations:   podSpec.Tolerations,

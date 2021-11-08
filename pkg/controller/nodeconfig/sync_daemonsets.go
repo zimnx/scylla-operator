@@ -20,7 +20,7 @@ func (ncc *Controller) pruneDaemonSets(ctx context.Context, requiredDaemonSet *a
 			continue
 		}
 
-		if ds.Name == requiredDaemonSet.Name {
+		if requiredDaemonSet != nil && ds.Name == requiredDaemonSet.Name {
 			continue
 		}
 
