@@ -71,6 +71,10 @@ func (ncpc *Controller) makeConfigMap(ctx context.Context, pod *corev1.Pod) (*co
 		for _, nc := range ncs {
 			src.MatchingNodeConfigs = append(src.MatchingNodeConfigs, nc.Name)
 
+			if nc.Spec.DisableOptimizations {
+				continue
+			}
+
 			if !helpers.IsNodeTunedForContainer(nc, node.Name, containerID) {
 				src.BlockingNodeConfigs = append(src.BlockingNodeConfigs, nc.Name)
 			}

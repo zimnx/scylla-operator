@@ -167,6 +167,7 @@ func (ncdc *Controller) syncJobs(ctx context.Context, jobs map[string]*batchv1.J
 	}
 
 	finished := true
+	klog.V(4).InfoS("Required jobs", "Count", len(required))
 	for _, j := range required {
 		fresh, _, err := resourceapply.ApplyJob(ctx, ncdc.kubeClient.BatchV1(), ncdc.namespacedJobLister, ncdc.eventRecorder, j)
 		if err != nil {
@@ -181,10 +182,11 @@ func (ncdc *Controller) syncJobs(ctx context.Context, jobs map[string]*batchv1.J
 		switch naming.NodeConfigJobType(t) {
 		case naming.NodeConfigJobTypeNode:
 			// FIXME: Extract into a function and double check how jobs report status.
-			if fresh.Status.CompletionTime != nil && fresh.Status.Succeeded > 0 {
+			if fresh.Status.CompletionTime == nil {
 				klog.V(4).InfoS("Job isn't completed yet", "Job", klog.KObj(fresh))
 				finished = false
 			}
+			klog.V(4).InfoS("Job is completed", "Job", klog.KObj(fresh))
 
 		case naming.NodeConfigJobTypeContainers:
 			// We have successfully applied the job definition so the data should always be present at this point.

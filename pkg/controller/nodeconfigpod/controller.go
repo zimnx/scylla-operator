@@ -259,6 +259,7 @@ func (ncpc *Controller) deleteConfigMap(obj interface{}) {
 func (ncpc *Controller) addNode(obj interface{}) {
 	node := obj.(*corev1.Node)
 	klog.V(4).InfoS("Observed addition of Node", "Node", klog.KObj(node))
+	// FIXME
 	ncpc.enqueueOwner(node)
 }
 
@@ -267,12 +268,14 @@ func (ncpc *Controller) updateNode(old, cur interface{}) {
 	currentNode := cur.(*corev1.Node)
 
 	klog.V(4).InfoS("Observed update of Node", "Node", klog.KObj(oldNode))
+	// FIXME
 	ncpc.enqueueOwner(currentNode)
 }
 
 func (ncpc *Controller) addNodeConfig(obj interface{}) {
 	nodeConfig := obj.(*scyllav1alpha1.NodeConfig)
 	klog.V(4).InfoS("Observed addition of NodeConfig", "NodeConfig", klog.KObj(nodeConfig))
+	// FIXME
 	ncpc.enqueueOwner(nodeConfig)
 }
 
@@ -293,6 +296,7 @@ func (ncpc *Controller) updateNodeConfig(old, cur interface{}) {
 	}
 
 	klog.V(4).InfoS("Observed update of NodeConfig", "NodeConfig", klog.KObj(oldNodeConfig))
+	// FIXME
 	ncpc.enqueueOwner(currentNodeConfig)
 }
 
@@ -311,6 +315,7 @@ func (ncpc *Controller) deleteNodeConfig(obj interface{}) {
 		}
 	}
 	klog.V(4).InfoS("Observed deletion of NodeConfig", "NodeConfig", klog.KObj(nodeConfig))
+	// FIXME
 	ncpc.enqueueOwner(nodeConfig)
 }
 

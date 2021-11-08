@@ -31,13 +31,11 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	watchtools "k8s.io/client-go/tools/watch"
-	"k8s.io/client-go/util/retry"
 	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/klog/v2"
 )
@@ -227,32 +225,63 @@ func (o *SidecarOptions) Run(streams genericclioptions.IOStreams, cmd *cobra.Com
 		return fmt.Errorf("can't get service %q", naming.ManualRef(o.Namespace, o.ServiceName))
 	}
 
+	// Wait for this Pod to have ContainerID set.
+	fieldSelector := fields.OneTermEqualSelector("metadata.name", o.ServiceName)
+	lw := &cache.ListWatch{
+		ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
+			options.FieldSelector = fieldSelector.String()
+			return o.kubeClient.CoreV1().Pods(o.Namespace).List(ctx, options)
+		},
+		WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
+			options.FieldSelector = fieldSelector.String()
+			return o.kubeClient.CoreV1().Pods(o.Namespace).Watch(ctx, options)
+		},
+	}
+	klog.V(2).InfoS("Waiting for Pod To have scylla ContainerID set", "Pod", naming.ManualRef(o.Namespace, o.ServiceName))
+	var containerID string
 	var pod *corev1.Pod
-	err = wait.ExponentialBackoff(retry.DefaultBackoff, func() (bool, error) {
-		pod, err = o.kubeClient.CoreV1().Pods(o.Namespace).Get(ctx, o.ServiceName, metav1.GetOptions{})
-		if err != nil {
-			klog.ErrorS(err, "Can't get pod", "Pod", naming.ManualRef(o.Namespace, o.ServiceName))
-			return false, nil
-		}
+	_, err = watchtools.UntilWithSync(
+		ctx,
+		lw,
+		&corev1.Pod{},
+		nil,
+		func(e watch.Event) (bool, error) {
+			switch t := e.Type; t {
+			case watch.Added, watch.Modified:
+				pod = e.Object.(*corev1.Pod)
 
-		return true, nil
-	})
+				containerID, err = helpers.GetScyllaContainerID(pod)
+				if err != nil {
+					klog.Warningf("can't get scylla container id in pod %q: %w", naming.ObjRef(pod), err)
+					return false, nil
+				}
+
+				if len(containerID) == 0 {
+					klog.V(4).InfoS("ContainerID is not yet set", "Pod", klog.KObj(pod))
+					return false, nil
+				}
+
+				return true, nil
+
+			case watch.Error:
+				return true, apierrors.FromObject(e.Object)
+
+			default:
+				return true, fmt.Errorf("unexpected event type %v", t)
+			}
+		},
+	)
 	if err != nil {
-		return fmt.Errorf("can't get pod %q: %w", naming.ManualRef(o.Namespace, o.ServiceName), err)
+		return fmt.Errorf("can't wait for pod's ContainerID: %w", err)
 	}
 
 	member := identity.NewMemberFromObjects(service, pod)
-
-	containerID, err := helpers.GetScyllaContainerID(pod)
-	if err != nil {
-		return fmt.Errorf("can't get scylla container id in pod %q: %w", naming.ObjRef(pod), err)
-	}
 
 	labelSelector := labels.Set{
 		naming.OwnerUIDLabel:      string(pod.UID),
 		naming.ConfigMapTypeLabel: string(naming.NodeConfigDataConfigMapType),
 	}.AsSelector()
-	lw := &cache.ListWatch{
+	lw = &cache.ListWatch{
 		ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
 			options.LabelSelector = labelSelector.String()
 			return o.kubeClient.CoreV1().ConfigMaps(pod.Namespace).List(ctx, options)
