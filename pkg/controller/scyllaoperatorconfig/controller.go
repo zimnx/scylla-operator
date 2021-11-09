@@ -11,7 +11,7 @@ import (
 	scyllav1alpha1client "github.com/scylladb/scylla-operator/pkg/client/scylla/clientset/versioned/typed/scylla/v1alpha1"
 	scyllav1alpha1informers "github.com/scylladb/scylla-operator/pkg/client/scylla/informers/externalversions/scylla/v1alpha1"
 	scyllav1alpha1listers "github.com/scylladb/scylla-operator/pkg/client/scylla/listers/scylla/v1alpha1"
-	"github.com/scylladb/scylla-operator/pkg/controller/helpers"
+	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
 	"github.com/scylladb/scylla-operator/pkg/scheme"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -119,7 +119,7 @@ func (opc *Controller) processNextItem(ctx context.Context) bool {
 	var remainingErrors []error
 	for _, err := range allErrors.Errors() {
 		switch {
-		case errors.Is(err, &helpers.RequeueError{}):
+		case errors.Is(err, &controllerhelpers.RequeueError{}):
 			klog.V(2).InfoS("Re-queuing for recheck", "Key", key, "Reason", err)
 
 		case apierrors.IsConflict(err):

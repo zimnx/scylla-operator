@@ -13,7 +13,7 @@ import (
 	"strings"
 
 	"github.com/scylladb/go-set/strset"
-	"github.com/scylladb/scylla-operator/pkg/controller/helpers"
+	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
 	"github.com/scylladb/scylla-operator/pkg/cri"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	"github.com/scylladb/scylla-operator/pkg/util/cpuset"
@@ -35,7 +35,7 @@ func getScyllaCPUs(ctx context.Context, criClient cri.Client, scyllaPods []*core
 	scyllaCpus := cpuset.NewCPUSet()
 	for _, p := range scyllaPods {
 		if p.GetLabels()[naming.ClusterNameLabel] != "" {
-			if !helpers.IsScyllaContainerRunning(p) {
+			if !controllerhelpers.IsScyllaContainerRunning(p) {
 				return cpuset.CPUSet{}, fmt.Errorf("scylla container in %s pod is not running, will retry in a bit", naming.ObjRef(p))
 			}
 			if p.Status.QOSClass == corev1.PodQOSGuaranteed {
@@ -148,7 +148,7 @@ func podCpusetPaths(podID, containerID string) []string {
 }
 
 func scyllaContainerID(pod *corev1.Pod) (string, error) {
-	cidURI, err := helpers.GetScyllaContainerID(pod)
+	cidURI, err := controllerhelpers.GetScyllaContainerID(pod)
 	if err != nil {
 		return "", err
 	}

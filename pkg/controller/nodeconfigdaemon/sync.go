@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
-	"github.com/scylladb/scylla-operator/pkg/controller/helpers"
+	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
 	"github.com/scylladb/scylla-operator/pkg/controllertools"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	batchv1 "k8s.io/api/batch/v1"
@@ -116,7 +116,7 @@ func (ncdc *Controller) updateNodeStatus(ctx context.Context, nodeStatus *v1alph
 
 	nc := oldNC.DeepCopy()
 
-	nc.Status.NodeStatuses = helpers.SetNodeStatus(nc.Status.NodeStatuses, nodeStatus)
+	nc.Status.NodeStatuses = controllerhelpers.SetNodeStatus(nc.Status.NodeStatuses, nodeStatus)
 
 	if apiequality.Semantic.DeepEqual(nc.Status.NodeStatuses, oldNC.Status.NodeStatuses) {
 		return nil

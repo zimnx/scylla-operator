@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/scylladb/scylla-operator/pkg/controller/helpers"
+	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -76,7 +76,7 @@ func (m *Member) GetSeed(ctx context.Context, coreClient v1.CoreV1Interface) (st
 	}
 
 	sort.Slice(otherPods, func(i, j int) bool {
-		if helpers.IsPodReady(otherPods[i]) && !helpers.IsPodReady(otherPods[j]) {
+		if controllerhelpers.IsPodReady(otherPods[i]) && !controllerhelpers.IsPodReady(otherPods[j]) {
 			return true
 		}
 

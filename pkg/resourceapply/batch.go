@@ -27,7 +27,7 @@ func ApplyJob(
 ) (*batchv1.Job, bool, error) {
 	requiredControllerRef := metav1.GetControllerOfNoCopy(required)
 	if requiredControllerRef == nil {
-		return nil, false, fmt.Errorf("Job %q is missing controllerRef", naming.ObjRef(required))
+		return nil, false, fmt.Errorf("job %q is missing controllerRef", naming.ObjRef(required))
 	}
 
 	requiredCopy := required.DeepCopy()
@@ -51,6 +51,8 @@ func ApplyJob(
 		}
 		return actual, true, err
 	}
+
+	// TODO: handle failed jobs.
 
 	existingHash := existing.Annotations[naming.ManagedHash]
 

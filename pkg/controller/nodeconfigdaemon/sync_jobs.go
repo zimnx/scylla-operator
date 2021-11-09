@@ -10,7 +10,7 @@ import (
 
 	"github.com/c9s/goprocinfo/linux"
 	"github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
-	"github.com/scylladb/scylla-operator/pkg/controller/helpers"
+	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	"github.com/scylladb/scylla-operator/pkg/resourceapply"
 	"github.com/scylladb/scylla-operator/pkg/semver"
@@ -117,7 +117,7 @@ func (ncdc *Controller) makeJobForContainers(ctx context.Context) (*batchv1.Job,
 			continue
 		}
 
-		if !helpers.IsScyllaContainerRunning(scyllaPod) {
+		if !controllerhelpers.IsScyllaContainerRunning(scyllaPod) {
 			klog.V(4).Infof("Pod %q is a candidate for optimizations but scylla container isn't running yet", naming.ObjRef(scyllaPod))
 		}
 
