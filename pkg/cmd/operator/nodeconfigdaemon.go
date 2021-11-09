@@ -52,9 +52,9 @@ func NewNodeConfigOptions(streams genericclioptions.IOStreams) *NodeConfigDaemon
 		ClientConfig:        genericclioptions.NewClientConfig("node-config"),
 		InClusterReflection: genericclioptions.InClusterReflection{},
 		CRIEndpoints: []string{
+			"unix:///var/run/dockershim.sock",
 			"unix:///run/containerd/containerd.sock",
 			"unix:///run/crio/crio.sock",
-			"unix:///var/run/dockershim.sock",
 		},
 	}
 }

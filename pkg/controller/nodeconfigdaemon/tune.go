@@ -4,7 +4,6 @@ package nodeconfigdaemon
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -104,7 +103,7 @@ func scyllaContainerCpuSet(ctx context.Context, criClient cri.Client, pod *corev
 	}
 
 	containerCpuSet, err := cpusetFromCRI(ctx, criClient, cid)
-	if err != nil && !errors.Is(err, cri.NotFoundErr) {
+	if err != nil {
 		return cpuset.CPUSet{}, fmt.Errorf("get cpuset from CRI: %w", err)
 	}
 
