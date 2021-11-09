@@ -52,7 +52,7 @@ func getScyllaCPUs(ctx context.Context, criClient cri.Client, scyllaPods []*core
 	return scyllaCpus, nil
 }
 
-func scyllaDataDirHostPaths(ctx context.Context, criClient cri.Client, scyllaPods []*corev1.Pod) ([]string, error) {
+func scyllaDataDirMountHostPaths(ctx context.Context, criClient cri.Client, scyllaPods []*corev1.Pod) ([]string, error) {
 	dataDirs := strset.New()
 
 	for _, pod := range scyllaPods {
@@ -62,10 +62,9 @@ func scyllaDataDirHostPaths(ctx context.Context, criClient cri.Client, scyllaPod
 		}
 
 		cs, err := criClient.Inspect(ctx, cid)
-		if err != nil && !errors.Is(err, cri.NotFoundErr) {
-			return nil, fmt.Errorf("failed to inspect container %q, %w", cid, err)
+		if err != nil {
+			return nil, fmt.Errorf("can't inspect container %q: %w", cid, err)
 		}
-		// FIXME: handle not found
 
 		if cs != nil {
 			for _, mount := range cs.Status.GetMounts() {

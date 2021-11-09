@@ -70,9 +70,13 @@ func (ncdc *Controller) makePerftuneJobForContainers(ctx context.Context, podSpe
 		return nil, fmt.Errorf("can't get IRQ CPUs: %w", err)
 	}
 
-	dataHostPaths, err := scyllaDataDirHostPaths(ctx, ncdc.criClient, optimizablePods)
+	dataHostPaths, err := scyllaDataDirMountHostPaths(ctx, ncdc.criClient, optimizablePods)
 	if err != nil {
 		return nil, fmt.Errorf("can't find data dir host path: %w", err)
+	}
+
+	if len(dataHostPaths) == 0 {
+		return nil, fmt.Errorf("no data mount host path found")
 	}
 
 	disableWritebackCache := false
