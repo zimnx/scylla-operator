@@ -8,7 +8,7 @@ import (
 
 	g "github.com/onsi/ginkgo"
 	o "github.com/onsi/gomega"
-	"github.com/scylladb/scylla-operator/pkg/controller/helpers"
+	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	scyllaclusterfixture "github.com/scylladb/scylla-operator/test/e2e/fixture/scyllacluster"
 	"github.com/scylladb/scylla-operator/test/e2e/framework"
@@ -82,7 +82,7 @@ var _ = g.Describe("ScyllaCluster Orphaned PV", func() {
 			},
 		}
 
-		patchData, err := helpers.GenerateMergePatch(pv, pvCopy)
+		patchData, err := controllerhelpers.GenerateMergePatch(pv, pvCopy)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
 		pv, err = f.KubeAdminClient().CoreV1().PersistentVolumes().Patch(ctx, pv.Name, types.MergePatchType, patchData, metav1.PatchOptions{})

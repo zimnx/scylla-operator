@@ -8,7 +8,7 @@ import (
 	"fmt"
 
 	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
-	"github.com/scylladb/scylla-operator/pkg/controller/helpers"
+	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
 	"github.com/scylladb/scylla-operator/pkg/internalapi"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	"github.com/scylladb/scylla-operator/pkg/resourceapply"
@@ -41,7 +41,7 @@ func (ncpc *Controller) makeConfigMap(ctx context.Context, pod *corev1.Pod) (*co
 			continue
 		}
 
-		isSelectingNode, err := helpers.IsNodeConfigSelectingNode(nc, node)
+		isSelectingNode, err := controllerhelpers.IsNodeConfigSelectingNode(nc, node)
 		if err != nil {
 			return nil, fmt.Errorf(
 				"can't check if nodecondig %q is selecting node %q: %w",
@@ -57,7 +57,7 @@ func (ncpc *Controller) makeConfigMap(ctx context.Context, pod *corev1.Pod) (*co
 
 	klog.V(4).InfoS("Pod matched by NodeConfigs", "Pod", klog.KObj(pod), "MatchingNodeConfigs", len(ncs))
 
-	containerID, err := helpers.GetScyllaContainerID(pod)
+	containerID, err := controllerhelpers.GetScyllaContainerID(pod)
 	if err != nil {
 		return nil, fmt.Errorf("can't get container id: %w", err)
 	}
@@ -75,7 +75,7 @@ func (ncpc *Controller) makeConfigMap(ctx context.Context, pod *corev1.Pod) (*co
 				continue
 			}
 
-			if !helpers.IsNodeTunedForContainer(nc, node.Name, containerID) {
+			if !controllerhelpers.IsNodeTunedForContainer(nc, node.Name, containerID) {
 				src.BlockingNodeConfigs = append(src.BlockingNodeConfigs, nc.Name)
 			}
 		}

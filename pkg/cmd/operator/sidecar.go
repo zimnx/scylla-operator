@@ -11,8 +11,8 @@ import (
 	"time"
 
 	scyllaversionedclient "github.com/scylladb/scylla-operator/pkg/client/scylla/clientset/versioned"
-	"github.com/scylladb/scylla-operator/pkg/controller/helpers"
 	sidecarcontroller "github.com/scylladb/scylla-operator/pkg/controller/sidecar"
+	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
 	"github.com/scylladb/scylla-operator/pkg/genericclioptions"
 	"github.com/scylladb/scylla-operator/pkg/internalapi"
 	"github.com/scylladb/scylla-operator/pkg/naming"
@@ -250,7 +250,7 @@ func (o *SidecarOptions) Run(streams genericclioptions.IOStreams, cmd *cobra.Com
 			case watch.Added, watch.Modified:
 				pod = e.Object.(*corev1.Pod)
 
-				containerID, err = helpers.GetScyllaContainerID(pod)
+				containerID, err = controllerhelpers.GetScyllaContainerID(pod)
 				if err != nil {
 					klog.Warningf("can't get scylla container id in pod %q: %w", naming.ObjRef(pod), err)
 					return false, nil
