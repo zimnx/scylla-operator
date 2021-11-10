@@ -154,24 +154,6 @@ func makeNodeConfigDaemonSet(nc *scyllav1alpha1.NodeConfig, operatorImage, scyll
 							Name:            naming.NodeConfigAppName,
 							Image:           operatorImage,
 							ImagePullPolicy: corev1.PullIfNotPresent,
-							// Command: []string{
-							// 	"/usr/sbin/chroot",
-							// 	naming.HostFilesystemDirName,
-							// 	"/tmp/scylla-operator",
-							// 	"node-config-daemon",
-							// 	"--pod-name=$(POD_NAME)",
-							// 	"--node-name=$(NODE_NAME)",
-							// 	"--node-namespace=$(NODE_NAMESPACE)",
-							// 	fmt.Sprintf("--node-config-name=%s", nc.Name),
-							// 	fmt.Sprintf("--node-config-uid=%s", nc.UID),
-							// 	fmt.Sprintf("--scylla-image=%s", scyllaImage),
-							// 	fmt.Sprintf("--disable-optimizations=%s", strconv.FormatBool(nc.Spec.DisableOptimizations)),
-							// 	fmt.Sprintf("--cri-endpoint=unix://%s/var/run/dockershim.sock", naming.HostFilesystemDirName),
-							// 	fmt.Sprintf("--cri-endpoint=unix://%s/run/containerd/containerd.sock", naming.HostFilesystemDirName),
-							// 	fmt.Sprintf("--cri-endpoint=unix://%s/run/crio/crio.sock", naming.HostFilesystemDirName),
-							// 	// TODO: add to Spec
-							// 	fmt.Sprintf("--loglevel=%d", 4),
-							// },
 							Command: []string{
 								"/usr/bin/bash",
 								"-euExo",
@@ -186,7 +168,7 @@ cd "$( mktemp -d )"
 
 for f in $( find /host -mindepth 1 -maxdepth 1 -type d -printf '%f\n' ); do
 	mkdir -p "./${f}"
-	mount --bind "/host/${f}" "./${f}"
+	mount --rbind "/host/${f}" "./${f}"
 done
 
 for f in $( find /host -mindepth 1 -maxdepth 1 -type f -printf '%f\n' ); do
@@ -241,36 +223,6 @@ exec chroot ./ /scylla-operator/scylla-operator node-config-daemon \
 --loglevel=` + fmt.Sprintf("%d", 4) + `
 							`,
 							},
-							// 							Args: []string{
-							// 								`
-							// shopt -s inherit_errexit
-							//
-							// initial_cri_endpoints=( "/var/run/dockershim.sock" "/run/containerd/containerd.sock" "/run/crio/crio.sock" )
-							// host_cri_endpoints=()
-							//
-							// for ep in "${initial_cri_endpoints[@]}"; do
-							// 	host_ep="$( chroot /mnt/hostfs realpath -qP "${ep}" || true )"
-							// 	if [[ -n "${host_ep}" ]]; then
-							// 		host_cri_endpoints+=( $( realpath -L "/mnt/hostfs/${host_ep}" ) )
-							// 	fi
-							// done
-							//
-							// if [[ ${#host_cri_endpoints[@]} -eq 0 ]]; then
-							// 	echo "no endpoints exist on the host machine" >&2
-							// 	# exit 1
-							// fi
-							//
-							// exec scylla-operator node-config-daemon \
-							// --pod-name="$(POD_NAME)" \
-							// --node-name="$(NODE_NAME)" \
-							// --node-config-name=` + fmt.Sprintf("%q", nc.Name) + ` \
-							// --node-config-uid=` + fmt.Sprintf("%q", nc.UID) + ` \
-							// --scylla-image=` + fmt.Sprintf("%q", scyllaImage) + ` \
-							// --disable-optimizations=` + fmt.Sprintf("%t", nc.Spec.DisableOptimizations) + ` \
-							// --loglevel=` + fmt.Sprintf("%d", 4) + ` \
-							// "${host_cri_endpoints[@]/#/--cri-endpoint=unix://}"
-							// 							`,
-							// 							},
 							Env: []corev1.EnvVar{
 								{
 									Name: "POD_NAME",

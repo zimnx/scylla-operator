@@ -129,7 +129,7 @@ func scyllaContainerCpuSet(ctx context.Context, criClient cri.Client, pod *corev
 			continue
 		}
 
-		klog.V(4).InfoS("Cpuset path successful", "Path", cpusetPath, "Error", err)
+		klog.V(4).InfoS("Cpuset path successful", "Path", cpusetPath)
 
 		content, err := ioutil.ReadFile(cpusetPath)
 		if err != nil {
@@ -141,7 +141,7 @@ func scyllaContainerCpuSet(ctx context.Context, criClient cri.Client, pod *corev
 			return cpuset.CPUSet{}, fmt.Errorf("can't parse container %q cpuset %q, %w", cid, string(content), err)
 		}
 
-		klog.V(4).InfoS("Found Scylla cpuset", "ContainerID", cid, "CPUSET", containerCpuSet.String())
+		klog.V(4).InfoS("Found Scylla cpuset", "ContainerID", cid, "Cpuset", containerCpuSet.String())
 		return containerCpuSet, nil
 	}
 
