@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"path"
 	"regexp"
 	"strings"
 
@@ -23,7 +22,7 @@ import (
 func getIRQCPUs(ctx context.Context, criClient cri.Client, scyllaPods []*corev1.Pod, hostFullCpuset cpuset.CPUSet) (cpuset.CPUSet, error) {
 	scyllaCPUs, err := getScyllaCPUs(ctx, criClient, scyllaPods)
 	if err != nil {
-		return cpuset.CPUSet{}, fmt.Errorf("get Scylla CPUs: %w", err)
+		return cpuset.CPUSet{}, fmt.Errorf("can't get Scylla CPUs: %w", err)
 	}
 
 	// Use all CPUs *not* assigned to Scylla container for IRQs.
@@ -33,12 +32,20 @@ func getIRQCPUs(ctx context.Context, criClient cri.Client, scyllaPods []*corev1.
 func getScyllaCPUs(ctx context.Context, criClient cri.Client, scyllaPods []*corev1.Pod) (cpuset.CPUSet, error) {
 	scyllaCpus := cpuset.NewCPUSet()
 	for _, p := range scyllaPods {
-		if p.GetLabels()[naming.ClusterNameLabel] != "" {
+		labels := p.GetLabels()
+		if labels == nil {
+			continue
+		}
+
+		_, isScyllaPod := labels[naming.ClusterNameLabel]
+		if isScyllaPod {
 			if !controllerhelpers.IsScyllaContainerRunning(p) {
+				// TODO: shouldn't be an error, we'll run again whe it is running.
 				return cpuset.CPUSet{}, fmt.Errorf("scylla container in %s pod is not running, will retry in a bit", naming.ObjRef(p))
 			}
+
 			if p.Status.QOSClass == corev1.PodQOSGuaranteed {
-				containerCpuSet, err := scyllaContainerCpuSet(ctx, criClient, p, naming.HostFilesystemDirName)
+				containerCpuSet, err := scyllaContainerCpuSet(ctx, criClient, p)
 				if err != nil {
 					return cpuset.CPUSet{}, fmt.Errorf("failed to get cpuset of %s Pod Scylla container: %w", naming.ObjRef(p), err)
 				}
@@ -81,22 +88,23 @@ func scyllaDataDirMountHostPaths(ctx context.Context, criClient cri.Client, scyl
 func cpusetFromCRI(ctx context.Context, client cri.Client, cid string) (cpuset.CPUSet, error) {
 	cs, err := client.Inspect(ctx, cid)
 	if err != nil {
-		return cpuset.CPUSet{}, fmt.Errorf("failed to inspect container %q, %w", cid, err)
+		return cpuset.CPUSet{}, fmt.Errorf("can't inspect container %q, %w", cid, err)
 	}
 
 	if cs.Info.RuntimeSpec == nil {
+		klog.V(2).InfoS("No container status available", "ContainerID", cid)
 		return cpuset.CPUSet{}, nil
 	}
 
 	containerCpuSet, err := cpuset.Parse(cs.Info.RuntimeSpec.Linux.Resources.CPU.Cpus)
 	if err != nil {
-		return cpuset.CPUSet{}, fmt.Errorf("failed to parse container %q cpuset %q, %w", cid, cs.Info.RuntimeSpec.Linux.Resources.CPU.Cpus, err)
+		return cpuset.CPUSet{}, fmt.Errorf("can't parse container %q cpuset %q, %w", cid, cs.Info.RuntimeSpec.Linux.Resources.CPU.Cpus, err)
 	}
 
 	return containerCpuSet, nil
 }
 
-func scyllaContainerCpuSet(ctx context.Context, criClient cri.Client, pod *corev1.Pod, hostFilesystem string) (cpuset.CPUSet, error) {
+func scyllaContainerCpuSet(ctx context.Context, criClient cri.Client, pod *corev1.Pod) (cpuset.CPUSet, error) {
 	cid, err := scyllaContainerID(pod)
 	if err != nil {
 		return cpuset.CPUSet{}, fmt.Errorf("get Scylla container ID: %w", err)
@@ -115,24 +123,29 @@ func scyllaContainerCpuSet(ctx context.Context, criClient cri.Client, pod *corev
 	// Figure out assigned CPUs by manually reading cgroup fs.
 	klog.Info("Falling back to manual cpuset discovery via cgroups")
 	for _, cpusetPath := range podCpusetPaths(string(pod.UID), cid) {
-		hostPath := path.Join(hostFilesystem, cpusetPath)
-		if _, err := os.Stat(hostPath); err != nil {
+		_, err := os.Stat(cpusetPath)
+		if err != nil {
+			klog.V(4).InfoS("Cpuset path unsuccessful", "Path", cpusetPath, "Error", err)
 			continue
 		}
-		content, err := ioutil.ReadFile(hostPath)
+
+		klog.V(4).InfoS("Cpuset path successful", "Path", cpusetPath, "Error", err)
+
+		content, err := ioutil.ReadFile(cpusetPath)
 		if err != nil {
-			return cpuset.CPUSet{}, fmt.Errorf("failed to read cgroup cpuset: %w", err)
-		}
-		containerCpuSet, err := cpuset.Parse(strings.TrimSpace(string(content)))
-		if err != nil {
-			return cpuset.CPUSet{}, fmt.Errorf("failed to parse container %q cpuset %q, %w", cid, string(content), err)
+			return cpuset.CPUSet{}, fmt.Errorf("can't read cgroup cpuset: %w", err)
 		}
 
-		klog.V(4).InfoS("Found Scylla cpuset", "container_id", cid, "cpuset", containerCpuSet.String())
+		containerCpuSet, err := cpuset.Parse(strings.TrimSpace(string(content)))
+		if err != nil {
+			return cpuset.CPUSet{}, fmt.Errorf("can't parse container %q cpuset %q, %w", cid, string(content), err)
+		}
+
+		klog.V(4).InfoS("Found Scylla cpuset", "ContainerID", cid, "CPUSET", containerCpuSet.String())
 		return containerCpuSet, nil
 	}
 
-	return cpuset.CPUSet{}, fmt.Errorf("cannot find Scylla container cpuset")
+	return cpuset.CPUSet{}, fmt.Errorf("can't find Scylla container cpuset")
 }
 
 func podCpusetPaths(podID, containerID string) []string {

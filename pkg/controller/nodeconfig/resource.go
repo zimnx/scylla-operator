@@ -4,7 +4,6 @@ package nodeconfig
 
 import (
 	"fmt"
-	"strconv"
 
 	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/naming"
@@ -13,6 +12,7 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/pointer"
 )
 
 func makeScyllaOperatorNodeTuningNamespace() *corev1.Namespace {
@@ -154,20 +154,123 @@ func makeNodeConfigDaemonSet(nc *scyllav1alpha1.NodeConfig, operatorImage, scyll
 							Name:            naming.NodeConfigAppName,
 							Image:           operatorImage,
 							ImagePullPolicy: corev1.PullIfNotPresent,
-							Args: []string{
-								"node-config-daemon",
-								"--pod-name=$(POD_NAME)",
-								"--node-name=$(NODE_NAME)",
-								fmt.Sprintf("--node-config-name=%s", nc.Name),
-								fmt.Sprintf("--node-config-uid=%s", nc.UID),
-								fmt.Sprintf("--scylla-image=%s", scyllaImage),
-								fmt.Sprintf("--disable-optimizations=%s", strconv.FormatBool(nc.Spec.DisableOptimizations)),
-								fmt.Sprintf("--cri-endpoint=unix://%s/var/run/dockershim.sock", naming.HostFilesystemDirName),
-								fmt.Sprintf("--cri-endpoint=unix://%s/run/containerd/containerd.sock", naming.HostFilesystemDirName),
-								fmt.Sprintf("--cri-endpoint=unix://%s/run/crio/crio.sock", naming.HostFilesystemDirName),
-								// TODO: add to Spec
-								fmt.Sprintf("--loglevel=%d", 4),
+							// Command: []string{
+							// 	"/usr/sbin/chroot",
+							// 	naming.HostFilesystemDirName,
+							// 	"/tmp/scylla-operator",
+							// 	"node-config-daemon",
+							// 	"--pod-name=$(POD_NAME)",
+							// 	"--node-name=$(NODE_NAME)",
+							// 	"--node-namespace=$(NODE_NAMESPACE)",
+							// 	fmt.Sprintf("--node-config-name=%s", nc.Name),
+							// 	fmt.Sprintf("--node-config-uid=%s", nc.UID),
+							// 	fmt.Sprintf("--scylla-image=%s", scyllaImage),
+							// 	fmt.Sprintf("--disable-optimizations=%s", strconv.FormatBool(nc.Spec.DisableOptimizations)),
+							// 	fmt.Sprintf("--cri-endpoint=unix://%s/var/run/dockershim.sock", naming.HostFilesystemDirName),
+							// 	fmt.Sprintf("--cri-endpoint=unix://%s/run/containerd/containerd.sock", naming.HostFilesystemDirName),
+							// 	fmt.Sprintf("--cri-endpoint=unix://%s/run/crio/crio.sock", naming.HostFilesystemDirName),
+							// 	// TODO: add to Spec
+							// 	fmt.Sprintf("--loglevel=%d", 4),
+							// },
+							Command: []string{
+								"/usr/bin/bash",
+								"-euExo",
+								"pipefail",
+								"-c",
 							},
+							Args: []string{
+								`
+shopt -s inherit_errexit
+
+cd "$( mktemp -d )"
+
+for f in $( find /host -mindepth 1 -maxdepth 1 -type d -printf '%f\n' ); do
+	mkdir -p "./${f}"
+	mount --bind "/host/${f}" "./${f}"
+done
+
+for f in $( find /host -mindepth 1 -maxdepth 1 -type f -printf '%f\n' ); do
+	touch "./${f}"
+	mount --bind "/host/${f}" "./${f}"
+done
+
+find /host -mindepth 1 -maxdepth 1 -type l -exec cp -P "{}" ./ \;
+
+mkdir -p ./scylla-operator
+touch ./scylla-operator/scylla-operator
+mount --bind /usr/bin/scylla-operator ./scylla-operator/scylla-operator
+
+for f in ca.crt token; do
+	touch "./scylla-operator/${f}"
+	mount --bind "/var/run/secrets/kubernetes.io/serviceaccount/${f}" "./scylla-operator/${f}"
+done
+
+cat <<EOF > ./scylla-operator/kubeconfig
+apiVersion: v1
+kind: Config
+clusters:
+- name: in-cluster
+  cluster:
+    server: https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}
+    certificate-authority: /scylla-operator/ca.crt
+
+users:
+- name: scylla-operator
+  user: 
+    tokenFile: /scylla-operator/token
+
+contexts:
+- name: in-cluster 
+  context:
+    cluster: in-cluster
+    user: scylla-operator
+
+current-context: in-cluster
+
+EOF
+
+exec chroot ./ /scylla-operator/scylla-operator node-config-daemon \
+--kubeconfig=/scylla-operator/kubeconfig \
+--pod-name="$(POD_NAME)" \
+--namespace="$(POD_NAMESPACE)" \
+--node-name="$(NODE_NAME)" \
+--node-config-name=` + fmt.Sprintf("%q", nc.Name) + ` \
+--node-config-uid=` + fmt.Sprintf("%q", nc.UID) + ` \
+--scylla-image=` + fmt.Sprintf("%q", scyllaImage) + ` \
+--disable-optimizations=` + fmt.Sprintf("%t", nc.Spec.DisableOptimizations) + ` \
+--loglevel=` + fmt.Sprintf("%d", 4) + `
+							`,
+							},
+							// 							Args: []string{
+							// 								`
+							// shopt -s inherit_errexit
+							//
+							// initial_cri_endpoints=( "/var/run/dockershim.sock" "/run/containerd/containerd.sock" "/run/crio/crio.sock" )
+							// host_cri_endpoints=()
+							//
+							// for ep in "${initial_cri_endpoints[@]}"; do
+							// 	host_ep="$( chroot /mnt/hostfs realpath -qP "${ep}" || true )"
+							// 	if [[ -n "${host_ep}" ]]; then
+							// 		host_cri_endpoints+=( $( realpath -L "/mnt/hostfs/${host_ep}" ) )
+							// 	fi
+							// done
+							//
+							// if [[ ${#host_cri_endpoints[@]} -eq 0 ]]; then
+							// 	echo "no endpoints exist on the host machine" >&2
+							// 	# exit 1
+							// fi
+							//
+							// exec scylla-operator node-config-daemon \
+							// --pod-name="$(POD_NAME)" \
+							// --node-name="$(NODE_NAME)" \
+							// --node-config-name=` + fmt.Sprintf("%q", nc.Name) + ` \
+							// --node-config-uid=` + fmt.Sprintf("%q", nc.UID) + ` \
+							// --scylla-image=` + fmt.Sprintf("%q", scyllaImage) + ` \
+							// --disable-optimizations=` + fmt.Sprintf("%t", nc.Spec.DisableOptimizations) + ` \
+							// --loglevel=` + fmt.Sprintf("%d", 4) + ` \
+							// "${host_cri_endpoints[@]/#/--cri-endpoint=unix://}"
+							// 							`,
+							// 							},
 							Env: []corev1.EnvVar{
 								{
 									Name: "POD_NAME",
@@ -175,6 +278,15 @@ func makeNodeConfigDaemonSet(nc *scyllav1alpha1.NodeConfig, operatorImage, scyll
 										FieldRef: &corev1.ObjectFieldSelector{
 											APIVersion: "v1",
 											FieldPath:  "metadata.name",
+										},
+									},
+								},
+								{
+									Name: "POD_NAMESPACE",
+									ValueFrom: &corev1.EnvVarSource{
+										FieldRef: &corev1.ObjectFieldSelector{
+											APIVersion: "v1",
+											FieldPath:  "metadata.namespace",
 										},
 									},
 								},
@@ -194,8 +306,11 @@ func makeNodeConfigDaemonSet(nc *scyllav1alpha1.NodeConfig, operatorImage, scyll
 									corev1.ResourceMemory: resource.MustParse("50Mi"),
 								},
 							},
+							SecurityContext: &corev1.SecurityContext{
+								Privileged: pointer.BoolPtr(true),
+							},
 							VolumeMounts: []corev1.VolumeMount{
-								makeVolumeMount("hostfs", naming.HostFilesystemDirName, false),
+								makeVolumeMount("hostfs", "/host", false),
 							},
 						},
 					},

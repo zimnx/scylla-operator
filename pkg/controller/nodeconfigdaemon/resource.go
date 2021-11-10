@@ -110,7 +110,7 @@ func makePerftuneJobForContainers(controllerRef *metav1.OwnerReference, namespac
 		args = append(args, "--tune", "disks")
 	}
 	for _, hostPath := range dataHostPaths {
-		args = append(args, "--dir", path.Join(naming.HostFilesystemDirName, hostPath))
+		args = append(args, "--dir", path.Join("/host", hostPath))
 	}
 
 	if disableWritebackCache {
@@ -169,7 +169,7 @@ func makePerftuneJobForContainers(controllerRef *metav1.OwnerReference, namespac
 								Privileged: pointer.BoolPtr(true),
 							},
 							VolumeMounts: []corev1.VolumeMount{
-								makeVolumeMount("hostfs", naming.HostFilesystemDirName, false),
+								makeVolumeMount("hostfs", "/host", false),
 								makeVolumeMount("etc-systemd", "/etc/systemd", false),
 								makeVolumeMount("host-sys-class", "/sys/class", false),
 								makeVolumeMount("host-sys-devices", "/sys/devices", false),
@@ -202,7 +202,7 @@ func makePerftuneJobForContainers(controllerRef *metav1.OwnerReference, namespac
 	}
 
 	// Host node might not be running irqbalance. Mount config only when it's present on the host.
-	_, err = os.Stat(path.Join(naming.HostFilesystemDirName, "/etc/sysconfig/irqbalance"))
+	_, err = os.Stat("/etc/sysconfig/irqbalance")
 	if err == nil {
 		perftuneJob.Spec.Template.Spec.Volumes = append(
 			perftuneJob.Spec.Template.Spec.Volumes,
