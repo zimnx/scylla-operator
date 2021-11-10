@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"path"
 
 	"github.com/c9s/goprocinfo/linux"
 	"github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
@@ -53,7 +52,7 @@ func (ncdc *Controller) makeJobsForNode(ctx context.Context) ([]*batchv1.Job, er
 }
 
 func (ncdc *Controller) makePerftuneJobForContainers(ctx context.Context, podSpec *corev1.PodSpec, optimizablePods []*corev1.Pod, scyllaContainerIDs []string) (*batchv1.Job, error) {
-	cpuInfo, err := linux.ReadCPUInfo(path.Join(naming.HostFilesystemDirName, "/proc/cpuinfo"))
+	cpuInfo, err := linux.ReadCPUInfo("/proc/cpuinfo")
 	if err != nil {
 		return nil, fmt.Errorf("can't parse cpuinfo from %q: %w", "/proc/cpuinfo", err)
 	}

@@ -75,7 +75,6 @@ const (
 	ScyllaRackDCPropertiesName   = "cassandra-rackdc.properties"
 	ScyllaIOPropertiesName       = "io_properties.yaml"
 	PerftuneCommandName          = "perftune.cmd"
-	HostFilesystemDirName        = "/mnt/hostfs"
 
 	DataDir = "/var/lib/scylla"
 
