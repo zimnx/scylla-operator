@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 
 	"github.com/c9s/goprocinfo/linux"
 	"github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
@@ -69,12 +70,12 @@ func (ncdc *Controller) makePerftuneJobForContainers(ctx context.Context, podSpe
 		return nil, fmt.Errorf("can't get IRQ CPUs: %w", err)
 	}
 
-	dataHostPaths, err := scyllaDataDirMountHostPaths(ctx, ncdc.criClient, optimizablePods)
+	rawDataHostPaths, err := scyllaDataDirMountHostPaths(ctx, ncdc.criClient, optimizablePods)
 	if err != nil {
 		return nil, fmt.Errorf("can't find data dir host path: %w", err)
 	}
 
-	if len(dataHostPaths) == 0 {
+	if len(rawDataHostPaths) == 0 {
 		return nil, fmt.Errorf("no data mount host path found")
 	}
 
@@ -89,6 +90,17 @@ func (ncdc *Controller) makePerftuneJobForContainers(ctx context.Context, podSpe
 		if sv.SupportFeatureSafe(semver.ScyllaVersionThatSupportsDisablingWritebackCache) {
 			disableWritebackCache = true
 		}
+	}
+
+	// Because perftune is not running in chroot we need to resolve any absolute symlinks in these paths.
+	dataHostPaths := make([]string, 0, len(rawDataHostPaths))
+	for _, rp := range rawDataHostPaths {
+		p, err := filepath.EvalSymlinks(rp)
+		if err != nil {
+			return nil, fmt.Errorf("can't resolve symlink %q: %w", rp, err)
+		}
+
+		dataHostPaths = append(dataHostPaths, p)
 	}
 
 	return makePerftuneJobForContainers(
