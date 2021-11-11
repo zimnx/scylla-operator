@@ -89,12 +89,13 @@ type NodeConfigPlacement struct {
 
 	// nodeSelector is a selector which must be true for the NodeConfig Pod to fit on a node.
 	// Selector which must match a node's labels for the pod to be scheduled on that node.
-	// +kubebuilder:default:={"scylla-operator.scylladb.com/node-pool": "scylla-pool"}
+	// +kubebuilder:validation:Required
 	NodeSelector map[string]string `json:"nodeSelector"`
 }
 
 type NodeConfigSpec struct {
 	// placement contains scheduling rules for NodeConfig Pods.
+	// +kubebuilder:validation:Required
 	Placement NodeConfigPlacement `json:"placement"`
 
 	// disableOptimizations controls if nodes matching placement requirements
