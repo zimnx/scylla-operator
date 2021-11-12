@@ -316,10 +316,8 @@ func (o *SidecarOptions) Run(streams genericclioptions.IOStreams, cmd *cobra.Com
 				src := &internalapi.SidecarRuntimeConfig{}
 				err = json.Unmarshal([]byte(srcData), src)
 				if err != nil {
-					if !found {
-						klog.V(4).ErrorS(err, "Can't unmarshal scylla runtime config", "ConfigMap", klog.KObj(cm), "Key", naming.ScyllaRuntimeConfigKey)
-						return false, nil
-					}
+					klog.V(4).ErrorS(err, "Can't unmarshal scylla runtime config", "ConfigMap", klog.KObj(cm), "Key", naming.ScyllaRuntimeConfigKey)
+					return false, nil
 				}
 
 				if src.ContainerID != containerID {
@@ -328,6 +326,7 @@ func (o *SidecarOptions) Run(streams genericclioptions.IOStreams, cmd *cobra.Com
 						"ConfigContainerID", src.ContainerID,
 						"SidecarContainerID", containerID,
 					)
+					return false, nil
 				}
 
 				if len(src.BlockingNodeConfigs) > 0 {
@@ -337,7 +336,6 @@ func (o *SidecarOptions) Run(streams genericclioptions.IOStreams, cmd *cobra.Com
 						"NodeConfig", src.BlockingNodeConfigs,
 					)
 					return false, nil
-
 				}
 
 				klog.V(4).InfoS("ConfigMap container ready", "ConfigMap", klog.KObj(cm), "ContainerID", containerID)

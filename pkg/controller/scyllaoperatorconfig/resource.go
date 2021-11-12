@@ -11,7 +11,7 @@ import (
 func DefaultScyllaOperatorConfig() *scyllav1alpha1.ScyllaOperatorConfig {
 	return &scyllav1alpha1.ScyllaOperatorConfig{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: globalConfigName,
+			Name: naming.SingletonName,
 		},
 		Spec: scyllav1alpha1.ScyllaOperatorConfigSpec{
 			ScyllaUtilsImage: naming.DefaultScyllaUtilsImage,

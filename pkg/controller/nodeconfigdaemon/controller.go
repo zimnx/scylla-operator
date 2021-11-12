@@ -248,6 +248,7 @@ func (ncdc *Controller) addJob(obj interface{}) {
 
 	if !ncdc.ownsObject(job) {
 		klog.V(5).InfoS("Not enqueueing Job not owned by us", "Job", klog.KObj(job), "RV", job.ResourceVersion)
+		return
 	}
 
 	klog.V(4).InfoS("Observed addition of Job", "Job", klog.KObj(job), "RV", job.ResourceVersion)
@@ -272,6 +273,7 @@ func (ncdc *Controller) updateJob(old, cur interface{}) {
 
 	if !ncdc.ownsObject(currentJob) {
 		klog.V(5).InfoS("Not enqueueing Job not owned by us", "Job", klog.KObj(currentJob), "RV", currentJob.ResourceVersion)
+		return
 	}
 
 	klog.V(4).InfoS(
@@ -300,6 +302,7 @@ func (ncdc *Controller) deleteJob(obj interface{}) {
 
 	if !ncdc.ownsObject(job) {
 		klog.V(5).InfoS("Not enqueueing Job not owned by us", "Job", klog.KObj(job), "RV", job.ResourceVersion)
+		return
 	}
 
 	klog.V(4).InfoS("Observed deletion of Job", "Job", klog.KObj(job), "RV", job.ResourceVersion)

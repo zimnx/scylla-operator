@@ -82,7 +82,7 @@ func (ncdc *Controller) getJobs(ctx context.Context) (map[string]*batchv1.Job, e
 func (ncdc *Controller) getCurrentNodeConfig(ctx context.Context) (*v1alpha1.NodeConfig, error) {
 	nc, err := ncdc.nodeConfigLister.Get(ncdc.nodeConfigName)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("can't get current node config %q: %w", ncdc.nodeConfigName, err)
 	}
 
 	if nc.UID != ncdc.nodeConfigUID {
@@ -111,7 +111,7 @@ func (ncdc *Controller) updateNodeStatus(ctx context.Context, nodeStatus *v1alph
 
 	_, err = ncdc.scyllaClient.ScyllaV1alpha1().NodeConfigs().UpdateStatus(ctx, nc, metav1.UpdateOptions{})
 	if err != nil {
-		return err
+		return fmt.Errorf("can't update node config status %q: %w", ncdc.nodeConfigName, err)
 	}
 
 	klog.V(2).InfoS("Status updated", "NodeConfig", klog.KObj(oldNC), "Node", nodeStatus.Name)

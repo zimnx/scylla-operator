@@ -19,6 +19,8 @@ import (
 	"github.com/scylladb/scylla-operator/pkg/util/network"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/klog/v2"
 )
 
@@ -69,9 +71,7 @@ func (ncdc *Controller) makePerftuneJobForContainers(ctx context.Context, podSpe
 		return nil, fmt.Errorf("can't parse full mask: %w", err)
 	}
 
-	// TODO: see if we can plumb in the container IDs we already have.
-
-	irqCPUs, err := getIRQCPUs(ctx, ncdc.criClient, optimizablePods, hostFullCpuset)
+	irqCPUs, err := getIRQCPUs(ctx, ncdc.criClient, optimizablePods, hostFullCpuset, defaultCgroupMountpoint)
 	if err != nil {
 		return nil, fmt.Errorf("can't get IRQ CPUs: %w", err)
 	}
@@ -136,6 +136,7 @@ func (ncdc *Controller) makeJobForContainers(ctx context.Context) (*batchv1.Job,
 
 	var optimizablePods []*corev1.Pod
 	var scyllaContainerIDs []string
+
 	for i := range localScyllaPods {
 		scyllaPod := localScyllaPods[i]
 
@@ -146,21 +147,19 @@ func (ncdc *Controller) makeJobForContainers(ctx context.Context) (*batchv1.Job,
 
 		if !controllerhelpers.IsScyllaContainerRunning(scyllaPod) {
 			klog.V(4).Infof("Pod %q is a candidate for optimizations but scylla container isn't running yet", naming.ObjRef(scyllaPod))
+			return nil, nil
 		}
 
 		klog.V(4).Infof("Pod %s is subject for optimizations", naming.ObjRef(scyllaPod))
 		optimizablePods = append(optimizablePods, scyllaPod)
 
-		for _, cs := range scyllaPod.Status.ContainerStatuses {
-			if cs.Name == naming.ScyllaContainerName {
-				if len(cs.ContainerID) == 0 {
-					ncdc.eventRecorder.Event(ncdc.newNodeConfigObjectRef(), corev1.EventTypeWarning, "MissingContainerID", "Scylla container status is missing a containerID. Scylla won't wait for tuning to finish.")
-					continue
-				}
-
-				scyllaContainerIDs = append(scyllaContainerIDs, cs.ContainerID)
-			}
+		containerID, err := controllerhelpers.GetScyllaContainerID(scyllaPod)
+		if err != nil || len(containerID) == 0 {
+			ncdc.eventRecorder.Event(ncdc.newNodeConfigObjectRef(), corev1.EventTypeWarning, "MissingContainerID", "Scylla container status is missing a containerID. Scylla won't wait for tuning to finish.")
+			continue
 		}
+
+		scyllaContainerIDs = append(scyllaContainerIDs, containerID)
 	}
 
 	if len(optimizablePods) == 0 {
@@ -187,7 +186,7 @@ func (ncdc *Controller) syncJobs(ctx context.Context, jobs map[string]*batchv1.J
 		return fmt.Errorf("can't make Jobs for containers: %w", err)
 	}
 
-	required := make([]*batchv1.Job, 0, len(requiredForNode))
+	required := make([]*batchv1.Job, 0, len(requiredForNode)+1)
 	required = append(required, requiredForNode...)
 	if requiredForContainers != nil {
 		required = append(required, requiredForContainers)
@@ -217,9 +216,9 @@ func (ncdc *Controller) syncJobs(ctx context.Context, jobs map[string]*batchv1.J
 			if fresh.Status.CompletionTime == nil {
 				klog.V(4).InfoS("Job isn't completed yet", "Job", klog.KObj(fresh))
 				finished = false
+				break
 			}
 			klog.V(4).InfoS("Job is completed", "Job", klog.KObj(fresh))
-
 		case naming.NodeConfigJobTypeContainers:
 			// We have successfully applied the job definition so the data should always be present at this point.
 			nodeConfigJobDataString, found := fresh.Annotations[naming.NodeConfigJobData]
@@ -233,7 +232,6 @@ func (ncdc *Controller) syncJobs(ctx context.Context, jobs map[string]*batchv1.J
 				return fmt.Errorf("internal error: can't unmarshal node config data for job %q: %w", klog.KObj(fresh), err)
 			}
 			nodeStatus.TunedContainers = jobData.ContainerIDs
-
 		default:
 			return fmt.Errorf("job %q has an unkown type %q", naming.ObjRef(j), t)
 		}
@@ -242,4 +240,38 @@ func (ncdc *Controller) syncJobs(ctx context.Context, jobs map[string]*batchv1.J
 	nodeStatus.TunedNode = finished
 
 	return nil
+}
+
+func (ncdc *Controller) pruneJobs(ctx context.Context, jobs map[string]*batchv1.Job, requiredJobs []*batchv1.Job) error {
+	var errs []error
+	for _, j := range jobs {
+		if j.DeletionTimestamp != nil {
+			continue
+		}
+
+		isRequired := false
+		for _, req := range requiredJobs {
+			if j.Name == req.Name && j.Namespace == req.Namespace {
+				isRequired = true
+				break
+			}
+		}
+		if isRequired {
+			continue
+		}
+
+		klog.InfoS("Removing stale Job", "Job", klog.KObj(j))
+		propagationPolicy := metav1.DeletePropagationBackground
+		err := ncdc.kubeClient.BatchV1().Jobs(j.Namespace).Delete(ctx, j.Name, metav1.DeleteOptions{
+			Preconditions: &metav1.Preconditions{
+				UID: &j.UID,
+			},
+			PropagationPolicy: &propagationPolicy,
+		})
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+	}
+	return utilerrors.NewAggregate(errs)
 }

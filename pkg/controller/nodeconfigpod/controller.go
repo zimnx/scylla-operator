@@ -261,9 +261,9 @@ func (ncpc *Controller) updatePod(old, cur interface{}) {
 }
 
 func (ncpc *Controller) addConfigMap(obj interface{}) {
-	sa := obj.(*corev1.ConfigMap)
-	klog.V(4).InfoS("Observed addition of ConfigMap", "ConfigMap", klog.KObj(sa))
-	ncpc.enqueueOwner(sa)
+	cm := obj.(*corev1.ConfigMap)
+	klog.V(4).InfoS("Observed addition of ConfigMap", "ConfigMap", klog.KObj(cm))
+	ncpc.enqueueOwner(cm)
 }
 
 func (ncpc *Controller) updateConfigMap(old, cur interface{}) {

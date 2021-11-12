@@ -149,11 +149,6 @@ func NewController(
 		UpdateFunc: ncc.updateOperatorConfig,
 	})
 
-	scyllaOperatorConfigInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    ncc.addOperatorConfig,
-		UpdateFunc: ncc.updateOperatorConfig,
-	})
-
 	clusterRoleInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    ncc.addClusterRole,
 		UpdateFunc: ncc.updateClusterRole,
@@ -414,28 +409,6 @@ func (ncc *Controller) updateOperatorConfig(old, cur interface{}) {
 	ncc.enqueueAll()
 }
 
-func (ncc *Controller) resolveDaemonSetController(obj metav1.Object) *appsv1.DaemonSet {
-	controllerRef := metav1.GetControllerOf(obj)
-	if controllerRef == nil {
-		return nil
-	}
-
-	if controllerRef.Kind != daemonSetControllerGVK.Kind {
-		return nil
-	}
-
-	ds, err := ncc.daemonSetLister.DaemonSets(obj.GetNamespace()).Get(controllerRef.Name)
-	if err != nil {
-		return nil
-	}
-
-	if ds.UID != controllerRef.UID {
-		return nil
-	}
-
-	return ds
-}
-
 func (ncc *Controller) resolveNodeConfigController(obj metav1.Object) *scyllav1alpha1.NodeConfig {
 	controllerRef := metav1.GetControllerOf(obj)
 	if controllerRef == nil {
@@ -446,21 +419,21 @@ func (ncc *Controller) resolveNodeConfigController(obj metav1.Object) *scyllav1a
 		return nil
 	}
 
-	snt, err := ncc.nodeConfigLister.Get(controllerRef.Name)
+	nc, err := ncc.nodeConfigLister.Get(controllerRef.Name)
 	if err != nil {
 		return nil
 	}
 
-	if snt.UID != controllerRef.UID {
+	if nc.UID != controllerRef.UID {
 		return nil
 	}
 
-	return snt
+	return nc
 }
 
 func (ncc *Controller) enqueueOwner(obj metav1.Object) {
-	snc := ncc.resolveNodeConfigController(obj)
-	if snc == nil {
+	nc := ncc.resolveNodeConfigController(obj)
+	if nc == nil {
 		return
 	}
 
@@ -470,8 +443,8 @@ func (ncc *Controller) enqueueOwner(obj metav1.Object) {
 		return
 	}
 
-	klog.V(4).InfoS("Enqueuing owner", gvk.Kind, klog.KObj(obj), "NodeConfig", klog.KObj(snc))
-	ncc.enqueue(snc)
+	klog.V(4).InfoS("Enqueuing owner", gvk.Kind, klog.KObj(obj), "NodeConfig", klog.KObj(nc))
+	ncc.enqueue(nc)
 }
 
 func (ncc *Controller) enqueue(soc *scyllav1alpha1.NodeConfig) {
@@ -486,13 +459,13 @@ func (ncc *Controller) enqueue(soc *scyllav1alpha1.NodeConfig) {
 }
 
 func (ncc *Controller) enqueueAll() {
-	socs, err := ncc.nodeConfigLister.List(labels.Everything())
+	ncs, err := ncc.nodeConfigLister.List(labels.Everything())
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("couldn't list all ScyllaOperatorConfigs: %w", err))
+		utilruntime.HandleError(fmt.Errorf("couldn't list all NodeConfigs: %w", err))
 		return
 	}
 
-	for _, soc := range socs {
+	for _, soc := range ncs {
 		ncc.enqueue(soc)
 	}
 }

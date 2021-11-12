@@ -82,20 +82,6 @@ func TestScyllaContainerCpuSet(t *testing.T) {
 		podUID            = "03840283-da85-4518-a860-2d1da454207c"
 	)
 
-	scyllaPod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			UID: podUID,
-		},
-		Status: corev1.PodStatus{
-			ContainerStatuses: []corev1.ContainerStatus{
-				{
-					Name:        naming.ScyllaContainerName,
-					ContainerID: fmt.Sprintf("docker://%s", scyllaContainerID),
-				},
-			},
-		},
-	}
-
 	containerStatusWithRuntimeInfo := &cri.ContainerStatus{
 		Info: cri.ContainerStatusInfo{
 			RuntimeSpec: &cri.ContainerStatusInfoRuntimeSpec{
@@ -139,7 +125,7 @@ func TestScyllaContainerCpuSet(t *testing.T) {
 
 	generateEKSCgroup := func(cpuset string) func() string {
 		temp := t.TempDir()
-		dir := path.Join(temp, fmt.Sprintf("/sys/fs/cgroup/cpuset/kubepods.slice/kubepods-pod%s.slice/docker-%s.scope", strings.ReplaceAll(podUID, "-", "_"), scyllaContainerID))
+		dir := path.Join(temp, fmt.Sprintf("/cpuset/kubepods.slice/kubepods-pod%s.slice/docker-%s.scope", strings.ReplaceAll(podUID, "-", "_"), scyllaContainerID))
 
 		saveCpuset(dir, cpuset)
 
@@ -150,7 +136,7 @@ func TestScyllaContainerCpuSet(t *testing.T) {
 
 	generateGKECgroup := func(cpuset string) func() string {
 		temp := t.TempDir()
-		dir := path.Join(temp, fmt.Sprintf("/sys/fs/cgroup/cpuset/kubepods/pod%s/%s", podUID, scyllaContainerID))
+		dir := path.Join(temp, fmt.Sprintf("/cpuset/kubepods/pod%s/%s", podUID, scyllaContainerID))
 
 		saveCpuset(dir, cpuset)
 
@@ -161,7 +147,7 @@ func TestScyllaContainerCpuSet(t *testing.T) {
 
 	generateMinikubeCgroup := func(cpuset string) func() string {
 		temp := t.TempDir()
-		dir := path.Join(temp, fmt.Sprintf("/sys/fs/cgroup/cpuset/kubepods.slice/kubepods-pod%s.slice/docker-%s.scope", strings.ReplaceAll(podUID, "-", "_"), scyllaContainerID))
+		dir := path.Join(temp, fmt.Sprintf("/cpuset/kubepods.slice/kubepods-pod%s.slice/docker-%s.scope", strings.ReplaceAll(podUID, "-", "_"), scyllaContainerID))
 
 		saveCpuset(dir, cpuset)
 
@@ -205,15 +191,13 @@ func TestScyllaContainerCpuSet(t *testing.T) {
 			name:            "empty CRI and missing cgroup",
 			containerStatus: emptyContainerStatus,
 			cgroupFsPath:    t.TempDir,
-			expectedErr:     fmt.Errorf("cannot find Scylla container cpuset"),
+			expectedErr:     fmt.Errorf("can't find Scylla container cpuset"),
 		},
 	}
 
 	for i := range ts {
 		test := ts[i]
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-
 			ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 			defer cancel()
 
@@ -223,7 +207,7 @@ func TestScyllaContainerCpuSet(t *testing.T) {
 				},
 			}
 
-			scyllaCpuset, err := scyllaContainerCpuSet(ctx, criClient, scyllaPod, test.cgroupFsPath())
+			scyllaCpuset, err := getContainerCPUs(ctx, criClient, podUID, scyllaContainerID, test.cgroupFsPath())
 			if !reflect.DeepEqual(err, test.expectedErr) {
 				t.Errorf("expected %v error, got %v", test.expectedErr, err)
 			}
@@ -341,7 +325,7 @@ func TestGetIRQCPUs(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			irqCpuSet, err := getIRQCPUs(ctx, criClient, test.scyllaPods, hostFullCpuset)
+			irqCpuSet, err := getIRQCPUs(ctx, criClient, test.scyllaPods, hostFullCpuset, defaultCgroupMountpoint)
 			if !reflect.DeepEqual(err, test.expectedErr) {
 				t.Errorf("expected %v error, got %v", test.expectedErr, err)
 			}

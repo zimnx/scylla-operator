@@ -129,6 +129,10 @@ func (o *NodeConfigDaemonOptions) Validate() error {
 		errs = append(errs, fmt.Errorf("scylla-image can't be empty"))
 	}
 
+	if len(o.CRIEndpoints) == 0 {
+		errs = append(errs, fmt.Errorf("there must be at least one cri-endpoint"))
+	}
+
 	return apierrors.NewAggregate(errs)
 }
 
@@ -208,9 +212,9 @@ func (o *NodeConfigDaemonOptions) Run(streams genericclioptions.IOStreams, cmd *
 	}
 
 	// Start informers.
+	namespacedKubeInformers.Start(ctx.Done())
 	nodeConfigInformers.Start(ctx.Done())
 	localNodeScyllaCoreInformers.Start(ctx.Done())
-	namespacedKubeInformers.Start(ctx.Done())
 	selfPodInformers.Start(ctx.Done())
 
 	// Run the controller to configure and reconcile pod specific options.

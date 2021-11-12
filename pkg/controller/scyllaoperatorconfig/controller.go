@@ -12,6 +12,7 @@ import (
 	scyllav1alpha1informers "github.com/scylladb/scylla-operator/pkg/client/scylla/informers/externalversions/scylla/v1alpha1"
 	scyllav1alpha1listers "github.com/scylladb/scylla-operator/pkg/client/scylla/listers/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
+	"github.com/scylladb/scylla-operator/pkg/naming"
 	"github.com/scylladb/scylla-operator/pkg/scheme"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -28,8 +29,7 @@ import (
 )
 
 const (
-	ControllerName   = "ScyllaOperatorConfigController"
-	globalConfigName = "cluster"
+	ControllerName = "ScyllaOperatorConfigController"
 	// maxSyncDuration enforces preemption. Do not raise the value! Controllers shouldn't actively wait,
 	// but rather use the queue.
 	maxSyncDuration = 30 * time.Second
@@ -94,7 +94,7 @@ func NewController(
 		DeleteFunc: opc.deleteScyllaOperatorConfig,
 	})
 
-	opc.queue.Add(globalConfigName)
+	opc.queue.Add(naming.SingletonName)
 
 	return opc, nil
 }
@@ -176,7 +176,7 @@ func (opc *Controller) Run(ctx context.Context, workers int) {
 }
 
 func (opc *Controller) enqueue() {
-	opc.queue.Add(globalConfigName)
+	opc.queue.Add(naming.SingletonName)
 }
 
 func (opc *Controller) addScyllaOperatorConfig(obj interface{}) {
