@@ -50,14 +50,19 @@ func (ncdc *Controller) getJobs(ctx context.Context) (map[string]*batchv1.Job, e
 		naming.NodeConfigJobForNodeLabel: ncdc.nodeName,
 	})
 
+	cr, err := ncdc.newOwningDSControllerRef()
+	if err != nil {
+		return nil, fmt.Errorf("can't get controller ref: %w", err)
+	}
+
 	cm := controllertools.NewJobControllerRefManager(
 		ctx,
 		&metav1.ObjectMeta{
-			Name:              ncdc.nodeConfigName,
-			UID:               ncdc.nodeConfigUID,
+			Name:              cr.Name,
+			UID:               cr.UID,
 			DeletionTimestamp: nil,
 		},
-		controllerGVK,
+		daemonSetControllerGVK,
 		selector,
 		ncdc.getCanAdoptFunc(ctx),
 		controllertools.RealJobControl{
@@ -73,26 +78,6 @@ func (ncdc *Controller) getJobs(ctx context.Context) (map[string]*batchv1.Job, e
 
 	return claimedJobs, nil
 }
-
-// func (ncdc *Controller) getJobsForNode(ctx context.Context) (map[string]*batchv1.Job, error) {
-// 	return ncdc.getJobs(
-// 		ctx,
-// 		labels.SelectorFromSet(labels.Set{
-// 			naming.NodeConfigJobForNodeLabel: ncdc.nodeName,
-// 			naming.NodeConfigJobTypeLabel:    string(naming.NodeConfigJobTypeNode),
-// 		}),
-// 	)
-// }
-//
-// func (ncdc *Controller) getPerftuneJobsForContainers(ctx context.Context) (map[string]*batchv1.Job, error) {
-// 	return ncdc.getJobs(
-// 		ctx,
-// 		labels.SelectorFromSet(labels.Set{
-// 			naming.NodeConfigJobForNodeLabel: ncdc.nodeName,
-// 			naming.NodeConfigJobTypeLabel:    string(naming.NodeConfigJobTypeContainers),
-// 		}),
-// 	)
-// }
 
 func (ncdc *Controller) getCurrentNodeConfig(ctx context.Context) (*v1alpha1.NodeConfig, error) {
 	nc, err := ncdc.nodeConfigLister.Get(ncdc.nodeConfigName)

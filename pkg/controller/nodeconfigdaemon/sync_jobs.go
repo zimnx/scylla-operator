@@ -40,9 +40,15 @@ func (ncdc *Controller) makeJobsForNode(ctx context.Context) ([]*batchv1.Job, er
 
 	var jobs []*batchv1.Job
 
+	cr, err := ncdc.newOwningDSControllerRef()
+	if err != nil {
+		return nil, fmt.Errorf("can't get controller ref: %w", err)
+	}
+
 	jobs = append(jobs, makePerftuneJobForNode(
-		ncdc.newControllerRef(),
+		cr,
 		ncdc.namespace,
+		ncdc.nodeConfigName,
 		ncdc.nodeName,
 		ncdc.scyllaImage,
 		ifaceNames,
@@ -103,9 +109,15 @@ func (ncdc *Controller) makePerftuneJobForContainers(ctx context.Context, podSpe
 		dataHostPaths = append(dataHostPaths, p)
 	}
 
+	cr, err := ncdc.newOwningDSControllerRef()
+	if err != nil {
+		return nil, fmt.Errorf("can't get controller ref: %w", err)
+	}
+
 	return makePerftuneJobForContainers(
-		ncdc.newControllerRef(),
+		cr,
 		ncdc.namespace,
+		ncdc.nodeConfigName,
 		ncdc.nodeName,
 		ncdc.scyllaImage,
 		irqCPUs.FormatMask(),
@@ -142,7 +154,7 @@ func (ncdc *Controller) makeJobForContainers(ctx context.Context) (*batchv1.Job,
 		for _, cs := range scyllaPod.Status.ContainerStatuses {
 			if cs.Name == naming.ScyllaContainerName {
 				if len(cs.ContainerID) == 0 {
-					ncdc.eventRecorder.Event(ncdc.newObjectRef(), corev1.EventTypeWarning, "MissingContainerID", "Scylla container status is missing a containerID. Scylla won't wait for tuning to finish.")
+					ncdc.eventRecorder.Event(ncdc.newNodeConfigObjectRef(), corev1.EventTypeWarning, "MissingContainerID", "Scylla container status is missing a containerID. Scylla won't wait for tuning to finish.")
 					continue
 				}
 

@@ -17,7 +17,7 @@ import (
 
 // TODO: set anti affinities so config jobs don't run on the same node at the same time
 
-func makePerftuneJobForNode(controllerRef *metav1.OwnerReference, namespace, nodeName, image string, ifaceNames []string, podSpec *corev1.PodSpec) *batchv1.Job {
+func makePerftuneJobForNode(controllerRef *metav1.OwnerReference, namespace, nodeConfigName, nodeName, image string, ifaceNames []string, podSpec *corev1.PodSpec) *batchv1.Job {
 	podSpec = podSpec.DeepCopy()
 
 	args := []string{
@@ -30,7 +30,7 @@ func makePerftuneJobForNode(controllerRef *metav1.OwnerReference, namespace, nod
 	}
 
 	labels := map[string]string{
-		naming.NodeConfigNameLabel:       controllerRef.Name,
+		naming.NodeConfigNameLabel:       nodeConfigName,
 		naming.NodeConfigJobForNodeLabel: nodeName,
 		naming.NodeConfigJobTypeLabel:    string(naming.NodeConfigJobTypeNode),
 	}
@@ -101,7 +101,7 @@ type perftuneJobForContainersData struct {
 	ContainerIDs []string `json:"containerIDs"`
 }
 
-func makePerftuneJobForContainers(controllerRef *metav1.OwnerReference, namespace, nodeName, image, irqMask string, dataHostPaths []string, disableWritebackCache bool, podSpec *corev1.PodSpec, scyllaContainerIDs []string) (*batchv1.Job, error) {
+func makePerftuneJobForContainers(controllerRef *metav1.OwnerReference, namespace, nodeConfigName, nodeName, image, irqMask string, dataHostPaths []string, disableWritebackCache bool, podSpec *corev1.PodSpec, scyllaContainerIDs []string) (*batchv1.Job, error) {
 	podSpec = podSpec.DeepCopy()
 
 	args := []string{
@@ -121,7 +121,7 @@ func makePerftuneJobForContainers(controllerRef *metav1.OwnerReference, namespac
 	}
 
 	labels := map[string]string{
-		naming.NodeConfigNameLabel:       controllerRef.Name,
+		naming.NodeConfigNameLabel:       nodeConfigName,
 		naming.NodeConfigJobForNodeLabel: nodeName,
 		naming.NodeConfigJobTypeLabel:    string(naming.NodeConfigJobTypeContainers),
 	}

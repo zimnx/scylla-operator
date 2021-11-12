@@ -20,7 +20,7 @@ func makeScyllaOperatorNodeTuningNamespace() *corev1.Namespace {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: naming.ScyllaOperatorNodeTuningNamespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/managed-by": naming.OperatorAppName,
+				naming.NodeConfigNameLabel: naming.NodeConfigAppName,
 			},
 		},
 	}
