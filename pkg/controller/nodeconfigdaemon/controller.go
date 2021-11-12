@@ -13,11 +13,13 @@ import (
 	scyllav1alpha1informers "github.com/scylladb/scylla-operator/pkg/client/scylla/informers/externalversions/scylla/v1alpha1"
 	scyllav1alpha1listers "github.com/scylladb/scylla-operator/pkg/client/scylla/listers/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/cri"
+	"github.com/scylladb/scylla-operator/pkg/naming"
 	"github.com/scylladb/scylla-operator/pkg/scheme"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -35,7 +37,6 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/component-base/metrics/prometheus/ratelimiter"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/pointer"
 )
 
 const (
@@ -48,7 +49,7 @@ var (
 	controllerKey = "key"
 	keyFunc       = cache.DeletionHandlingMetaNamespaceKeyFunc
 
-	controllerGVK          = scyllav1alpha1.GroupVersion.WithKind("NodeConfig")
+	nodeConfigGVK          = scyllav1alpha1.GroupVersion.WithKind("NodeConfig")
 	daemonSetControllerGVK = appsv1.SchemeGroupVersion.WithKind("DaemonSet")
 )
 
@@ -305,21 +306,37 @@ func (ncdc *Controller) deleteJob(obj interface{}) {
 	ncdc.enqueue()
 }
 
-func (ncdc *Controller) newControllerRef() *metav1.OwnerReference {
-	return &metav1.OwnerReference{
-		APIVersion:         controllerGVK.Version,
-		Kind:               controllerGVK.Kind,
-		Name:               ncdc.nodeConfigName,
-		UID:                ncdc.nodeConfigUID,
-		BlockOwnerDeletion: pointer.Bool(true),
-		Controller:         pointer.Bool(true),
+func (ncdc *Controller) newOwningDSControllerRef() (*metav1.OwnerReference, error) {
+	pod, err := ncdc.selfPodLister.Pods(ncdc.namespace).Get(ncdc.podName)
+	if err != nil {
+		return nil, fmt.Errorf("can't get self Pod %q: %w", naming.ManualRef(ncdc.namespace, ncdc.podName), err)
 	}
+
+	ref := metav1.GetControllerOf(pod)
+	if ref == nil {
+		return nil, fmt.Errorf("pod %q doesn't have a controller refference", naming.ObjRef(pod))
+	}
+
+	gv, err := schema.ParseGroupVersion(ref.APIVersion)
+	if err != nil {
+		return nil, fmt.Errorf("can't parse GroupVersion %q: %w", ref.APIVersion, err)
+	}
+
+	if gv.Group != daemonSetControllerGVK.Group {
+		return nil, fmt.Errorf("pod's onwer ref group %q doesn't match the expected group %q", gv.Group, daemonSetControllerGVK.Group)
+
+	}
+	if ref.Kind != daemonSetControllerGVK.Kind {
+		return nil, fmt.Errorf("pod's onwer ref kind %q doesn't match the expected kind %q", ref.Kind, daemonSetControllerGVK.Kind)
+	}
+
+	return ref, nil
 }
 
-func (ncdc *Controller) newObjectRef() *corev1.ObjectReference {
+func (ncdc *Controller) newNodeConfigObjectRef() *corev1.ObjectReference {
 	return &corev1.ObjectReference{
-		APIVersion:      controllerGVK.Version,
-		Kind:            controllerGVK.Kind,
+		APIVersion:      nodeConfigGVK.Version,
+		Kind:            nodeConfigGVK.Kind,
 		Name:            ncdc.nodeConfigName,
 		Namespace:       corev1.NamespaceAll,
 		UID:             ncdc.nodeConfigUID,

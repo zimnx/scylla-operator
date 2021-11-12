@@ -40,8 +40,6 @@ const (
 	NodeConfigNameLabel       = "scylla-operator.scylladb.com/node-config-name"
 	ConfigMapTypeLabel        = "scylla-operator.scylladb.com/config-map-type"
 	OwnerUIDLabel             = "scylla-operator.scylladb.com/owner-uid"
-	// NodeConfigControllerLabel = "scylla-operator.scylladb.com/node-config-controller"
-	NodePoolLabel = "scylla-operator.scylladb.com/node-pool"
 
 	AppName           = "scylla"
 	OperatorAppName   = "scylla-operator"
@@ -70,18 +68,15 @@ const (
 	ScyllaAgentAuthTokenFileName = "auth-token.yaml"
 	ScyllaAgentConfigDefaultFile = "/etc/scylla-manager-agent/scylla-manager-agent.yaml"
 	ScyllaClientConfigDirName    = "/mnt/scylla-client-config"
-	ScyllaClientConfigFileName   = "scylla-client.yaml"
 	ScyllaConfigName             = "scylla.yaml"
 	ScyllaRackDCPropertiesName   = "cassandra-rackdc.properties"
 	ScyllaIOPropertiesName       = "io_properties.yaml"
-	PerftuneCommandName          = "perftune.cmd"
 
 	DataDir = "/var/lib/scylla"
 
 	ReadinessProbePath = "/readyz"
 	LivenessProbePath  = "/healthz"
 	ProbePort          = 8080
-	MetricsPort        = 8081
 
 	OperatorEnvVarPrefix = "SCYLLA_OPERATOR_"
 )
