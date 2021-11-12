@@ -47,6 +47,9 @@ func makePerftuneJobForNode(controllerRef *metav1.OwnerReference, namespace, nod
 			// TODO: handle failed jobs and retry.
 			BackoffLimit: pointer.Int32Ptr(math.MaxInt32),
 			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: labels,
+				},
 				Spec: corev1.PodSpec{
 					Tolerations:   podSpec.Tolerations,
 					NodeName:      nodeName,
@@ -146,6 +149,9 @@ func makePerftuneJobForContainers(controllerRef *metav1.OwnerReference, namespac
 			// TODO: handle failed jobs and retry.
 			BackoffLimit: pointer.Int32Ptr(math.MaxInt32),
 			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: labels,
+				},
 				Spec: corev1.PodSpec{
 					Tolerations:   podSpec.Tolerations,
 					NodeName:      nodeName,

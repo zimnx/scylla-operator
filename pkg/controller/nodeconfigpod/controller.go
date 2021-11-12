@@ -12,11 +12,13 @@ import (
 	scyllav1alpha1client "github.com/scylladb/scylla-operator/pkg/client/scylla/clientset/versioned/typed/scylla/v1alpha1"
 	scyllav1alpha1informers "github.com/scylladb/scylla-operator/pkg/client/scylla/informers/externalversions/scylla/v1alpha1"
 	scyllav1alpha1listers "github.com/scylladb/scylla-operator/pkg/client/scylla/listers/scylla/v1alpha1"
+	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	"github.com/scylladb/scylla-operator/pkg/util/resource"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -121,7 +123,6 @@ func NewController(
 	})
 
 	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    ncpc.addNode,
 		UpdateFunc: ncpc.updateNode,
 	})
 
@@ -175,6 +176,53 @@ func (ncpc *Controller) enqueueOwner(obj metav1.Object) {
 
 	klog.V(4).InfoS("Enqueuing owner", gvk.Kind, klog.KObj(obj), "Pod", klog.KObj(pod))
 	ncpc.enqueue(pod)
+}
+
+func (ncpc *Controller) enqueueAllScyllaPodsOnNode(node *corev1.Node) {
+	allPods, err := ncpc.podLister.List(naming.ScyllaSelector())
+	if err != nil {
+		utilruntime.HandleError(err)
+		return
+	}
+
+	var pods []*corev1.Pod
+	for _, pod := range allPods {
+		if pod.Spec.NodeName == node.Name {
+			pods = append(pods, pod)
+		}
+	}
+
+	klog.V(4).InfoS("Enqueuing all Scylla pods on Node", "Node", klog.KObj(node), "Count", len(pods))
+
+	for _, pod := range pods {
+		ncpc.enqueue(pod)
+	}
+}
+
+func (ncpc *Controller) enqueueAllScyllaPodsForNodeConfig(nodeConfig *scyllav1alpha1.NodeConfig) {
+	allNodes, err := ncpc.nodeLister.List(labels.Everything())
+	if err != nil {
+		utilruntime.HandleError(err)
+		return
+	}
+
+	var nodes []*corev1.Node
+	for _, node := range allNodes {
+		matching, err := controllerhelpers.IsNodeConfigSelectingNode(nodeConfig, node)
+		if err != nil {
+			utilruntime.HandleError(err)
+			return
+		}
+
+		if matching {
+			nodes = append(nodes, node)
+		}
+	}
+
+	klog.V(4).InfoS("Enqueuing all Scylla pods for NodeConfig", "NodeConfig", klog.KObj(nodeConfig), "NodeCount", len(nodes))
+	for _, node := range nodes {
+		ncpc.enqueueAllScyllaPodsOnNode(node)
+	}
 }
 
 func (ncpc *Controller) addPod(obj interface{}) {
@@ -256,27 +304,18 @@ func (ncpc *Controller) deleteConfigMap(obj interface{}) {
 	ncpc.enqueueOwner(cm)
 }
 
-func (ncpc *Controller) addNode(obj interface{}) {
-	node := obj.(*corev1.Node)
-	klog.V(4).InfoS("Observed addition of Node", "Node", klog.KObj(node))
-	// FIXME
-	ncpc.enqueueOwner(node)
-}
-
 func (ncpc *Controller) updateNode(old, cur interface{}) {
 	oldNode := old.(*corev1.Node)
 	currentNode := cur.(*corev1.Node)
 
 	klog.V(4).InfoS("Observed update of Node", "Node", klog.KObj(oldNode))
-	// FIXME
-	ncpc.enqueueOwner(currentNode)
+	ncpc.enqueueAllScyllaPodsOnNode(currentNode)
 }
 
 func (ncpc *Controller) addNodeConfig(obj interface{}) {
 	nodeConfig := obj.(*scyllav1alpha1.NodeConfig)
 	klog.V(4).InfoS("Observed addition of NodeConfig", "NodeConfig", klog.KObj(nodeConfig))
-	// FIXME
-	ncpc.enqueueOwner(nodeConfig)
+	ncpc.enqueueAllScyllaPodsForNodeConfig(nodeConfig)
 }
 
 func (ncpc *Controller) updateNodeConfig(old, cur interface{}) {
@@ -296,8 +335,7 @@ func (ncpc *Controller) updateNodeConfig(old, cur interface{}) {
 	}
 
 	klog.V(4).InfoS("Observed update of NodeConfig", "NodeConfig", klog.KObj(oldNodeConfig))
-	// FIXME
-	ncpc.enqueueOwner(currentNodeConfig)
+	ncpc.enqueueAllScyllaPodsForNodeConfig(currentNodeConfig)
 }
 
 func (ncpc *Controller) deleteNodeConfig(obj interface{}) {
@@ -315,8 +353,7 @@ func (ncpc *Controller) deleteNodeConfig(obj interface{}) {
 		}
 	}
 	klog.V(4).InfoS("Observed deletion of NodeConfig", "NodeConfig", klog.KObj(nodeConfig))
-	// FIXME
-	ncpc.enqueueOwner(nodeConfig)
+	ncpc.enqueueAllScyllaPodsForNodeConfig(nodeConfig)
 }
 
 func (ncpc *Controller) processNextItem(ctx context.Context) bool {
