@@ -35,7 +35,7 @@ func (ncc *Controller) sync(ctx context.Context, key string) error {
 		return fmt.Errorf("can't get NodeConfig %q: %w", key, err)
 	}
 
-	soc, err := ncc.scyllaOperatorConfigLister.Get("cluster")
+	soc, err := ncc.scyllaOperatorConfigLister.Get(naming.SingletonName)
 	if err != nil {
 		return fmt.Errorf("can't get ScyllaOperatorConfig: %w", err)
 	}
@@ -99,28 +99,28 @@ func (ncc *Controller) sync(ctx context.Context, key string) error {
 	return utilerrors.NewAggregate(errs)
 }
 
-func (ncc *Controller) getDaemonSets(ctx context.Context, snc *scyllav1alpha1.NodeConfig) (map[string]*appsv1.DaemonSet, error) {
+func (ncc *Controller) getDaemonSets(ctx context.Context, nc *scyllav1alpha1.NodeConfig) (map[string]*appsv1.DaemonSet, error) {
 	dss, err := ncc.daemonSetLister.DaemonSets(naming.ScyllaOperatorNodeTuningNamespace).List(labels.Everything())
 	if err != nil {
 		return nil, fmt.Errorf("list daemonsets: %w", err)
 	}
 
 	selector := labels.SelectorFromSet(labels.Set{
-		naming.NodeConfigNameLabel: snc.Name,
+		naming.NodeConfigNameLabel: nc.Name,
 	})
 
 	canAdoptFunc := func() error {
-		fresh, err := ncc.scyllaClient.NodeConfigs().Get(ctx, snc.Name, metav1.GetOptions{})
+		fresh, err := ncc.scyllaClient.NodeConfigs().Get(ctx, nc.Name, metav1.GetOptions{})
 		if err != nil {
 			return err
 		}
 
-		if fresh.UID != snc.UID {
-			return fmt.Errorf("original NodeConfig %q is gone: got uid %v, wanted %v", snc.Name, fresh.UID, snc.UID)
+		if fresh.UID != nc.UID {
+			return fmt.Errorf("original NodeConfig %q is gone: got uid %v, wanted %v", nc.Name, fresh.UID, nc.UID)
 		}
 
 		if fresh.GetDeletionTimestamp() != nil {
-			return fmt.Errorf("%q has just been deleted at %v", snc.Name, snc.DeletionTimestamp)
+			return fmt.Errorf("%q has just been deleted at %v", nc.Name, nc.DeletionTimestamp)
 		}
 
 		return nil
@@ -128,7 +128,7 @@ func (ncc *Controller) getDaemonSets(ctx context.Context, snc *scyllav1alpha1.No
 
 	cm := controllertools.NewDaemonSetControllerRefManager(
 		ctx,
-		snc,
+		nc,
 		controllerGVK,
 		selector,
 		canAdoptFunc,

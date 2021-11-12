@@ -15,6 +15,7 @@ import (
 	"github.com/scylladb/scylla-operator/pkg/controller/scyllaoperatorconfig"
 	"github.com/scylladb/scylla-operator/pkg/genericclioptions"
 	"github.com/scylladb/scylla-operator/pkg/leaderelection"
+	"github.com/scylladb/scylla-operator/pkg/naming"
 	"github.com/scylladb/scylla-operator/pkg/signals"
 	"github.com/scylladb/scylla-operator/pkg/version"
 	"github.com/spf13/cobra"
@@ -169,7 +170,7 @@ func (o *OperatorOptions) run(ctx context.Context, streams genericclioptions.IOS
 
 	scyllaOperatorConfigInformers := scyllainformers.NewSharedInformerFactoryWithOptions(o.scyllaClient, resyncPeriod, scyllainformers.WithTweakListOptions(
 		func(options *metav1.ListOptions) {
-			options.FieldSelector = fields.OneTermEqualSelector("metadata.name", "cluster").String()
+			options.FieldSelector = fields.OneTermEqualSelector("metadata.name", naming.SingletonName).String()
 		},
 	))
 
