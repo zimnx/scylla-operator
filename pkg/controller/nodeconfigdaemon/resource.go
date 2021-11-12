@@ -17,16 +17,12 @@ import (
 
 // TODO: set anti affinities so config jobs don't run on the same node at the same time
 
-func makePerftuneJobForNode(controllerRef *metav1.OwnerReference, namespace, nodeConfigName, nodeName, image string, ifaceNames []string, podSpec *corev1.PodSpec) *batchv1.Job {
+func makePerftuneJobForNode(controllerRef *metav1.OwnerReference, namespace, nodeConfigName, nodeName, image string, podSpec *corev1.PodSpec) *batchv1.Job {
 	podSpec = podSpec.DeepCopy()
 
 	args := []string{
 		"--tune=system",
 		"--tune-clock",
-		"--tune=net",
-	}
-	for _, ifaceName := range ifaceNames {
-		args = append(args, fmt.Sprintf("--nic=%s", ifaceName))
 	}
 
 	labels := map[string]string{
@@ -101,11 +97,16 @@ type perftuneJobForContainersData struct {
 	ContainerIDs []string `json:"containerIDs"`
 }
 
-func makePerftuneJobForContainers(controllerRef *metav1.OwnerReference, namespace, nodeConfigName, nodeName, image, irqMask string, dataHostPaths []string, disableWritebackCache bool, podSpec *corev1.PodSpec, scyllaContainerIDs []string) (*batchv1.Job, error) {
+func makePerftuneJobForContainers(controllerRef *metav1.OwnerReference, namespace, nodeConfigName, nodeName, image, irqMask string, dataHostPaths []string, disableWritebackCache bool, podSpec *corev1.PodSpec, ifaceNames, scyllaContainerIDs []string) (*batchv1.Job, error) {
 	podSpec = podSpec.DeepCopy()
 
 	args := []string{
 		"--irq-cpu-mask", irqMask,
+		"--tune=net",
+	}
+
+	for _, ifaceName := range ifaceNames {
+		args = append(args, fmt.Sprintf("--nic=%s", ifaceName))
 	}
 
 	// FIXME: disk shouldn't be empty
