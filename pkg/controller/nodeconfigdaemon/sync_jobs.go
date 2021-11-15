@@ -147,7 +147,7 @@ func (ncdc *Controller) makeJobForContainers(ctx context.Context) (*batchv1.Job,
 
 		if !controllerhelpers.IsScyllaContainerRunning(scyllaPod) {
 			klog.V(4).Infof("Pod %q is a candidate for optimizations but scylla container isn't running yet", naming.ObjRef(scyllaPod))
-			return nil, nil
+			continue
 		}
 
 		klog.V(4).Infof("Pod %s is subject for optimizations", naming.ObjRef(scyllaPod))
@@ -219,6 +219,7 @@ func (ncdc *Controller) syncJobs(ctx context.Context, jobs map[string]*batchv1.J
 				break
 			}
 			klog.V(4).InfoS("Job is completed", "Job", klog.KObj(fresh))
+
 		case naming.NodeConfigJobTypeContainers:
 			// We have successfully applied the job definition so the data should always be present at this point.
 			nodeConfigJobDataString, found := fresh.Annotations[naming.NodeConfigJobData]
@@ -232,6 +233,7 @@ func (ncdc *Controller) syncJobs(ctx context.Context, jobs map[string]*batchv1.J
 				return fmt.Errorf("internal error: can't unmarshal node config data for job %q: %w", klog.KObj(fresh), err)
 			}
 			nodeStatus.TunedContainers = jobData.ContainerIDs
+
 		default:
 			return fmt.Errorf("job %q has an unkown type %q", naming.ObjRef(j), t)
 		}
