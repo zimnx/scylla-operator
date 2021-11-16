@@ -47,7 +47,7 @@ func (ncdc *Controller) getJobs(ctx context.Context) (map[string]*batchv1.Job, e
 	}
 
 	selector := labels.SelectorFromSet(labels.Set{
-		naming.NodeConfigJobForNodeLabel: ncdc.nodeName,
+		naming.NodeConfigJobForNodeUIDLabel: string(ncdc.nodeUID),
 	})
 
 	cr, err := ncdc.newOwningDSControllerRef()

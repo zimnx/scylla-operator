@@ -16,12 +16,15 @@ import (
 	"github.com/scylladb/scylla-operator/pkg/signals"
 	"github.com/scylladb/scylla-operator/pkg/version"
 	"github.com/spf13/cobra"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/types"
 	apierrors "k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/util/retry"
 	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/klog/v2"
 )
@@ -121,10 +124,6 @@ func (o *NodeConfigDaemonOptions) Validate() error {
 		errs = append(errs, fmt.Errorf("node-config-name can't be empty"))
 	}
 
-	if len(o.NodeConfigUID) == 0 {
-		errs = append(errs, fmt.Errorf("node-config-uid can't be empty"))
-	}
-
 	if len(o.ScyllaImage) == 0 {
 		errs = append(errs, fmt.Errorf("scylla-image can't be empty"))
 	}
@@ -191,6 +190,20 @@ func (o *NodeConfigDaemonOptions) Run(streams genericclioptions.IOStreams, cmd *
 		},
 	))
 
+	var node *corev1.Node
+	err = wait.ExponentialBackoffWithContext(ctx, retry.DefaultBackoff, func() (bool, error) {
+		node, err = o.kubeClient.CoreV1().Nodes().Get(ctx, o.NodeName, metav1.GetOptions{})
+		if err != nil {
+			klog.V(2).InfoS("Can't get Node", "Node", o.NodeName, "Error", err.Error())
+			return false, nil
+		}
+
+		return true, nil
+	})
+	if err != nil {
+		return fmt.Errorf("can't get node %q: %w", o.NodeName, err)
+	}
+
 	ncdc, err := nodeconfigdaemon.NewController(
 		o.kubeClient,
 		o.scyllaClient,
@@ -202,7 +215,8 @@ func (o *NodeConfigDaemonOptions) Run(streams genericclioptions.IOStreams, cmd *
 		selfPodInformers.Core().V1().Pods(),
 		o.Namespace,
 		o.PodName,
-		o.NodeName,
+		node.Name,
+		node.UID,
 		o.NodeConfigName,
 		types.UID(o.NodeConfigUID),
 		o.ScyllaImage,

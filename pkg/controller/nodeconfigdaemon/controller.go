@@ -69,6 +69,7 @@ type Controller struct {
 	namespace      string
 	podName        string
 	nodeName       string
+	nodeUID        types.UID
 	nodeConfigName string
 	nodeConfigUID  types.UID
 	scyllaImage    string
@@ -92,6 +93,7 @@ func NewController(
 	namespace string,
 	podName string,
 	nodeName string,
+	nodeUID types.UID,
 	nodeConfigName string,
 	nodeConfigUID types.UID,
 	scyllaImage string,
@@ -124,6 +126,7 @@ func NewController(
 		namespace:      namespace,
 		podName:        podName,
 		nodeName:       nodeName,
+		nodeUID:        nodeUID,
 		nodeConfigName: nodeConfigName,
 		nodeConfigUID:  nodeConfigUID,
 		scyllaImage:    scyllaImage,

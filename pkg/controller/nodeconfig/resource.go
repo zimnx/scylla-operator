@@ -64,6 +64,11 @@ func NodeConfigClusterRole() *rbacv1.ClusterRole {
 				Verbs:     []string{"create", "delete", "get", "list", "patch", "update", "watch"},
 			},
 			{
+				APIGroups: []string{""},
+				Resources: []string{"nodes"},
+				Verbs:     []string{"get"},
+			},
+			{
 				APIGroups: []string{"apps"},
 				Resources: []string{"daemonsets"},
 				Verbs:     []string{"get", "list", "watch"},

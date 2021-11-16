@@ -12,12 +12,13 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/pointer"
 )
 
 // TODO: set anti affinities so config jobs don't run on the same node at the same time
 
-func makePerftuneJobForNode(controllerRef *metav1.OwnerReference, namespace, nodeConfigName, nodeName, image string, podSpec *corev1.PodSpec) *batchv1.Job {
+func makePerftuneJobForNode(controllerRef *metav1.OwnerReference, namespace, nodeConfigName, nodeName string, nodeUID types.UID, image string, podSpec *corev1.PodSpec) *batchv1.Job {
 	podSpec = podSpec.DeepCopy()
 
 	args := []string{
@@ -26,25 +27,31 @@ func makePerftuneJobForNode(controllerRef *metav1.OwnerReference, namespace, nod
 	}
 
 	labels := map[string]string{
-		naming.NodeConfigNameLabel:       nodeConfigName,
-		naming.NodeConfigJobForNodeLabel: nodeName,
-		naming.NodeConfigJobTypeLabel:    string(naming.NodeConfigJobTypeNode),
+		naming.NodeConfigNameLabel:          nodeConfigName,
+		naming.NodeConfigJobForNodeUIDLabel: string(nodeUID),
+		naming.NodeConfigJobTypeLabel:       string(naming.NodeConfigJobTypeNode),
+	}
+
+	annotations := map[string]string{
+		naming.NodeConfigJobForNodeKey: string(nodeUID),
 	}
 
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: namespace,
 			// TODO: hash the name to avoid overflow.
-			Name:            fmt.Sprintf("perftune-%s-node", nodeName),
+			Name:            fmt.Sprintf("perftune-node-%s", nodeUID),
 			OwnerReferences: []metav1.OwnerReference{*controllerRef},
 			Labels:          labels,
+			Annotations:     annotations,
 		},
 		Spec: batchv1.JobSpec{
 			// TODO: handle failed jobs and retry.
 			BackoffLimit: pointer.Int32Ptr(math.MaxInt32),
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: labels,
+					Labels:      labels,
+					Annotations: annotations,
 				},
 				Spec: corev1.PodSpec{
 					Tolerations:   podSpec.Tolerations,
@@ -97,7 +104,7 @@ type perftuneJobForContainersData struct {
 	ContainerIDs []string `json:"containerIDs"`
 }
 
-func makePerftuneJobForContainers(controllerRef *metav1.OwnerReference, namespace, nodeConfigName, nodeName, image, irqMask string, dataHostPaths []string, disableWritebackCache bool, podSpec *corev1.PodSpec, ifaceNames, scyllaContainerIDs []string) (*batchv1.Job, error) {
+func makePerftuneJobForContainers(controllerRef *metav1.OwnerReference, namespace, nodeConfigName, nodeName string, nodeUID types.UID, image, irqMask string, dataHostPaths []string, disableWritebackCache bool, podSpec *corev1.PodSpec, ifaceNames, scyllaContainerIDs []string) (*batchv1.Job, error) {
 	podSpec = podSpec.DeepCopy()
 
 	args := []string{
@@ -121,12 +128,6 @@ func makePerftuneJobForContainers(controllerRef *metav1.OwnerReference, namespac
 		args = append(args, "--write-back-cache", "false")
 	}
 
-	labels := map[string]string{
-		naming.NodeConfigNameLabel:       nodeConfigName,
-		naming.NodeConfigJobForNodeLabel: nodeName,
-		naming.NodeConfigJobTypeLabel:    string(naming.NodeConfigJobTypeContainers),
-	}
-
 	jobData := perftuneJobForContainersData{
 		ContainerIDs: scyllaContainerIDs,
 	}
@@ -135,23 +136,32 @@ func makePerftuneJobForContainers(controllerRef *metav1.OwnerReference, namespac
 		return nil, fmt.Errorf("can't marshal job data: %w", err)
 	}
 
+	labels := map[string]string{
+		naming.NodeConfigNameLabel:          nodeConfigName,
+		naming.NodeConfigJobForNodeUIDLabel: string(nodeUID),
+		naming.NodeConfigJobTypeLabel:       string(naming.NodeConfigJobTypeContainers),
+	}
+	annotations := map[string]string{
+		naming.NodeConfigJobForNodeKey: nodeName,
+		naming.NodeConfigJobData:       string(jobDataBytes),
+	}
+
 	perftuneJob := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: namespace,
 			// TODO: hash the name to avoid overflow
-			Name:            fmt.Sprintf("perftune-%s-containers", nodeName),
+			Name:            fmt.Sprintf("perftune-containers-%s", nodeUID),
 			OwnerReferences: []metav1.OwnerReference{*controllerRef},
 			Labels:          labels,
-			Annotations: map[string]string{
-				naming.NodeConfigJobData: string(jobDataBytes),
-			},
+			Annotations:     annotations,
 		},
 		Spec: batchv1.JobSpec{
 			// TODO: handle failed jobs and retry.
 			BackoffLimit: pointer.Int32Ptr(math.MaxInt32),
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: labels,
+					Labels:      labels,
+					Annotations: annotations,
 				},
 				Spec: corev1.PodSpec{
 					Tolerations:   podSpec.Tolerations,

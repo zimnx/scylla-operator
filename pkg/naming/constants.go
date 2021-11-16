@@ -29,17 +29,17 @@ const (
 
 // Generic Labels used on objects created by the operator.
 const (
-	ClusterNameLabel          = "scylla/cluster"
-	DatacenterNameLabel       = "scylla/datacenter"
-	RackNameLabel             = "scylla/rack"
-	ScyllaVersionLabel        = "scylla/scylla-version"
-	ManagedHash               = "scylla-operator.scylladb.com/managed-hash"
-	NodeConfigJobForNodeLabel = "scylla-operator.scylladb.com/node-config-job-for-node"
-	NodeConfigJobTypeLabel    = "scylla-operator.scylladb.com/node-config-job-type"
-	NodeConfigJobData         = "scylla-operator.scylladb.com/node-config-job-data"
-	NodeConfigNameLabel       = "scylla-operator.scylladb.com/node-config-name"
-	ConfigMapTypeLabel        = "scylla-operator.scylladb.com/config-map-type"
-	OwnerUIDLabel             = "scylla-operator.scylladb.com/owner-uid"
+	ClusterNameLabel             = "scylla/cluster"
+	DatacenterNameLabel          = "scylla/datacenter"
+	RackNameLabel                = "scylla/rack"
+	ScyllaVersionLabel           = "scylla/scylla-version"
+	ManagedHash                  = "scylla-operator.scylladb.com/managed-hash"
+	NodeConfigJobForNodeUIDLabel = "scylla-operator.scylladb.com/node-config-job-for-node-uid"
+	NodeConfigJobTypeLabel       = "scylla-operator.scylladb.com/node-config-job-type"
+	NodeConfigJobData            = "scylla-operator.scylladb.com/node-config-job-data"
+	NodeConfigNameLabel          = "scylla-operator.scylladb.com/node-config-name"
+	ConfigMapTypeLabel           = "scylla-operator.scylladb.com/config-map-type"
+	OwnerUIDLabel                = "scylla-operator.scylladb.com/owner-uid"
 
 	AppName           = "scylla"
 	OperatorAppName   = "scylla-operator"
@@ -50,6 +50,10 @@ const (
 	PrometheusPortAnnotation   = "prometheus.io/port"
 
 	ForceRedeploymentReasonAnnotation = "scylla-operator.scylladb.com/force-redeployment-reason"
+)
+
+const (
+	NodeConfigJobForNodeKey = "scylla-operator.scylladb.com/node-config-job-for-node"
 )
 
 // Configuration Values

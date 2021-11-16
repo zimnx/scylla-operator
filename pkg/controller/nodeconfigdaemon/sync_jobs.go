@@ -42,6 +42,7 @@ func (ncdc *Controller) makeJobsForNode(ctx context.Context) ([]*batchv1.Job, er
 		ncdc.namespace,
 		ncdc.nodeConfigName,
 		ncdc.nodeName,
+		ncdc.nodeUID,
 		ncdc.scyllaImage,
 		&pod.Spec,
 	))
@@ -118,6 +119,7 @@ func (ncdc *Controller) makePerftuneJobForContainers(ctx context.Context, podSpe
 		ncdc.namespace,
 		ncdc.nodeConfigName,
 		ncdc.nodeName,
+		ncdc.nodeUID,
 		ncdc.scyllaImage,
 		irqCPUs.FormatMask(),
 		dataHostPaths,
