@@ -225,11 +225,11 @@ func (o *SidecarOptions) Run(streams genericclioptions.IOStreams, cmd *cobra.Com
 	serviceLW := &cache.ListWatch{
 		ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
 			options.FieldSelector = serviceFieldSelector.String()
-			return o.kubeClient.CoreV1().Pods(o.Namespace).List(ctx, options)
+			return o.kubeClient.CoreV1().Services(o.Namespace).List(ctx, options)
 		},
 		WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
 			options.FieldSelector = serviceFieldSelector.String()
-			return o.kubeClient.CoreV1().Pods(o.Namespace).Watch(ctx, options)
+			return o.kubeClient.CoreV1().Services(o.Namespace).Watch(ctx, options)
 		},
 	}
 	klog.V(2).InfoS("Waiting for Service", "Service", naming.ManualRef(o.Namespace, o.ServiceName))
