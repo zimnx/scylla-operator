@@ -21,45 +21,31 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// type ConditionType string
+type NodeConfigConditionType string
 
-// const (
-// 	// ScyllaNodeConfigAvailable means the NodeConfig is available, ie. replicas required are up and running.
-// 	ScyllaNodeConfigAvailable ConditionType = "Available"
-//
-// 	// ScyllaNodeConfigScalingReason is added when NodeConfig hasn't reached desired number of replicas.
-// 	ScyllaNodeConfigScalingReason = "Scaling"
-//
-// 	// ScyllaNodeConfigReplicasReadyReason is added when all required NodeConfig replicas are ready.
-// 	ScyllaNodeConfigReplicasReadyReason = "ReplicasReady"
-// )
+const (
+	// Reconciled indicates that the NodeConfig is fully deployed and available.
+	NodeConfigReconciledConditionType NodeConfigConditionType = "Reconciled"
+)
 
-// type Condition struct {
-// 	// type of condition.
-// 	Type ConditionType `json:"type"`
-//
-// 	// status of the condition, one of True, False, or Unknown.
-// 	Status corev1.ConditionStatus `json:"status"`
-//
-// 	// lastTransitionTime is last time the condition transitioned from one status to another.
-// 	LastTransitionTime metav1.Time `json:"lastTransitionTime"`
-//
-// 	// reason for the condition's last transition.
-// 	Reason string `json:"reason"`
-//
-// 	// message is a human-readable message indicating details about the transition.
-// 	Message string `json:"message"`
-// }
+type NodeConfigCondition struct {
+	// type is the type of the NodeConfig condition.
+	Type NodeConfigConditionType `json:"type"`
 
-type ReplicaCount struct {
-	Desired int32 `json:"desired"`
+	// status represents the state of the condition, one of True, False, or Unknown.
+	Status corev1.ConditionStatus `json:"status"`
 
-	Actual int32 `json:"actual"`
+	// lastTransitionTime is last time the condition transitioned from one status to another.
+	LastTransitionTime metav1.Time `json:"lastTransitionTime"`
 
-	Ready int32 `json:"ready"`
+	// reason is the reason for condition's last transition.
+	Reason string `json:"reason"`
+
+	// message is a human-readable message indicating details about the transition.
+	Message string `json:"message"`
 }
 
-type NodeStatus struct {
+type NodeConfigNodeStatus struct {
 	Name            string   `json:"name"`
 	TunedNode       bool     `json:"tunedNode"`
 	TunedContainers []string `json:"tunedContainers"`
@@ -69,15 +55,11 @@ type NodeConfigStatus struct {
 	// observedGeneration indicates the most recent generation observed by the controller.
 	ObservedGeneration int64 `json:"observedGeneration"`
 
-	// // conditions represents the latest available observations of current state.
-	// Conditions []Condition `json:"conditions"`
+	// conditions represents the latest available observations of current state.
+	Conditions []NodeConfigCondition `json:"conditions"`
 
-	Current ReplicaCount `json:"current"`
-
-	Updated ReplicaCount `json:"updated"`
-
-	// NodeStatuses hold the status for each tuned node.
-	NodeStatuses []NodeStatus `json:"nodeStatuses"`
+	// nodeStatuses hold the status for each tuned node.
+	NodeStatuses []NodeConfigNodeStatus `json:"nodeStatuses"`
 }
 
 type NodeConfigPlacement struct {

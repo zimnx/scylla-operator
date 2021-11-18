@@ -3207,20 +3207,30 @@ spec:
               type: object
             status:
               properties:
-                current:
-                  properties:
-                    actual:
-                      format: int32
-                      type: integer
-                    desired:
-                      format: int32
-                      type: integer
-                    ready:
-                      format: int32
-                      type: integer
-                  type: object
+                conditions:
+                  description: conditions represents the latest available observations of current state.
+                  items:
+                    properties:
+                      lastTransitionTime:
+                        description: lastTransitionTime is last time the condition transitioned from one status to another.
+                        format: date-time
+                        type: string
+                      message:
+                        description: message is a human-readable message indicating details about the transition.
+                        type: string
+                      reason:
+                        description: reason is the reason for condition's last transition.
+                        type: string
+                      status:
+                        description: status represents the state of the condition, one of True, False, or Unknown.
+                        type: string
+                      type:
+                        description: type is the type of the NodeConfig condition.
+                        type: string
+                    type: object
+                  type: array
                 nodeStatuses:
-                  description: NodeStatuses hold the status for each tuned node.
+                  description: nodeStatuses hold the status for each tuned node.
                   items:
                     properties:
                       name:
@@ -3237,18 +3247,6 @@ spec:
                   description: observedGeneration indicates the most recent generation observed by the controller.
                   format: int64
                   type: integer
-                updated:
-                  properties:
-                    actual:
-                      format: int32
-                      type: integer
-                    desired:
-                      format: int32
-                      type: integer
-                    ready:
-                      format: int32
-                      type: integer
-                  type: object
               type: object
           type: object
       served: true

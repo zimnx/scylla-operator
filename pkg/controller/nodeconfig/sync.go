@@ -5,6 +5,7 @@ package nodeconfig
 import (
 	"context"
 	"fmt"
+	"time"
 
 	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/controllertools"
@@ -21,10 +22,16 @@ import (
 )
 
 func (ncc *Controller) sync(ctx context.Context, key string) error {
-	_, name, err := cache.SplitMetaNamespaceKey(key)
+	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		return fmt.Errorf("can't split meta namespace cache key: %w", err)
 	}
+
+	startTime := time.Now()
+	klog.V(4).InfoS("Started syncing NodeConfig", "NodeConfig", klog.KRef(namespace, name), "startTime", startTime)
+	defer func() {
+		klog.V(4).InfoS("Finished syncing NodeConfig", "NodeConfig", klog.KRef(namespace, name), "duration", time.Since(startTime))
+	}()
 
 	nc, err := ncc.nodeConfigLister.Get(name)
 	if apierrors.IsNotFound(err) {
@@ -65,7 +72,10 @@ func (ncc *Controller) sync(ctx context.Context, key string) error {
 		return fmt.Errorf("get DaemonSets: %w", err)
 	}
 
-	status := ncc.calculateStatus(nc, daemonSets)
+	status, err := ncc.calculateStatus(nc, daemonSets, ncc.operatorImage)
+	if err != nil {
+		return fmt.Errorf("can't calculate status: %w", err)
+	}
 
 	if nc.DeletionTimestamp != nil {
 		return ncc.updateStatus(ctx, nc, status)
@@ -73,23 +83,28 @@ func (ncc *Controller) sync(ctx context.Context, key string) error {
 
 	var errs []error
 
-	if err := ncc.syncNamespaces(ctx, namespaces); err != nil {
+	err = ncc.syncNamespaces(ctx, namespaces)
+	if err != nil {
 		errs = append(errs, fmt.Errorf("sync Namespace(s): %w", err))
 	}
 
-	if err := ncc.syncClusterRoles(ctx, clusterRoles); err != nil {
+	err = ncc.syncClusterRoles(ctx, clusterRoles)
+	if err != nil {
 		errs = append(errs, fmt.Errorf("sync ClusterRole(s): %w", err))
 	}
 
-	if err := ncc.syncServiceAccounts(ctx, serviceAccounts); err != nil {
+	err = ncc.syncServiceAccounts(ctx, serviceAccounts)
+	if err != nil {
 		errs = append(errs, fmt.Errorf("sync ServiceAccount(s): %w", err))
 	}
 
-	if err := ncc.syncClusterRoleBindings(ctx, clusterRoleBindings); err != nil {
+	err = ncc.syncClusterRoleBindings(ctx, clusterRoleBindings)
+	if err != nil {
 		errs = append(errs, fmt.Errorf("sync ClusterRoleBinding(s): %w", err))
 	}
 
-	if err := ncc.syncDaemonSets(ctx, nc, soc, status, daemonSets); err != nil {
+	err = ncc.syncDaemonSet(ctx, nc, soc, status, daemonSets)
+	if err != nil {
 		errs = append(errs, fmt.Errorf("sync DaemonSet(s): %w", err))
 	}
 

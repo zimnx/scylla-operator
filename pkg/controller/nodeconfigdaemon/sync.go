@@ -93,7 +93,7 @@ func (ncdc *Controller) getCurrentNodeConfig(ctx context.Context) (*v1alpha1.Nod
 	return nc, nil
 }
 
-func (ncdc *Controller) updateNodeStatus(ctx context.Context, nodeStatus *v1alpha1.NodeStatus) error {
+func (ncdc *Controller) updateNodeStatus(ctx context.Context, nodeStatus *v1alpha1.NodeConfigNodeStatus) error {
 	oldNC, err := ncdc.getCurrentNodeConfig(ctx)
 	if err != nil {
 		return err
@@ -131,7 +131,7 @@ func (ncdc *Controller) sync(ctx context.Context) error {
 		return fmt.Errorf("can't get Jobs: %w", err)
 	}
 
-	nodeStatus := &v1alpha1.NodeStatus{
+	nodeStatus := &v1alpha1.NodeConfigNodeStatus{
 		Name: ncdc.nodeName,
 	}
 

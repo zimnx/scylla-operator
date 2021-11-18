@@ -39,7 +39,7 @@ func (ncc *Controller) pruneDaemonSets(ctx context.Context, requiredDaemonSet *a
 	return utilerrors.NewAggregate(errs)
 }
 
-func (ncc *Controller) syncDaemonSets(
+func (ncc *Controller) syncDaemonSet(
 	ctx context.Context,
 	nc *scyllav1alpha1.NodeConfig,
 	soc *scyllav1alpha1.ScyllaOperatorConfig,
@@ -64,9 +64,16 @@ func (ncc *Controller) syncDaemonSets(
 			return fmt.Errorf("can't apply statefulset update: %w", err)
 		}
 
-		status.Updated.Desired = updatedDaemonSet.Status.DesiredNumberScheduled
-		status.Updated.Actual = updatedDaemonSet.Status.CurrentNumberScheduled
-		status.Updated.Ready = updatedDaemonSet.Status.NumberReady
+		status, err = ncc.calculateStatus(
+			nc,
+			map[string]*appsv1.DaemonSet{
+				updatedDaemonSet.Name: updatedDaemonSet,
+			},
+			scyllaUtilsImage,
+		)
+		if err != nil {
+			return fmt.Errorf("can't calculate updated status: %w", err)
+		}
 	}
 
 	return nil

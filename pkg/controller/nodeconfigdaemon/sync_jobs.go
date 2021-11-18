@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/c9s/goprocinfo/linux"
-	"github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
+	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	"github.com/scylladb/scylla-operator/pkg/resourceapply"
@@ -177,7 +177,7 @@ func (ncdc *Controller) makeJobForContainers(ctx context.Context) (*batchv1.Job,
 	return ncdc.makePerftuneJobForContainers(ctx, &selfPod.Spec, optimizablePods, scyllaContainerIDs)
 }
 
-func (ncdc *Controller) syncJobs(ctx context.Context, jobs map[string]*batchv1.Job, nodeStatus *v1alpha1.NodeStatus) error {
+func (ncdc *Controller) syncJobs(ctx context.Context, jobs map[string]*batchv1.Job, nodeStatus *scyllav1alpha1.NodeConfigNodeStatus) error {
 	requiredForNode, err := ncdc.makeJobsForNode(ctx)
 	if err != nil {
 		return fmt.Errorf("can't make Jobs for node: %w", err)

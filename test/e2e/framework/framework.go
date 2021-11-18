@@ -244,7 +244,7 @@ func (f *Framework) deleteNamespace(ctx context.Context, ns *corev1.Namespace) {
 	// We have deleted only the namespace object but it is still there with deletionTimestamp set.
 
 	By("Waiting for namespace %q to be removed.", ns.Name)
-	err = WaitForObjectDeletion(ctx, f.DynamicAdminClient(), corev1.SchemeGroupVersion.WithResource("namespaces"), "", ns.Name, ns.UID)
+	err = WaitForObjectDeletion(ctx, f.DynamicAdminClient(), corev1.SchemeGroupVersion.WithResource("namespaces"), "", ns.Name, &ns.UID)
 	o.Expect(err).NotTo(o.HaveOccurred())
 	klog.InfoS("Namespace removed.", "Namespace", ns.Name)
 }

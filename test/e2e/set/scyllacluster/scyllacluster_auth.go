@@ -13,7 +13,7 @@ import (
 	"github.com/scylladb/scylla-operator/pkg/helpers"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	"github.com/scylladb/scylla-operator/pkg/scyllaclient"
-	scyllaclusterfixture "github.com/scylladb/scylla-operator/test/e2e/fixture/scyllacluster"
+	scyllafixture "github.com/scylladb/scylla-operator/test/e2e/fixture/scylla"
 	"github.com/scylladb/scylla-operator/test/e2e/framework"
 	"github.com/scylladb/scylla-operator/test/e2e/utils"
 	"gopkg.in/yaml.v2"
@@ -31,7 +31,7 @@ var _ = g.Describe("ScyllaCluster authentication", func() {
 		ctx, cancel := context.WithTimeout(context.Background(), testTimout)
 		defer cancel()
 
-		sc := scyllaclusterfixture.BasicScyllaCluster.ReadOrFail()
+		sc := scyllafixture.BasicScyllaCluster.ReadOrFail()
 		sc.Spec.Datacenter.Racks[0].Members = 1
 
 		framework.By("Creating a ScyllaCluster")
@@ -44,7 +44,7 @@ var _ = g.Describe("ScyllaCluster authentication", func() {
 		framework.By("Waiting for the ScyllaCluster to deploy")
 		waitCtx1, waitCtx1Cancel := utils.ContextForRollout(ctx, sc)
 		defer waitCtx1Cancel()
-		sc, err = utils.WaitForScyllaClusterState(waitCtx1, f.ScyllaClient().ScyllaV1(), sc.Namespace, sc.Name, utils.ScyllaClusterRolledOut)
+		sc, err = utils.WaitForScyllaClusterState(waitCtx1, f.ScyllaClient().ScyllaV1(), sc.Namespace, sc.Name, utils.IsScyllaClusterRolledOut)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
 		di, err := NewDataInserter(ctx, f.KubeClient().CoreV1(), sc, utils.GetMemberCount(sc))
@@ -123,7 +123,7 @@ var _ = g.Describe("ScyllaCluster authentication", func() {
 		framework.By("Waiting for the ScyllaCluster to pick up token change")
 		waitCtx2, waitCtx2Cancel := utils.ContextForRollout(ctx, sc)
 		defer waitCtx2Cancel()
-		sc, err = utils.WaitForScyllaClusterState(waitCtx2, f.ScyllaClient().ScyllaV1(), sc.Namespace, sc.Name, utils.ScyllaClusterRolledOut)
+		sc, err = utils.WaitForScyllaClusterState(waitCtx2, f.ScyllaClient().ScyllaV1(), sc.Namespace, sc.Name, utils.IsScyllaClusterRolledOut)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
 		verifyScyllaCluster(ctx, f.KubeClient(), sc, di)
@@ -156,7 +156,7 @@ var _ = g.Describe("ScyllaCluster authentication", func() {
 
 		waitCtx3, waitCtx3Cancel := utils.ContextForRollout(ctx, sc)
 		defer waitCtx3Cancel()
-		sc, err = utils.WaitForScyllaClusterState(waitCtx3, f.ScyllaClient().ScyllaV1(), sc.Namespace, sc.Name, utils.ScyllaClusterRolledOut)
+		sc, err = utils.WaitForScyllaClusterState(waitCtx3, f.ScyllaClient().ScyllaV1(), sc.Namespace, sc.Name, utils.IsScyllaClusterRolledOut)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
 		verifyScyllaCluster(ctx, f.KubeClient(), sc, di)

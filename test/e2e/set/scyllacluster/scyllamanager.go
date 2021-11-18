@@ -9,7 +9,7 @@ import (
 	g "github.com/onsi/ginkgo"
 	o "github.com/onsi/gomega"
 	scyllav1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1"
-	scyllaclusterfixture "github.com/scylladb/scylla-operator/test/e2e/fixture/scyllacluster"
+	scyllafixture "github.com/scylladb/scylla-operator/test/e2e/fixture/scylla"
 	"github.com/scylladb/scylla-operator/test/e2e/framework"
 	"github.com/scylladb/scylla-operator/test/e2e/utils"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -24,7 +24,7 @@ var _ = g.Describe("Scylla Manager integration", func() {
 		ctx, cancel := context.WithTimeout(context.Background(), testTimout)
 		defer cancel()
 
-		sc := scyllaclusterfixture.BasicScyllaCluster.ReadOrFail()
+		sc := scyllafixture.BasicScyllaCluster.ReadOrFail()
 		sc.Spec.Datacenter.Racks[0].Members = 1
 		sc.Spec.Repairs = append(sc.Spec.Repairs, scyllav1.RepairTaskSpec{
 			SchedulerTaskSpec: scyllav1.SchedulerTaskSpec{
@@ -53,7 +53,7 @@ var _ = g.Describe("Scylla Manager integration", func() {
 		framework.By("Waiting for the ScyllaCluster to deploy")
 		waitCtx1, waitCtx1Cancel := utils.ContextForRollout(ctx, sc)
 		defer waitCtx1Cancel()
-		sc, err = utils.WaitForScyllaClusterState(waitCtx1, f.ScyllaClient().ScyllaV1(), sc.Namespace, sc.Name, utils.ScyllaClusterRolledOut)
+		sc, err = utils.WaitForScyllaClusterState(waitCtx1, f.ScyllaClient().ScyllaV1(), sc.Namespace, sc.Name, utils.IsScyllaClusterRolledOut)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
 		di, err := NewDataInserter(ctx, f.KubeClient().CoreV1(), sc, utils.GetMemberCount(sc))

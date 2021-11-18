@@ -9,7 +9,7 @@ import (
 	g "github.com/onsi/ginkgo"
 	o "github.com/onsi/gomega"
 	"github.com/scylladb/scylla-operator/pkg/naming"
-	scyllaclusterfixture "github.com/scylladb/scylla-operator/test/e2e/fixture/scyllacluster"
+	scyllafixture "github.com/scylladb/scylla-operator/test/e2e/fixture/scylla"
 	"github.com/scylladb/scylla-operator/test/e2e/framework"
 	"github.com/scylladb/scylla-operator/test/e2e/tools"
 	"github.com/scylladb/scylla-operator/test/e2e/utils"
@@ -25,7 +25,7 @@ var _ = g.Describe("ScyllaCluster sysctl", func() {
 		ctx, cancel := context.WithTimeout(context.Background(), testTimout)
 		defer cancel()
 
-		sc := scyllaclusterfixture.BasicScyllaCluster.ReadOrFail()
+		sc := scyllafixture.BasicScyllaCluster.ReadOrFail()
 		fsAIOMaxNRKey := "fs.aio-max-nr"
 		fsAIOMaxNRValue := 2424242 // A unique value.
 		o.Expect(sc.Spec.Sysctls).To(o.BeEmpty())
@@ -41,7 +41,7 @@ var _ = g.Describe("ScyllaCluster sysctl", func() {
 		framework.By("Waiting for the ScyllaCluster to deploy")
 		waitCtx1, waitCtx1Cancel := utils.ContextForRollout(ctx, sc)
 		defer waitCtx1Cancel()
-		sc, err = utils.WaitForScyllaClusterState(waitCtx1, f.ScyllaClient().ScyllaV1(), sc.Namespace, sc.Name, utils.ScyllaClusterRolledOut)
+		sc, err = utils.WaitForScyllaClusterState(waitCtx1, f.ScyllaClient().ScyllaV1(), sc.Namespace, sc.Name, utils.IsScyllaClusterRolledOut)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
 		di, err := NewDataInserter(ctx, f.KubeClient().CoreV1(), sc, utils.GetMemberCount(sc))

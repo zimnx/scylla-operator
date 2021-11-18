@@ -6,7 +6,7 @@ import (
 
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	"github.com/scylladb/scylla-operator/pkg/resource"
-	hash2 "github.com/scylladb/scylla-operator/pkg/util/hash"
+	hashutil "github.com/scylladb/scylla-operator/pkg/util/hash"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -30,7 +30,7 @@ func SetHashAnnotation(obj metav1.Object) error {
 	// Clear annotation to have consistent hashing for the same objects.
 	delete(annotations, naming.ManagedHash)
 
-	hash, err := hash2.HashObjects(obj)
+	hash, err := hashutil.HashObjects(obj)
 	if err != nil {
 		return err
 	}

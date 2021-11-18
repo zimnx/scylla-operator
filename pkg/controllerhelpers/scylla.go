@@ -6,7 +6,7 @@ import (
 
 	"github.com/scylladb/go-log"
 	scyllav1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1"
-	"github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
+	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/helpers"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	"github.com/scylladb/scylla-operator/pkg/scyllaclient"
@@ -106,7 +106,7 @@ func SetRackCondition(rackStatus *scyllav1.RackStatus, newCondition scyllav1.Rac
 	)
 }
 
-func FindNodeStatus(nodeStatuses []v1alpha1.NodeStatus, nodeName string) *v1alpha1.NodeStatus {
+func FindNodeStatus(nodeStatuses []scyllav1alpha1.NodeConfigNodeStatus, nodeName string) *scyllav1alpha1.NodeConfigNodeStatus {
 	for i := range nodeStatuses {
 		ns := &nodeStatuses[i]
 		if ns.Name == nodeName {
@@ -117,7 +117,7 @@ func FindNodeStatus(nodeStatuses []v1alpha1.NodeStatus, nodeName string) *v1alph
 	return nil
 }
 
-func SetNodeStatus(nodeStatuses []v1alpha1.NodeStatus, status *v1alpha1.NodeStatus) []v1alpha1.NodeStatus {
+func SetNodeStatus(nodeStatuses []scyllav1alpha1.NodeConfigNodeStatus, status *scyllav1alpha1.NodeConfigNodeStatus) []scyllav1alpha1.NodeConfigNodeStatus {
 	for i, ns := range nodeStatuses {
 		if ns.Name == status.Name {
 			nodeStatuses[i] = *status
@@ -134,7 +134,7 @@ func SetNodeStatus(nodeStatuses []v1alpha1.NodeStatus, status *v1alpha1.NodeStat
 	return nodeStatuses
 }
 
-func IsNodeConfigSelectingNode(nc *v1alpha1.NodeConfig, node *corev1.Node) (bool, error) {
+func IsNodeConfigSelectingNode(nc *scyllav1alpha1.NodeConfig, node *corev1.Node) (bool, error) {
 	// Check nodeSelector.
 
 	if !labels.SelectorFromSet(nc.Spec.Placement.NodeSelector).Matches(labels.Set(node.Labels)) {
@@ -174,7 +174,7 @@ func IsNodeConfigSelectingNode(nc *v1alpha1.NodeConfig, node *corev1.Node) (bool
 	return true, nil
 }
 
-func IsNodeTunedForContainer(nc *v1alpha1.NodeConfig, nodeName string, containerID string) bool {
+func IsNodeTunedForContainer(nc *scyllav1alpha1.NodeConfig, nodeName string, containerID string) bool {
 	ns := FindNodeStatus(nc.Status.NodeStatuses, nodeName)
 	if ns == nil {
 		return false
@@ -185,4 +185,34 @@ func IsNodeTunedForContainer(nc *v1alpha1.NodeConfig, nodeName string, container
 	}
 
 	return true
+}
+
+func IsNodeTuned(ncnss []scyllav1alpha1.NodeConfigNodeStatus, nodeName string) bool {
+	ns := FindNodeStatus(ncnss, nodeName)
+	return ns != nil && ns.TunedNode
+}
+
+func FindNodeConfigCondition(conditions []scyllav1alpha1.NodeConfigCondition, t scyllav1alpha1.NodeConfigConditionType) *scyllav1alpha1.NodeConfigCondition {
+	for i := range conditions {
+		c := &conditions[i]
+		if c.Type == t {
+			return c
+		}
+	}
+
+	return nil
+}
+
+func EnsureNodeConfigCondition(status *scyllav1alpha1.NodeConfigStatus, cond *scyllav1alpha1.NodeConfigCondition) {
+	existingCond := FindNodeConfigCondition(status.Conditions, cond.Type)
+	if existingCond == nil {
+		status.Conditions = append(status.Conditions, *cond)
+		return
+	}
+
+	if cond.Status == existingCond.Status {
+		cond.LastTransitionTime = existingCond.LastTransitionTime
+	}
+
+	*existingCond = *cond
 }

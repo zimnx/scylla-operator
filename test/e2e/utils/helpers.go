@@ -10,10 +10,11 @@ import (
 	"time"
 
 	"github.com/scylladb/go-log"
-	"github.com/scylladb/scylla-operator/pkg/api/scylla/v1"
+	scyllav1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1"
 	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	scyllav1client "github.com/scylladb/scylla-operator/pkg/client/scylla/clientset/versioned/typed/scylla/v1"
 	scyllav1alpha1client "github.com/scylladb/scylla-operator/pkg/client/scylla/clientset/versioned/typed/scylla/v1alpha1"
+	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
 	"github.com/scylladb/scylla-operator/pkg/helpers"
 	"github.com/scylladb/scylla-operator/pkg/mermaidclient"
 	"github.com/scylladb/scylla-operator/pkg/naming"
@@ -37,25 +38,28 @@ import (
 	"k8s.io/klog/v2"
 )
 
-func ContextForNodeConfigRollout(parent context.Context) (context.Context, context.CancelFunc) {
-	return context.WithTimeout(parent, nodeConfigRolloutTimeout)
+func IsNodeConfigRolledOut(nc *scyllav1alpha1.NodeConfig) (bool, error) {
+	cond := controllerhelpers.FindNodeConfigCondition(nc.Status.Conditions, scyllav1alpha1.NodeConfigReconciledConditionType)
+	return nc.Status.ObservedGeneration >= nc.Generation &&
+		cond != nil && cond.Status == corev1.ConditionTrue, nil
 }
 
-func IsNodeConfigRolledOut(snc *scyllav1alpha1.NodeConfig) bool {
-
-	return snc.Status.ObservedGeneration >= snc.Generation &&
-
-		// FIXME
-		snc.Status.Updated.Desired == snc.Status.Current.Desired &&
-		snc.Status.Current.Actual == snc.Status.Updated.Actual &&
-		snc.Status.Current.Ready == snc.Status.Updated.Ready
+func IsNodeConfigDoneWithNodeTuningFunc(nodes []*corev1.Node) func(nc *scyllav1alpha1.NodeConfig) (bool, error) {
+	return func(nc *scyllav1alpha1.NodeConfig) (bool, error) {
+		for _, node := range nodes {
+			if !controllerhelpers.IsNodeTuned(nc.Status.NodeStatuses, node.Name) {
+				return false, nil
+			}
+		}
+		return true, nil
+	}
 }
 
-func RolloutTimeoutForScyllaCluster(sc *v1.ScyllaCluster) time.Duration {
+func RolloutTimeoutForScyllaCluster(sc *scyllav1.ScyllaCluster) time.Duration {
 	return baseRolloutTimout + time.Duration(GetMemberCount(sc))*memberRolloutTimeout
 }
 
-func GetMemberCount(sc *v1.ScyllaCluster) int32 {
+func GetMemberCount(sc *scyllav1.ScyllaCluster) int32 {
 	members := int32(0)
 	for _, r := range sc.Spec.Datacenter.Racks {
 		members += r.Members
@@ -64,20 +68,20 @@ func GetMemberCount(sc *v1.ScyllaCluster) int32 {
 	return members
 }
 
-func ContextForRollout(parent context.Context, sc *v1.ScyllaCluster) (context.Context, context.CancelFunc) {
+func ContextForRollout(parent context.Context, sc *scyllav1.ScyllaCluster) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(parent, RolloutTimeoutForScyllaCluster(sc))
 }
 
-func SyncTimeoutForScyllaCluster(sc *v1.ScyllaCluster) time.Duration {
+func SyncTimeoutForScyllaCluster(sc *scyllav1.ScyllaCluster) time.Duration {
 	tasks := int64(len(sc.Spec.Repairs) + len(sc.Spec.Backups))
 	return baseManagerSyncTimeout + time.Duration(tasks)*managerTaskSyncTimeout
 }
 
-func ContextForManagerSync(parent context.Context, sc *v1.ScyllaCluster) (context.Context, context.CancelFunc) {
+func ContextForManagerSync(parent context.Context, sc *scyllav1.ScyllaCluster) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(parent, SyncTimeoutForScyllaCluster(sc))
 }
 
-func ScyllaClusterRolledOut(sc *v1.ScyllaCluster) (bool, error) {
+func IsScyllaClusterRolledOut(sc *scyllav1.ScyllaCluster) (bool, error) {
 	// ObservedGeneration == nil will filter out the case when the object is initially created
 	// so no other optional (but required) field should be nil after this point and we should error out.
 	if sc.Status.ObservedGeneration == nil || *sc.Status.ObservedGeneration < sc.Generation {
@@ -130,7 +134,7 @@ func ScyllaClusterRolledOut(sc *v1.ScyllaCluster) (bool, error) {
 	return true, nil
 }
 
-func WaitForScyllaClusterState(ctx context.Context, client scyllav1client.ScyllaV1Interface, namespace string, name string, conditions ...func(sc *v1.ScyllaCluster) (bool, error)) (*v1.ScyllaCluster, error) {
+func WaitForScyllaClusterState(ctx context.Context, client scyllav1client.ScyllaV1Interface, namespace string, name string, conditions ...func(sc *scyllav1.ScyllaCluster) (bool, error)) (*scyllav1.ScyllaCluster, error) {
 	fieldSelector := fields.OneTermEqualSelector("metadata.name", name).String()
 	lw := &cache.ListWatch{
 		ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
@@ -143,11 +147,11 @@ func WaitForScyllaClusterState(ctx context.Context, client scyllav1client.Scylla
 		},
 	}
 
-	event, err := watchtools.UntilWithSync(ctx, lw, &v1.ScyllaCluster{}, nil, func(event watch.Event) (bool, error) {
+	event, err := watchtools.UntilWithSync(ctx, lw, &scyllav1.ScyllaCluster{}, nil, func(event watch.Event) (bool, error) {
 		switch event.Type {
 		case watch.Added, watch.Modified:
 			for _, condition := range conditions {
-				done, err := condition(event.Object.(*v1.ScyllaCluster))
+				done, err := condition(event.Object.(*scyllav1.ScyllaCluster))
 				if err != nil {
 					return false, err
 				}
@@ -164,7 +168,7 @@ func WaitForScyllaClusterState(ctx context.Context, client scyllav1client.Scylla
 		return nil, err
 	}
 
-	return event.Object.(*v1.ScyllaCluster), nil
+	return event.Object.(*scyllav1.ScyllaCluster), nil
 }
 
 type WaitForStateOptions struct {
@@ -233,7 +237,61 @@ func WaitForPVCState(ctx context.Context, client corev1client.CoreV1Interface, n
 	return event.Object.(*corev1.PersistentVolumeClaim), nil
 }
 
-func GetStatefulSetsForScyllaCluster(ctx context.Context, client appv1client.AppsV1Interface, sc *v1.ScyllaCluster) (map[string]*appsv1.StatefulSet, error) {
+func WaitForNodeConfigState(ctx context.Context, ncClient scyllav1alpha1client.NodeConfigInterface, name string, o WaitForStateOptions, condition func(sc *scyllav1alpha1.NodeConfig) (bool, error), additionalConditions ...func(sc *scyllav1alpha1.NodeConfig) (bool, error)) (*scyllav1alpha1.NodeConfig, error) {
+	fieldSelector := fields.OneTermEqualSelector("metadata.name", name).String()
+	lw := &cache.ListWatch{
+		ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
+			options.FieldSelector = fieldSelector
+			return ncClient.List(ctx, options)
+		},
+		WatchFunc: func(options metav1.ListOptions) (i watch.Interface, e error) {
+			options.FieldSelector = fieldSelector
+			return ncClient.Watch(ctx, options)
+		},
+	}
+
+	conditions := make([]func(sc *scyllav1alpha1.NodeConfig) (bool, error), 0, 1+len(additionalConditions))
+	conditions = append(conditions, condition)
+	if len(additionalConditions) != 0 {
+		conditions = append(conditions, additionalConditions...)
+	}
+	aggregatedCond := func(nc *scyllav1alpha1.NodeConfig) (bool, error) {
+		allDone := true
+		for _, c := range conditions {
+			var err error
+			var done bool
+
+			done, err = c(nc)
+			if err != nil {
+				return done, err
+			}
+			if !done {
+				allDone = false
+			}
+		}
+		return allDone, nil
+	}
+
+	event, err := watchtools.UntilWithSync(ctx, lw, &scyllav1alpha1.NodeConfig{}, nil, func(event watch.Event) (bool, error) {
+		switch event.Type {
+		case watch.Added, watch.Modified:
+			return aggregatedCond(event.Object.(*scyllav1alpha1.NodeConfig))
+		case watch.Deleted:
+			if o.TolerateDelete {
+				return aggregatedCond(event.Object.(*scyllav1alpha1.NodeConfig))
+			}
+			fallthrough
+		default:
+			return true, fmt.Errorf("unexpected event: %#v", event)
+		}
+	})
+	if err != nil {
+		return nil, err
+	}
+	return event.Object.(*scyllav1alpha1.NodeConfig), nil
+}
+
+func GetStatefulSetsForScyllaCluster(ctx context.Context, client appv1client.AppsV1Interface, sc *scyllav1.ScyllaCluster) (map[string]*appsv1.StatefulSet, error) {
 	statefulsetList, err := client.StatefulSets(sc.Namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: labels.Set{
 			naming.ClusterNameLabel: sc.Name,
@@ -261,7 +319,34 @@ func GetStatefulSetsForScyllaCluster(ctx context.Context, client appv1client.App
 	return res, nil
 }
 
-func GetScyllaClient(ctx context.Context, client corev1client.CoreV1Interface, sc *v1.ScyllaCluster) (*scyllaclient.Client, []string, error) {
+func GetDaemonSetsForNodeConfig(ctx context.Context, client appv1client.AppsV1Interface, nc *scyllav1alpha1.NodeConfig) ([]*appsv1.DaemonSet, error) {
+	daemonSetList, err := client.DaemonSets(naming.ScyllaOperatorNodeTuningNamespace).List(ctx, metav1.ListOptions{
+		LabelSelector: labels.Set{
+			naming.NodeConfigNameLabel: nc.Name,
+		}.AsSelector().String(),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("can't list daemonsets: %w", err)
+	}
+
+	var res []*appsv1.DaemonSet
+	for _, s := range daemonSetList.Items {
+		controllerRef := metav1.GetControllerOfNoCopy(&s)
+		if controllerRef == nil {
+			continue
+		}
+
+		if controllerRef.UID != nc.UID {
+			continue
+		}
+
+		res = append(res, &s)
+	}
+
+	return res, nil
+}
+
+func GetScyllaClient(ctx context.Context, client corev1client.CoreV1Interface, sc *scyllav1.ScyllaCluster) (*scyllaclient.Client, []string, error) {
 	hosts, err := GetHosts(ctx, client, sc)
 	if err != nil {
 		return nil, nil, err
@@ -295,7 +380,7 @@ func GetScyllaClient(ctx context.Context, client corev1client.CoreV1Interface, s
 	return scyllaClient, hosts, nil
 }
 
-func GetHosts(ctx context.Context, client corev1client.CoreV1Interface, sc *v1.ScyllaCluster) ([]string, error) {
+func GetHosts(ctx context.Context, client corev1client.CoreV1Interface, sc *scyllav1.ScyllaCluster) ([]string, error) {
 	serviceList, err := client.Services(sc.Namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: labels.Set{
 			naming.ClusterNameLabel: sc.Name,
@@ -350,7 +435,7 @@ func GetManagerClient(ctx context.Context, client corev1client.CoreV1Interface) 
 	return &manager, nil
 }
 
-func GetNodeName(sc *v1.ScyllaCluster, idx int) string {
+func GetNodeName(sc *scyllav1.ScyllaCluster, idx int) string {
 	return fmt.Sprintf(
 		"%s-%s-%s-%d",
 		sc.Name,
@@ -360,34 +445,6 @@ func GetNodeName(sc *v1.ScyllaCluster, idx int) string {
 	)
 }
 
-func WaitForNodeConfigRollout(ctx context.Context, client scyllav1alpha1client.ScyllaV1alpha1Interface, name string) (*scyllav1alpha1.NodeConfig, error) {
-	fieldSelector := fields.OneTermEqualSelector("metadata.name", name).String()
-	lw := &cache.ListWatch{
-		ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
-			options.FieldSelector = fieldSelector
-			return client.NodeConfigs().List(ctx, options)
-		},
-		WatchFunc: func(options metav1.ListOptions) (i watch.Interface, e error) {
-			options.FieldSelector = fieldSelector
-			return client.NodeConfigs().Watch(ctx, options)
-		},
-	}
-
-	event, err := watchtools.UntilWithSync(ctx, lw, &scyllav1alpha1.NodeConfig{}, nil, func(event watch.Event) (bool, error) {
-		switch event.Type {
-		case watch.Added, watch.Modified:
-			snc := event.Object.(*scyllav1alpha1.NodeConfig)
-			return IsNodeConfigRolledOut(snc), nil
-		default:
-			return true, fmt.Errorf("unexpected event: %#v", event)
-		}
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return event.Object.(*scyllav1alpha1.NodeConfig), nil
-}
 func WaitForConfigMap(ctx context.Context, client corev1client.CoreV1Interface, namespace, name string, o WaitForStateOptions, conditions ...func(*corev1.ConfigMap) (bool, error)) (*corev1.ConfigMap, error) {
 	fieldSelector := fields.OneTermEqualSelector("metadata.name", name).String()
 	lw := &cache.ListWatch{
