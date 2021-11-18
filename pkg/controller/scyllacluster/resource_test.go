@@ -513,7 +513,7 @@ func TestStatefulSetForRack(t *testing.T) {
 									"--secret-name=basic-auth-token",
 									"--service-name=$(SERVICE_NAME)",
 									"--cpu-count=$(CPU_COUNT)",
-									"--loglevel=2",
+									"--loglevel=4",
 								},
 								Env: []corev1.EnvVar{
 									{
