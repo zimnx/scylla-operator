@@ -42,7 +42,7 @@ var _ = g.Describe("NodeConfig Optimizations [Serial]", func() {
 		if err == nil {
 			framework.Failf("NodeConfig %q can't be present before running this test", naming.ObjRef(ncTemplate))
 		} else if !apierrors.IsNotFound(err) {
-			framework.Failf("Can't get NodeConfig %q: %w", naming.ObjRef(ncTemplate), err)
+			framework.Failf("Can't get NodeConfig %q: %v", naming.ObjRef(ncTemplate), err)
 		}
 
 		preconditionSuccessful = true
@@ -56,7 +56,7 @@ var _ = g.Describe("NodeConfig Optimizations [Serial]", func() {
 		framework.By("Deleting NodeConfig %q, if it exists", naming.ObjRef(ncTemplate))
 		err := f.ScyllaAdminClient().ScyllaV1alpha1().NodeConfigs().Delete(context.Background(), ncTemplate.Name, metav1.DeleteOptions{})
 		if err != nil {
-			framework.Failf("Can't delete NodeConfig %q: %w", naming.ObjRef(ncTemplate), err)
+			framework.Failf("Can't delete NodeConfig %q: %v", naming.ObjRef(ncTemplate), err)
 		}
 
 		err = framework.WaitForObjectDeletion(context.Background(), f.DynamicAdminClient(), scyllav1alpha1.GroupVersion.WithResource("nodeconfigs"), ncTemplate.Namespace, ncTemplate.Name, nil)
