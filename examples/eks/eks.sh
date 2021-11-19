@@ -143,6 +143,9 @@ kubectl apply -f ../common/operator.yaml
 kubectl wait --for condition=established crd/scyllaclusters.scylla.scylladb.com
 wait-for-object-creation scylla-operator deployment.apps/scylla-operator
 kubectl -n scylla-operator rollout status --timeout=5m deployment.apps/scylla-operator
+kubectl -n scylla-operator rollout status --timeout=5m deployment.apps/webhook-server
+
+kubectl apply -f ../common/nodeconfig-alpha.yaml
 
 echo "Starting the scylla cluster..."
 kubectl apply -f cluster.yaml

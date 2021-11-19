@@ -96,7 +96,7 @@ spec:
         image: scylladb/scylla-machine-image:k8s-aws-666.development-20201023.0c4dfa1
         imagePullPolicy: Always
         args:
-          - --all
+          - --setup-disks
         env:
           - name: ROOT_DISK
             value: /mnt/hostfs/mnt/raid-disks/disk0

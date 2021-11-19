@@ -39,20 +39,25 @@ metadata:
   name: scylla-cluster
   namespace: scylla
 spec:
-  version: 4.5.1
+  version: 4.4.5
   agentVersion: 2.5.2
   cpuset: true
   network:
     hostNetworking: true
   sysctls:
-  - "fs.aio-max-nr=2097152"
+  - "fs.aio-max-nr=5578536"
   datacenter:
     name: us-east-1
     racks:
     - name: a
-      members: 1
+      members: 3
       storage:
         capacity: 1800G
+        storageClassName: local-raid-disks
+      agentResources:
+        limits:
+          cpu: 250m
+          memory: 1G
       resources:
         limits:
           cpu: 7
@@ -62,56 +67,12 @@ spec:
           requiredDuringSchedulingIgnoredDuringExecution:
             nodeSelectorTerms:
               - matchExpressions:
-                - key: topology.kubernetes.io/zone
+                - key: pool
                   operator: In
                   values:
-                    - us-east-1a
+                    - scylla-pool
         tolerations:
           - key: role
             operator: Equal
             value: scylla-clusters
             effect: NoSchedule
-    - name: b
-      members: 1
-      storage:
-        capacity: 1800G
-      resources:
-        limits:
-          cpu: 7
-          memory: 56G
-      placement:
-        nodeAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            nodeSelectorTerms:
-            - matchExpressions:
-              - key: topology.kubernetes.io/zone
-                operator: In
-                values:
-                - us-east-1b
-        tolerations:
-        - key: role
-          operator: Equal
-          value: scylla-clusters
-          effect: NoSchedule
-    - name: c
-      members: 1
-      storage:
-        capacity: 1800G
-      resources:
-        limits:
-          cpu: 7
-          memory: 56G
-      placement:
-        nodeAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            nodeSelectorTerms:
-            - matchExpressions:
-              - key: topology.kubernetes.io/zone
-                operator: In
-                values:
-                - us-east-1c
-        tolerations:
-        - key: role
-          operator: Equal
-          value: scylla-clusters
-          effect: NoSchedule

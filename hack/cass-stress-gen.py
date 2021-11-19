@@ -20,7 +20,7 @@ spec:
         command:
           - "/bin/bash"
           - "-c"
-          - 'cassandra-stress write no-warmup n={d.ops} cl=ONE -mode native cql3 connectionsPerHost={d.connections_per_host} -col n=FIXED\(5\) size=FIXED\(64\)  -pop seq={}..{} -node "{d.host}" -rate threads={d.threads} {d.limit} -log file=/cassandra-stress.load.data -schema "replication(factor=1)" -errors ignore; cat /cassandra-stress.load.data'
+          - 'cassandra-stress write no-warmup n={d.ops} cl=QUORUM -mode native cql3 connectionsPerHost={d.connections_per_host} -col n=FIXED\(5\) size=FIXED\(64\)  -pop seq={}..{} -node "{d.host}" -rate threads={d.threads} {d.limit} -log file=/cassandra-stress.load.data -schema "replication(factor=1)" -errors ignore; cat /cassandra-stress.load.data'
         resources:
           limits:
             cpu: {d.cpu}

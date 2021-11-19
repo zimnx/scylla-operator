@@ -5,4 +5,9 @@ metadata:
 spec:
   placement:
     nodeSelector:
-      scylla.scylladb.com/node-type: scylla
+      pool: scylla-pool
+    tolerations:
+        - key: role
+          operator: Equal
+          value: scylla-clusters
+          effect: NoSchedule
