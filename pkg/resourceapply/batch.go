@@ -61,14 +61,14 @@ func ApplyJob(
 		return existing, false, nil
 	}
 
-	orphanCreate := false
 	if !equality.Semantic.DeepEqual(existing.Spec.Completions, requiredCopy.Spec.Completions) ||
 		!equality.Semantic.DeepEqual(existing.Spec.Template, requiredCopy.Spec.Template) ||
 		(requiredCopy.Spec.ManualSelector != nil && *requiredCopy.Spec.ManualSelector && !equality.Semantic.DeepEqual(existing.Spec.Selector, requiredCopy.Spec.Selector)) {
-		orphanCreate = true
-	}
+		klog.V(2).InfoS(
+			"Apply needs to change immutable field(s) and will recreate the object",
+			"Job", naming.ObjRefWithUID(existing),
+		)
 
-	if orphanCreate {
 		propagationPolicy := metav1.DeletePropagationBackground
 		err := client.Jobs(existing.Namespace).Delete(ctx, existing.Name, metav1.DeleteOptions{
 			PropagationPolicy: &propagationPolicy,

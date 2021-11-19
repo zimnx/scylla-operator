@@ -134,12 +134,12 @@ func ApplyClusterRoleBinding(
 		return existing, false, nil
 	}
 
-	orphanCreate := false
 	if !equality.Semantic.DeepEqual(existing.RoleRef, requiredCopy.RoleRef) {
-		orphanCreate = true
-	}
+		klog.V(2).InfoS(
+			"Apply needs to change immutable field(s) and will recreate the object",
+			"ClusterRoleBinding", naming.ObjRefWithUID(existing),
+		)
 
-	if orphanCreate {
 		propagationPolicy := metav1.DeletePropagationBackground
 		err := client.ClusterRoleBindings().Delete(ctx, existing.Name, metav1.DeleteOptions{
 			PropagationPolicy: &propagationPolicy,

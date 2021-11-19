@@ -18,6 +18,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
@@ -237,19 +238,29 @@ func (ncdc *Controller) updatePod(old, cur interface{}) {
 	ncdc.enqueue()
 }
 
-func (ncdc *Controller) ownsObject(obj metav1.Object) bool {
-	ownerRef := metav1.GetControllerOfNoCopy(obj)
-	if ownerRef == nil {
-		return false
+func (ncdc *Controller) ownsObject(obj metav1.Object) (bool, error) {
+	selfRef, err := ncdc.newOwningDSControllerRef()
+	if err != nil {
+		return false, fmt.Errorf("can't get self controller ref: %w", err)
 	}
 
-	return ownerRef.UID == ncdc.nodeConfigUID
+	objControllerRef := metav1.GetControllerOfNoCopy(obj)
+
+	klog.V(5).InfoS("checking object owner", "ObjectRef", objControllerRef, "SelfRef", selfRef)
+
+	return apiequality.Semantic.DeepEqual(objControllerRef, selfRef), nil
 }
 
 func (ncdc *Controller) addJob(obj interface{}) {
 	job := obj.(*batchv1.Job)
 
-	if !ncdc.ownsObject(job) {
+	owned, err := ncdc.ownsObject(job)
+	if err != nil {
+		utilruntime.HandleError(err)
+		return
+	}
+
+	if !owned {
 		klog.V(5).InfoS("Not enqueueing Job not owned by us", "Job", klog.KObj(job), "RV", job.ResourceVersion)
 		return
 	}
@@ -274,7 +285,13 @@ func (ncdc *Controller) updateJob(old, cur interface{}) {
 		})
 	}
 
-	if !ncdc.ownsObject(currentJob) {
+	owned, err := ncdc.ownsObject(currentJob)
+	if err != nil {
+		utilruntime.HandleError(err)
+		return
+	}
+
+	if !owned {
 		klog.V(5).InfoS("Not enqueueing Job not owned by us", "Job", klog.KObj(currentJob), "RV", currentJob.ResourceVersion)
 		return
 	}
@@ -303,7 +320,13 @@ func (ncdc *Controller) deleteJob(obj interface{}) {
 		}
 	}
 
-	if !ncdc.ownsObject(job) {
+	owned, err := ncdc.ownsObject(job)
+	if err != nil {
+		utilruntime.HandleError(err)
+		return
+	}
+
+	if !owned {
 		klog.V(5).InfoS("Not enqueueing Job not owned by us", "Job", klog.KObj(job), "RV", job.ResourceVersion)
 		return
 	}

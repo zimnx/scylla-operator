@@ -100,15 +100,16 @@ var _ = g.Describe("NodeConfig Optimizations [Serial]", func() {
 		nc, err = utils.WaitForNodeConfigState(waitCtx1, f.ScyllaAdminClient().ScyllaV1alpha1().NodeConfigs(), nc.Name, utils.WaitForStateOptions{TolerateDelete: false}, utils.IsNodeConfigRolledOut, utils.IsNodeConfigDoneWithNodeTuningFunc(matchingNodes))
 		o.Expect(err).NotTo(o.HaveOccurred())
 
-		verifyNodeConfig(ctx, f.ScyllaAdminClient().ScyllaV1alpha1().NodeConfigs(), f.KubeClient(), nc)
+		verifyNodeConfig(ctx, f.KubeAdminClient(), nc)
 
 		// There should be a tuning job for every scylla node.
-		nodeJobList, err := f.KubeClient().BatchV1().Jobs(naming.ScyllaOperatorNodeTuningNamespace).List(ctx, metav1.ListOptions{
+		nodeJobList, err := f.KubeAdminClient().BatchV1().Jobs(naming.ScyllaOperatorNodeTuningNamespace).List(ctx, metav1.ListOptions{
 			LabelSelector: labels.SelectorFromSet(labels.Set{
 				naming.NodeConfigNameLabel:    nc.Name,
 				naming.NodeConfigJobTypeLabel: string(naming.NodeConfigJobTypeNode),
 			}).String(),
 		})
+		o.Expect(err).NotTo(o.HaveOccurred())
 		o.Expect(nodeJobList.Items).To(o.HaveLen(len(matchingNodes)))
 
 		var jobNodeNames []string

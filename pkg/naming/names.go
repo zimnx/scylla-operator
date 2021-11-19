@@ -24,6 +24,10 @@ func ObjRef(obj metav1.Object) string {
 	return ManualRef(obj.GetNamespace(), obj.GetName())
 }
 
+func ObjRefWithUID(obj metav1.Object) string {
+	return fmt.Sprintf("%s(UID=%s)", ObjRef(obj))
+}
+
 func StatefulSetNameForRack(r scyllav1.RackSpec, c *scyllav1.ScyllaCluster) string {
 	return fmt.Sprintf("%s-%s-%s", c.Name, c.Spec.Datacenter.Name, r.Name)
 }

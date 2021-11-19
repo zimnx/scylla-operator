@@ -5,7 +5,6 @@ import (
 
 	o "github.com/onsi/gomega"
 	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
-	scyllav1alpha1client "github.com/scylladb/scylla-operator/pkg/client/scylla/clientset/versioned/typed/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	"github.com/scylladb/scylla-operator/test/e2e/framework"
@@ -22,7 +21,7 @@ func verifyDaemonSet(ds *appsv1.DaemonSet) {
 	o.Expect(ds.Status.NumberAvailable).To(o.Equal(ds.Status.DesiredNumberScheduled))
 }
 
-func verifyNodeConfig(ctx context.Context, ncClient scyllav1alpha1client.NodeConfigInterface, kubeClient kubernetes.Interface, nc *scyllav1alpha1.NodeConfig) {
+func verifyNodeConfig(ctx context.Context, kubeClient kubernetes.Interface, nc *scyllav1alpha1.NodeConfig) {
 	framework.By("Verifying NodeConfig %q", naming.ObjRef(nc))
 
 	o.Expect(nc.Status.ObservedGeneration).NotTo(o.BeNil())
