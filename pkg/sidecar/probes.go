@@ -9,7 +9,6 @@ import (
 	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	"github.com/scylladb/scylla-operator/pkg/scyllaclient"
-	"github.com/scylladb/scylla-operator/pkg/util/network"
 	corev1 "k8s.io/client-go/listers/core/v1"
 	"k8s.io/klog/v2"
 )
@@ -21,6 +20,8 @@ type Prober struct {
 	serviceLister corev1.ServiceLister
 	secretLister  corev1.SecretLister
 	hostAddr      string
+	livenessHook  func(rtt time.Duration)
+	readinessHook func(rtt time.Duration)
 	timeout       time.Duration
 }
 
@@ -31,6 +32,8 @@ func NewProber(
 	serviceLister corev1.ServiceLister,
 	secretLister corev1.SecretLister,
 	hostAddr string,
+	livenessHook func(rtt time.Duration),
+	readinessHook func(rtt time.Duration),
 ) *Prober {
 	return &Prober{
 		namespace:     namespace,
@@ -39,6 +42,8 @@ func NewProber(
 		serviceLister: serviceLister,
 		secretLister:  secretLister,
 		hostAddr:      hostAddr,
+		livenessHook:  livenessHook,
+		readinessHook: readinessHook,
 		timeout:       60 * time.Second,
 	}
 }
@@ -79,6 +84,10 @@ func (p *Prober) Readyz(w http.ResponseWriter, req *http.Request) {
 	ctx, ctxCancel := context.WithTimeout(req.Context(), p.timeout)
 	defer ctxCancel()
 
+	defer func(start time.Time) {
+		p.readinessHook(time.Now().Sub(start))
+	}(time.Now())
+
 	underMaintenance, err := p.isNodeUnderMaintenance()
 	if err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
@@ -101,9 +110,9 @@ func (p *Prober) Readyz(w http.ResponseWriter, req *http.Request) {
 	}
 
 	// Contact Scylla to learn about the status of the member
-	nodeStatuses, err := scyllaClient.Status(ctx, p.hostAddr)
+	liveNodes, err := scyllaClient.LiveNodes(ctx, p.hostAddr)
 	if err != nil {
-		klog.ErrorS(err, "readyz probe: can't get scylla node status", "Service", p.serviceRef())
+		klog.ErrorS(err, "readyz probe: can't get scylla live nodes", "Service", p.serviceRef())
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -115,7 +124,8 @@ func (p *Prober) Readyz(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	for _, s := range nodeStatuses {
+	fmt.Println("XD", liveNodes, "Addr", nodeAddress)
+	for _, s := range liveNodes {
 		klog.V(4).InfoS("readyz probe: node state", "Node", s.Addr, "Status", s.Status, "State", s.State)
 
 		if s.Addr == nodeAddress && s.IsUN() {
@@ -139,6 +149,13 @@ func (p *Prober) Readyz(w http.ResponseWriter, req *http.Request) {
 }
 
 func (p *Prober) Healthz(w http.ResponseWriter, req *http.Request) {
+	ctx, ctxCancel := context.WithTimeout(req.Context(), p.timeout)
+	defer ctxCancel()
+
+	defer func(start time.Time) {
+		p.livenessHook(time.Now().Sub(start))
+	}(time.Now())
+
 	underMaintenance, err := p.isNodeUnderMaintenance()
 	if err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
@@ -152,13 +169,6 @@ func (p *Prober) Healthz(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	host, err := network.FindFirstNonLocalIP()
-	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		klog.ErrorS(err, "healthz probe: can't determine the local IP", "Service", p.serviceRef())
-		return
-	}
-
 	scyllaClient, err := p.getScyllaClient()
 	if err != nil {
 		klog.ErrorS(err, "healthz probe: can't get scylla client", "Service", p.serviceRef())
@@ -167,7 +177,7 @@ func (p *Prober) Healthz(w http.ResponseWriter, req *http.Request) {
 	}
 
 	// Check if JMX is reachable
-	_, err = scyllaClient.Ping(context.Background(), host.String())
+	_, err = scyllaClient.Ping(ctx, p.hostAddr)
 	if err != nil {
 		klog.ErrorS(err, "healthz probe: can't connect to JMX", "Service", p.serviceRef())
 		w.WriteHeader(http.StatusServiceUnavailable)

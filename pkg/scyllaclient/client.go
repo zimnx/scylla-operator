@@ -95,6 +95,25 @@ func (c *Client) HostDatacenter(ctx context.Context, host string) (dc string, er
 	return
 }
 
+func (c *Client) LiveNodes(ctx context.Context, host string) (NodeStatusInfoSlice, error) {
+	if len(host) > 0 {
+		// Always query same host
+		ctx = forceHost(ctx, host)
+	}
+
+	var all []NodeStatusInfo
+
+	// Get live nodes
+	live, err := c.scyllaOps.GossiperEndpointLiveGet(&scyllaOperations.GossiperEndpointLiveGetParams{Context: ctx})
+	if err != nil {
+		return nil, err
+	}
+
+	setNodeStatus(all, NodeStatusUp, live.Payload)
+
+	return all, nil
+}
+
 func (c *Client) Status(ctx context.Context, host string) (NodeStatusInfoSlice, error) {
 	if len(host) > 0 {
 		// Always query same host

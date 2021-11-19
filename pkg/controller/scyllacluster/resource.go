@@ -126,6 +126,10 @@ func memberServicePorts(cluster *scyllav1.ScyllaCluster) []corev1.ServicePort {
 			Name: "agent-api",
 			Port: 10001,
 		},
+		{
+			Name: "sidecar-prometheus",
+			Port: 9090,
+		},
 	}
 	if cluster.Spec.Alternator.Enabled() {
 		ports = append(ports, corev1.ServicePort{
@@ -347,7 +351,7 @@ func StatefulSetForRack(r scyllav1.RackSpec, c *scyllav1.ScyllaCluster, existing
 								},
 							},
 							LivenessProbe: &corev1.Probe{
-								TimeoutSeconds:   int32(5),
+								TimeoutSeconds:   int32(600),
 								FailureThreshold: int32(3),
 								PeriodSeconds:    int32(10),
 								Handler: corev1.Handler{
@@ -358,7 +362,7 @@ func StatefulSetForRack(r scyllav1.RackSpec, c *scyllav1.ScyllaCluster, existing
 								},
 							},
 							ReadinessProbe: &corev1.Probe{
-								TimeoutSeconds: int32(5),
+								TimeoutSeconds: int32(600),
 								PeriodSeconds:  int32(10),
 								Handler: corev1.Handler{
 									HTTPGet: &corev1.HTTPGetAction{

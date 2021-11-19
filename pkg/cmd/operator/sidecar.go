@@ -10,6 +10,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/scylladb/scylla-operator/pkg/sidecar/metrics"
+
 	scyllaversionedclient "github.com/scylladb/scylla-operator/pkg/client/scylla/clientset/versioned"
 	sidecarcontroller "github.com/scylladb/scylla-operator/pkg/controller/sidecar"
 	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
@@ -188,15 +193,6 @@ func (o *SidecarOptions) Run(streams genericclioptions.IOStreams, cmd *cobra.Com
 	}
 
 	hostAddr := hostIP.String()
-
-	prober := sidecar.NewProber(
-		o.Namespace,
-		o.ServiceName,
-		o.SecretName,
-		singleServiceInformer.Lister(),
-		secretsInformer.Lister(),
-		hostAddr,
-	)
 
 	sc, err := sidecarcontroller.NewController(
 		o.Namespace,
@@ -394,8 +390,51 @@ func (o *SidecarOptions) Run(streams genericclioptions.IOStreams, cmd *cobra.Com
 		Pdeathsig: syscall.SIGKILL,
 	}
 
+	metricHook := func(gauge prometheus.ObserverVec) func(rtt time.Duration) {
+		return func(rtt time.Duration) {
+			gauge.With(prometheus.Labels{
+				metrics.ClusterKey: member.Cluster,
+				metrics.HostKey:    hostAddr,
+			}).Observe(rtt.Seconds())
+		}
+	}
+
+	prober := sidecar.NewProber(
+		o.Namespace,
+		o.ServiceName,
+		o.SecretName,
+		singleServiceInformer.Lister(),
+		secretsInformer.Lister(),
+		hostAddr,
+		metricHook(metrics.LivenessProbe),
+		metricHook(metrics.ReadinessProbe),
+	)
+
 	var wg sync.WaitGroup
 	defer wg.Wait()
+
+	metricsServer := &http.Server{
+		Addr:    fmt.Sprintf(":%d", 9090),
+		Handler: promhttp.Handler(),
+	}
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		klog.InfoS("Starting Metrics server")
+		defer klog.InfoS("Metrics server shut down")
+
+		if err := metricsServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			klog.Fatal("Metrics ListenAndServe failed: %v", err)
+		}
+
+		shutdownCtx, shutdownCtxCancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer shutdownCtxCancel()
+		if err := metricsServer.Shutdown(shutdownCtx); err != nil {
+			klog.ErrorS(err, "Shutting down Prober server")
+		}
+	}()
 
 	// Run probes.
 	server := &http.Server{
