@@ -25,7 +25,7 @@ func ObjRef(obj metav1.Object) string {
 }
 
 func ObjRefWithUID(obj metav1.Object) string {
-	return fmt.Sprintf("%s(UID=%s)", ObjRef(obj))
+	return fmt.Sprintf("%s(UID=%s)", ObjRef(obj), obj.GetUID())
 }
 
 func StatefulSetNameForRack(r scyllav1.RackSpec, c *scyllav1.ScyllaCluster) string {
