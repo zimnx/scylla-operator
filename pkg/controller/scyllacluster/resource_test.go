@@ -476,7 +476,7 @@ func TestStatefulSetForRack(t *testing.T) {
 							{
 								Name:            "scylla",
 								Image:           ":",
-								ImagePullPolicy: corev1.PullIfNotPresent,
+								ImagePullPolicy: corev1.PullAlways,
 								Ports: []corev1.ContainerPort{
 									{
 										Name:          "intra-node",
@@ -607,7 +607,7 @@ func TestStatefulSetForRack(t *testing.T) {
 							{
 								Name:            "scylla-manager-agent",
 								Image:           ":",
-								ImagePullPolicy: corev1.PullIfNotPresent,
+								ImagePullPolicy: corev1.PullAlways,
 								Args: []string{
 									"-c",
 									"/etc/scylla-manager-agent/scylla-manager-agent.yaml",

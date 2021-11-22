@@ -153,7 +153,7 @@ func makeNodeConfigDaemonSet(nc *scyllav1alpha1.NodeConfig, operatorImage, scyll
 						{
 							Name:            naming.NodeConfigAppName,
 							Image:           operatorImage,
-							ImagePullPolicy: corev1.PullIfNotPresent,
+							ImagePullPolicy: corev1.PullAlways,
 							Args: []string{
 								"node-config-daemon",
 								"--pod-name=$(POD_NAME)",

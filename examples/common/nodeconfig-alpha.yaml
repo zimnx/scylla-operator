@@ -4,5 +4,10 @@ metadata:
   name: cluster
 spec:
   placement:
+    tolerations:
+    - key: role
+      operator: Equal
+      value: scylla-clusters
+      effect: NoSchedule
     nodeSelector:
       scylla.scylladb.com/node-type: scylla

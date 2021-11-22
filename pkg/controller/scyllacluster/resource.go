@@ -244,7 +244,7 @@ func StatefulSetForRack(r scyllav1.RackSpec, c *scyllav1.ScyllaCluster, existing
 						{
 							Name:            naming.SidecarInjectorContainerName,
 							Image:           sidecarImage,
-							ImagePullPolicy: corev1.PullIfNotPresent,
+							ImagePullPolicy: corev1.PullAlways,
 							Command: []string{
 								"/bin/sh",
 								"-c",
@@ -273,7 +273,7 @@ func StatefulSetForRack(r scyllav1.RackSpec, c *scyllav1.ScyllaCluster, existing
 						{
 							Name:            naming.ScyllaContainerName,
 							Image:           ImageForCluster(c),
-							ImagePullPolicy: corev1.PullIfNotPresent,
+							ImagePullPolicy: corev1.PullAlways,
 							Ports:           containerPorts(c),
 							// TODO: unprivileged entrypoint
 							Command: []string{
@@ -495,7 +495,7 @@ func sysctlInitContainer(sysctls []string, image string) *corev1.Container {
 	return &corev1.Container{
 		Name:            "sysctl-buddy",
 		Image:           image,
-		ImagePullPolicy: corev1.PullIfNotPresent,
+		ImagePullPolicy: corev1.PullAlways,
 		SecurityContext: &corev1.SecurityContext{
 			Privileged: &opt,
 		},
@@ -521,7 +521,7 @@ func agentContainer(r scyllav1.RackSpec, c *scyllav1.ScyllaCluster) corev1.Conta
 	cnt := corev1.Container{
 		Name:            "scylla-manager-agent",
 		Image:           agentImageForCluster(c),
-		ImagePullPolicy: corev1.PullIfNotPresent,
+		ImagePullPolicy: corev1.PullAlways,
 		Args: []string{
 			"-c",
 			naming.ScyllaAgentConfigDefaultFile,

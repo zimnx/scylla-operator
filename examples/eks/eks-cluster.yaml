@@ -6,22 +6,24 @@ metadata:
   region: <eks_region>
 
 availabilityZones:
-- <eks_zone>
+- us-east-1a
+- us-east-1b
 
 nodeGroups:
 - name: scylla-pool
-  instanceType: i3.2xlarge
+  instanceType: i3.4xlarge
   desiredCapacity: 3
   labels:
     pool: "scylla-pool"
+    scylla.scylladb.com/node-type: scylla
   taints:
     role: "scylla-clusters:NoSchedule"
+  tags:
+    keep: alive
   ssh:
     allow: true
   kubeletExtraConfig:
     cpuManagerPolicy: static
-  availabilityZones:
-  - <eks_zone>
 
 - name: cassandra-stress-pool
   instanceType: c4.2xlarge
@@ -30,6 +32,8 @@ nodeGroups:
     pool: "cassandra-stress-pool"
   taints:
     role: "cassandra-stress:NoSchedule"
+  tags:
+    keep: alive
   ssh:
     allow: true
   preBootstrapCommands:
@@ -39,6 +43,8 @@ nodeGroups:
 - name: monitoring-pool
   instanceType: i3.large
   desiredCapacity: 1
+  tags:
+    keep: alive
   labels:
     pool: "monitoring-pool"
   ssh:

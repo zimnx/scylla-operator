@@ -57,7 +57,7 @@ func makePerftuneJobForNode(controllerRef *metav1.OwnerReference, namespace, nod
 						{
 							Name:            naming.PerftuneContainerName,
 							Image:           image,
-							ImagePullPolicy: corev1.PullIfNotPresent,
+							ImagePullPolicy: corev1.PullAlways,
 							Command:         []string{"/opt/scylladb/scripts/perftune.py"},
 							Args:            args,
 							Env: []corev1.EnvVar{
@@ -156,7 +156,7 @@ func makePerftuneJobForContainers(controllerRef *metav1.OwnerReference, namespac
 						{
 							Name:            naming.PerftuneContainerName,
 							Image:           image,
-							ImagePullPolicy: corev1.PullIfNotPresent,
+							ImagePullPolicy: corev1.PullAlways,
 							Command:         []string{"/opt/scylladb/scripts/perftune.py"},
 							Args:            args,
 							Env: []corev1.EnvVar{
