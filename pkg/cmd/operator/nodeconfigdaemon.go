@@ -184,6 +184,10 @@ func (o *NodeConfigDaemonOptions) Run(streams genericclioptions.IOStreams, cmd *
 			options.FieldSelector = fields.OneTermEqualSelector("spec.nodeName", o.NodeName).String()
 		},
 	))
+	localNodeInformer := informers.NewSharedInformerFactoryWithOptions(o.kubeClient, resyncPeriod, informers.WithTweakListOptions(
+		func(options *metav1.ListOptions) {
+			options.FieldSelector = fields.OneTermEqualSelector("spec.nodeName", o.NodeName).String()
+		}))
 	selfPodInformers := informers.NewSharedInformerFactoryWithOptions(o.kubeClient, resyncPeriod, informers.WithNamespace(o.Namespace), informers.WithTweakListOptions(
 		func(options *metav1.ListOptions) {
 			options.FieldSelector = fields.OneTermEqualSelector("metadata.name", o.PodName).String()
@@ -211,7 +215,7 @@ func (o *NodeConfigDaemonOptions) Run(streams genericclioptions.IOStreams, cmd *
 		nodeConfigInformers.Scylla().V1alpha1().NodeConfigs(),
 		localNodeScyllaCoreInformers.Core().V1().Pods(),
 		namespacedKubeInformers.Apps().V1().DaemonSets(),
-		namespacedKubeInformers.Batch().V1().Jobs(),
+		localNodeInformer.Batch().V1().Jobs(),
 		selfPodInformers.Core().V1().Pods(),
 		o.Namespace,
 		o.PodName,
@@ -229,6 +233,7 @@ func (o *NodeConfigDaemonOptions) Run(streams genericclioptions.IOStreams, cmd *
 	namespacedKubeInformers.Start(ctx.Done())
 	nodeConfigInformers.Start(ctx.Done())
 	localNodeScyllaCoreInformers.Start(ctx.Done())
+	localNodeInformer.Start(ctx.Done())
 	selfPodInformers.Start(ctx.Done())
 
 	// Run the controller to configure and reconcile pod specific options.
