@@ -47,11 +47,11 @@ func GetScyllaHost(statefulsetName string, ordinal int32, services map[string]*c
 func GetRequiredScyllaHosts(sd *scyllav1alpha1.ScyllaDatacenter, services map[string]*corev1.Service) ([]string, error) {
 	var hosts []string
 	var errs []error
-	for _, rack := range sd.Spec.Datacenter.Racks {
-		if rack.Members == nil {
+	for _, rack := range sd.Spec.Racks {
+		if rack.Nodes == nil {
 			continue
 		}
-		for ord := int32(0); ord < *rack.Members; ord++ {
+		for ord := int32(0); ord < *rack.Nodes; ord++ {
 			stsName := naming.StatefulSetNameForRack(rack, sd)
 			host, err := GetScyllaHost(stsName, ord, services)
 			if err != nil {
@@ -95,19 +95,6 @@ func NewScyllaClientForLocalhost() (*scyllaclient.Client, error) {
 	t.TLSClientConfig = nil
 	cfg.Transport = t
 	return NewScyllaClient(cfg)
-}
-
-func SetRackCondition(rackStatus *scyllav1alpha1.RackStatus, newCondition scyllav1alpha1.RackConditionType) {
-	for i := range rackStatus.Conditions {
-		if rackStatus.Conditions[i].Type == newCondition {
-			rackStatus.Conditions[i].Status = corev1.ConditionTrue
-			return
-		}
-	}
-	rackStatus.Conditions = append(
-		rackStatus.Conditions,
-		scyllav1alpha1.RackCondition{Type: newCondition, Status: corev1.ConditionTrue},
-	)
 }
 
 func FindNodeStatus(nodeStatuses []scyllav1alpha1.NodeConfigNodeStatus, nodeName string) *scyllav1alpha1.NodeConfigNodeStatus {

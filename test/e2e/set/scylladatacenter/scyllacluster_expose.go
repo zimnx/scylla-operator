@@ -8,15 +8,16 @@ import (
 
 	g "github.com/onsi/ginkgo/v2"
 	o "github.com/onsi/gomega"
-	scyllav1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1"
+	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/naming"
-	scyllafixture "github.com/scylladb/scylla-operator/test/e2e/fixture/scylla"
+	scyllafixture "github.com/scylladb/scylla-operator/test/e2e/fixture/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/test/e2e/framework"
-	"github.com/scylladb/scylla-operator/test/e2e/utils"
+	utils "github.com/scylladb/scylla-operator/test/e2e/utils/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/utils/pointer"
 )
 
 var _ = g.Describe("ScyllaDatacenter Ingress", func() {
@@ -28,12 +29,12 @@ var _ = g.Describe("ScyllaDatacenter Ingress", func() {
 		ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 		defer cancel()
 
-		sc := scyllafixture.BasicScyllaDatacenter.ReadOrFail()
-		sc.Spec.Datacenter.Racks[0].Members = 1
-		sc.Spec.DNSDomains = []string{"private.nodes.scylladb.com", "public.nodes.scylladb.com"}
-		sc.Spec.ExposeOptions = &scyllav1.ExposeOptions{
-			CQL: &scyllav1.CQLExposeOptions{
-				Ingress: &scyllav1.IngressOptions{
+		sd := scyllafixture.BasicScyllaDatacenter.ReadOrFail()
+		sd.Spec.Racks[0].Nodes = pointer.Int32(1)
+		sd.Spec.DNSDomains = []string{"private.nodes.scylladb.com", "public.nodes.scylladb.com"}
+		sd.Spec.ExposeOptions = &scyllav1alpha1.ExposeOptions{
+			CQL: &scyllav1alpha1.CQLExposeOptions{
+				Ingress: &scyllav1alpha1.IngressOptions{
 					IngressClassName: "my-cql-ingress-class",
 					Annotations: map[string]string{
 						"my-cql-annotation-key": "my-cql-annotation-value",
@@ -42,23 +43,23 @@ var _ = g.Describe("ScyllaDatacenter Ingress", func() {
 			},
 		}
 
-		framework.By("Creating a ScyllaCluster")
-		sc, err := f.ScyllaClient().ScyllaV1().ScyllaClusters(f.Namespace()).Create(ctx, sc, metav1.CreateOptions{})
+		framework.By("Creating a ScyllaDatacenter")
+		sd, err := f.ScyllaClient().ScyllaV1alpha1().ScyllaDatacenters(f.Namespace()).Create(ctx, sd, metav1.CreateOptions{})
 		o.Expect(err).NotTo(o.HaveOccurred())
 
 		// TODO: In theory Ingresses may not be created when ScyllaCluster is rolled out making this test flaky.
 		//       Wait for condition when it's available.
 		framework.By("Waiting for ScyllaCluster to deploy")
-		waitCtx, waitCtxCancel := utils.ContextForRollout(ctx, sc)
+		waitCtx, waitCtxCancel := utils.ContextForRollout(ctx, sd)
 		defer waitCtxCancel()
 
-		sc, err = utils.WaitForScyllaDatacenterState(waitCtx, f.ScyllaClient().ScyllaV1(), sc.Namespace, sc.Name, utils.WaitForStateOptions{}, utils.IsScyllaDatacenterRolledOut)
+		sd, err = utils.WaitForScyllaDatacenterState(waitCtx, f.ScyllaClient().ScyllaV1alpha1(), sd.Namespace, sd.Name, utils.WaitForStateOptions{}, utils.IsScyllaDatacenterRolledOut)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
-		verifyScyllaDatacenter(ctx, f.KubeClient(), sc, nil)
+		verifyScyllaDatacenter(ctx, f.KubeClient(), sd, nil)
 
 		framework.By("Verifying AnyNode Ingresses")
-		services, err := f.KubeClient().CoreV1().Services(sc.Namespace).List(ctx, metav1.ListOptions{
+		services, err := f.KubeClient().CoreV1().Services(sd.Namespace).List(ctx, metav1.ListOptions{
 			LabelSelector: labels.SelectorFromSet(map[string]string{
 				naming.ScyllaServiceTypeLabel: string(naming.ScyllaServiceTypeIdentity),
 			}).String(),
@@ -66,7 +67,7 @@ var _ = g.Describe("ScyllaDatacenter Ingress", func() {
 		o.Expect(err).NotTo(o.HaveOccurred())
 		o.Expect(services.Items).To(o.HaveLen(1))
 
-		ingresses, err := f.KubeClient().NetworkingV1().Ingresses(sc.Namespace).List(ctx, metav1.ListOptions{
+		ingresses, err := f.KubeClient().NetworkingV1().Ingresses(sd.Namespace).List(ctx, metav1.ListOptions{
 			LabelSelector: labels.SelectorFromSet(map[string]string{
 				naming.ScyllaIngressTypeLabel: string(naming.ScyllaIngressTypeAnyNode),
 			}).String(),
@@ -77,8 +78,8 @@ var _ = g.Describe("ScyllaDatacenter Ingress", func() {
 		verifyIngress(
 			&ingresses.Items[0],
 			fmt.Sprintf("%s-cql", services.Items[0].Name),
-			sc.Spec.ExposeOptions.CQL.Ingress.Annotations,
-			sc.Spec.ExposeOptions.CQL.Ingress.IngressClassName,
+			sd.Spec.ExposeOptions.CQL.Ingress.Annotations,
+			sd.Spec.ExposeOptions.CQL.Ingress.IngressClassName,
 			&services.Items[0],
 			[]string{
 				"any.cql.private.nodes.scylladb.com",
@@ -88,7 +89,7 @@ var _ = g.Describe("ScyllaDatacenter Ingress", func() {
 		)
 
 		framework.By("Verifying Node Ingresses")
-		services, err = f.KubeClient().CoreV1().Services(sc.Namespace).List(ctx, metav1.ListOptions{
+		services, err = f.KubeClient().CoreV1().Services(sd.Namespace).List(ctx, metav1.ListOptions{
 			LabelSelector: labels.SelectorFromSet(map[string]string{
 				naming.ScyllaServiceTypeLabel: string(naming.ScyllaServiceTypeMember),
 			}).String(),
@@ -102,7 +103,7 @@ var _ = g.Describe("ScyllaDatacenter Ingress", func() {
 			nodeHostIDs = append(nodeHostIDs, svc.Annotations[naming.HostIDAnnotation])
 		}
 
-		ingresses, err = f.KubeClient().NetworkingV1().Ingresses(sc.Namespace).List(ctx, metav1.ListOptions{
+		ingresses, err = f.KubeClient().NetworkingV1().Ingresses(sd.Namespace).List(ctx, metav1.ListOptions{
 			LabelSelector: labels.SelectorFromSet(map[string]string{
 				naming.ScyllaIngressTypeLabel: string(naming.ScyllaIngressTypeNode),
 			}).String(),
@@ -113,8 +114,8 @@ var _ = g.Describe("ScyllaDatacenter Ingress", func() {
 		verifyIngress(
 			&ingresses.Items[0],
 			fmt.Sprintf("%s-cql", services.Items[0].Name),
-			sc.Spec.ExposeOptions.CQL.Ingress.Annotations,
-			sc.Spec.ExposeOptions.CQL.Ingress.IngressClassName,
+			sd.Spec.ExposeOptions.CQL.Ingress.Annotations,
+			sd.Spec.ExposeOptions.CQL.Ingress.IngressClassName,
 			&services.Items[0],
 			[]string{
 				fmt.Sprintf("%s.cql.private.nodes.scylladb.com", nodeHostIDs[0]),

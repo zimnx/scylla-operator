@@ -40,6 +40,7 @@ require (
 	google.golang.org/grpc v1.49.0
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.25.0
+	k8s.io/apiextensions-apiserver v0.20.2
 	k8s.io/apimachinery v0.25.0
 	k8s.io/apiserver v0.25.0
 	k8s.io/client-go v0.25.0
@@ -140,7 +141,6 @@ require (
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	k8s.io/apiextensions-apiserver v0.20.2 // indirect
 	k8s.io/gengo v0.0.0-20211129171323-c02415ce4185 // indirect
 	k8s.io/kube-openapi v0.0.0-20220803164354-a70c9af30aea // indirect
 	sigs.k8s.io/json v0.0.0-20220713155537-f223a00ba0e2 // indirect

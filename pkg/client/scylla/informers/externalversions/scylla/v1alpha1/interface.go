@@ -10,6 +10,8 @@ import (
 type Interface interface {
 	// NodeConfigs returns a NodeConfigInformer.
 	NodeConfigs() NodeConfigInformer
+	// RemoteKubeClusterConfigs returns a RemoteKubeClusterConfigInformer.
+	RemoteKubeClusterConfigs() RemoteKubeClusterConfigInformer
 	// ScyllaDatacenters returns a ScyllaDatacenterInformer.
 	ScyllaDatacenters() ScyllaDatacenterInformer
 	// ScyllaOperatorConfigs returns a ScyllaOperatorConfigInformer.
@@ -30,6 +32,11 @@ func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakList
 // NodeConfigs returns a NodeConfigInformer.
 func (v *version) NodeConfigs() NodeConfigInformer {
 	return &nodeConfigInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+}
+
+// RemoteKubeClusterConfigs returns a RemoteKubeClusterConfigInformer.
+func (v *version) RemoteKubeClusterConfigs() RemoteKubeClusterConfigInformer {
+	return &remoteKubeClusterConfigInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }
 
 // ScyllaDatacenters returns a ScyllaDatacenterInformer.

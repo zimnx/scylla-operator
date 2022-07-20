@@ -17,34 +17,6 @@ import (
 )
 
 func TestValidateScyllaDatacenter(t *testing.T) {
-	validCluster := unit.NewSingleRackDatacenter(3)
-	validCluster.Spec.Datacenter.Racks[0].ScyllaContainer.Resources = corev1.ResourceRequirements{
-		Limits: map[corev1.ResourceName]resource.Quantity{
-			corev1.ResourceCPU:    resource.MustParse("2"),
-			corev1.ResourceMemory: resource.MustParse("2Gi"),
-		},
-	}
-
-	sameName := validCluster.DeepCopy()
-	sameName.Spec.Datacenter.Racks = append(sameName.Spec.Datacenter.Racks, sameName.Spec.Datacenter.Racks[0])
-
-	invalidIntensity := validCluster.DeepCopy()
-	invalidIntensity.Spec.Repairs = append(invalidIntensity.Spec.Repairs, scyllav1alpha1.RepairTaskSpec{
-		Intensity: "100Mib",
-	})
-
-	nonUniqueManagerTaskNames := validCluster.DeepCopy()
-	nonUniqueManagerTaskNames.Spec.Backups = append(nonUniqueManagerTaskNames.Spec.Backups, scyllav1alpha1.BackupTaskSpec{
-		SchedulerTaskSpec: scyllav1alpha1.SchedulerTaskSpec{
-			Name: "task-name",
-		},
-	})
-	nonUniqueManagerTaskNames.Spec.Repairs = append(nonUniqueManagerTaskNames.Spec.Repairs, scyllav1alpha1.RepairTaskSpec{
-		SchedulerTaskSpec: scyllav1alpha1.SchedulerTaskSpec{
-			Name: "task-name",
-		},
-	})
-
 	tests := []struct {
 		name                string
 		obj                 *scyllav1alpha1.ScyllaDatacenter
@@ -52,35 +24,25 @@ func TestValidateScyllaDatacenter(t *testing.T) {
 		expectedErrorString string
 	}{
 		{
-			name:                "valid",
-			obj:                 validCluster,
+			name: "valid",
+			obj: func() *scyllav1alpha1.ScyllaDatacenter {
+				cluster := unit.NewSingleRackDatacenter(3)
+				return cluster
+			}(),
 			expectedErrorList:   field.ErrorList{},
 			expectedErrorString: "",
 		},
 		{
 			name: "two racks with same name",
-			obj:  sameName,
+			obj: func() *scyllav1alpha1.ScyllaDatacenter {
+				cluster := unit.NewSingleRackDatacenter(3)
+				cluster.Spec.Racks = append(cluster.Spec.Racks, *cluster.Spec.Racks[0].DeepCopy())
+				return cluster
+			}(),
 			expectedErrorList: field.ErrorList{
 				&field.Error{Type: field.ErrorTypeDuplicate, Field: "spec.datacenter.racks[1].name", BadValue: "test-rack"},
 			},
 			expectedErrorString: `spec.datacenter.racks[1].name: Duplicate value: "test-rack"`,
-		},
-		{
-			name: "invalid intensity in repair task spec",
-			obj:  invalidIntensity,
-			expectedErrorList: field.ErrorList{
-				&field.Error{Type: field.ErrorTypeInvalid, Field: "spec.repairs[0].intensity", BadValue: "100Mib", Detail: "invalid intensity, it must be a float value"},
-			},
-			expectedErrorString: `spec.repairs[0].intensity: Invalid value: "100Mib": invalid intensity, it must be a float value`,
-		},
-		{
-			name: "invalid intensity in repair task spec && non-unique names in manager tasks spec",
-			obj:  nonUniqueManagerTaskNames,
-			expectedErrorList: field.ErrorList{
-				&field.Error{Type: field.ErrorTypeInvalid, Field: "spec.repairs[0].intensity", BadValue: "", Detail: "invalid intensity, it must be a float value"},
-				&field.Error{Type: field.ErrorTypeDuplicate, Field: "spec.backups[0].name", BadValue: "task-name"},
-			},
-			expectedErrorString: `[spec.repairs[0].intensity: Invalid value: "": invalid intensity, it must be a float value, spec.backups[0].name: Duplicate value: "task-name"]`,
 		},
 	}
 
@@ -150,9 +112,9 @@ func TestValidateScyllaDatacenterUpdate(t *testing.T) {
 			old:  unit.NewSingleRackDatacenter(3),
 			new:  unit.NewDetailedSingleRackDatacenter("test-cluster", "test-ns", "repo:2.3.1", "new-dc", "test-rack", 3),
 			expectedErrorList: field.ErrorList{
-				&field.Error{Type: field.ErrorTypeForbidden, Field: "spec.datacenter.name", BadValue: "", Detail: "change of datacenter name is currently not supported"},
+				&field.Error{Type: field.ErrorTypeForbidden, Field: "spec.datacenterName", BadValue: "", Detail: "change of datacenter name is currently not supported"},
 			},
-			expectedErrorString: "spec.datacenter.name: Forbidden: change of datacenter name is currently not supported",
+			expectedErrorString: "spec.datacenterName: Forbidden: change of datacenter name is currently not supported",
 		},
 		{
 			name:                "rackPlacement changed",
@@ -166,9 +128,9 @@ func TestValidateScyllaDatacenterUpdate(t *testing.T) {
 			old:  unit.NewSingleRackDatacenter(3),
 			new:  storageChanged(unit.NewSingleRackDatacenter(3)),
 			expectedErrorList: field.ErrorList{
-				&field.Error{Type: field.ErrorTypeForbidden, Field: "spec.datacenter.racks[0].storage", BadValue: "", Detail: "changes in storage are currently not supported"},
+				&field.Error{Type: field.ErrorTypeForbidden, Field: "spec.racks[0].scylla.storage", BadValue: "", Detail: "changes in storage are currently not supported"},
 			},
-			expectedErrorString: "spec.datacenter.racks[0].storage: Forbidden: changes in storage are currently not supported",
+			expectedErrorString: "spec.racks[0].scylla.storage: Forbidden: changes in storage are currently not supported",
 		},
 		{
 			name:                "rackResources changed",
@@ -186,41 +148,41 @@ func TestValidateScyllaDatacenterUpdate(t *testing.T) {
 		},
 		{
 			name: "empty rack with members under decommission",
-			old:  withStatus(unit.NewSingleRackDatacenter(0), scyllav1alpha1.ScyllaDatacenterStatus{Racks: map[string]scyllav1alpha1.RackStatus{"test-rack": {Members: pointer.Int32(3)}}}),
+			old:  withStatus(unit.NewSingleRackDatacenter(0), scyllav1alpha1.ScyllaDatacenterStatus{Racks: map[string]scyllav1alpha1.RackStatus{"test-rack": {Nodes: pointer.Int32(3)}}}),
 			new:  racksDeleted(unit.NewSingleRackDatacenter(0)),
 			expectedErrorList: field.ErrorList{
-				&field.Error{Type: field.ErrorTypeForbidden, Field: "spec.datacenter.racks[0]", BadValue: "", Detail: `rack "test-rack" can't be removed because the members are being scaled down`},
+				&field.Error{Type: field.ErrorTypeForbidden, Field: "spec.racks[0]", BadValue: "", Detail: `rack "test-rack" can't be removed because the members are being scaled down`},
 			},
-			expectedErrorString: `spec.datacenter.racks[0]: Forbidden: rack "test-rack" can't be removed because the members are being scaled down`,
+			expectedErrorString: `spec.racks[0]: Forbidden: rack "test-rack" can't be removed because the members are being scaled down`,
 		},
 		{
 			name: "empty rack with stale status",
-			old:  withStatus(unit.NewSingleRackDatacenter(0), scyllav1alpha1.ScyllaDatacenterStatus{Racks: map[string]scyllav1alpha1.RackStatus{"test-rack": {Stale: pointer.Bool(true), Members: pointer.Int32(0)}}}),
+			old:  withStatus(unit.NewSingleRackDatacenter(0), scyllav1alpha1.ScyllaDatacenterStatus{Racks: map[string]scyllav1alpha1.RackStatus{"test-rack": {Stale: pointer.Bool(true), Nodes: pointer.Int32(0)}}}),
 			new:  racksDeleted(unit.NewSingleRackDatacenter(0)),
 			expectedErrorList: field.ErrorList{
-				&field.Error{Type: field.ErrorTypeInternal, Field: "spec.datacenter.racks[0]", Detail: `rack "test-rack" can't be removed because its status, that's used to determine members count, is not yet up to date with the generation of this resource; please retry later`},
+				&field.Error{Type: field.ErrorTypeInternal, Field: "spec.racks[0]", Detail: `rack "test-rack" can't be removed because its status, that's used to determine members count, is not yet up to date with the generation of this resource; please retry later`},
 			},
-			expectedErrorString: `spec.datacenter.racks[0]: Internal error: rack "test-rack" can't be removed because its status, that's used to determine members count, is not yet up to date with the generation of this resource; please retry later`,
+			expectedErrorString: `spec.racks[0]: Internal error: rack "test-rack" can't be removed because its status, that's used to determine members count, is not yet up to date with the generation of this resource; please retry later`,
 		},
 		{
 			name: "empty rack with not reconciled generation",
-			old:  withStatus(withGeneration(unit.NewSingleRackDatacenter(0), 123), scyllav1alpha1.ScyllaDatacenterStatus{ObservedGeneration: pointer.Int64(321), Racks: map[string]scyllav1alpha1.RackStatus{"test-rack": {Members: pointer.Int32(3)}}}),
+			old:  withStatus(withGeneration(unit.NewSingleRackDatacenter(0), 123), scyllav1alpha1.ScyllaDatacenterStatus{ObservedGeneration: pointer.Int64(321), Racks: map[string]scyllav1alpha1.RackStatus{"test-rack": {Nodes: pointer.Int32(0)}}}),
 			new:  racksDeleted(unit.NewSingleRackDatacenter(0)),
 			expectedErrorList: field.ErrorList{
-				&field.Error{Type: field.ErrorTypeInternal, Field: "spec.datacenter.racks[0]", Detail: `rack "test-rack" can't be removed because its status, that's used to determine members count, is not yet up to date with the generation of this resource; please retry later`},
+				&field.Error{Type: field.ErrorTypeInternal, Field: "spec.racks[0]", Detail: `rack "test-rack" can't be removed because its status, that's used to determine members count, is not yet up to date with the generation of this resource; please retry later`},
 			},
-			expectedErrorString: `spec.datacenter.racks[0]: Internal error: rack "test-rack" can't be removed because its status, that's used to determine members count, is not yet up to date with the generation of this resource; please retry later`,
+			expectedErrorString: `spec.racks[0]: Internal error: rack "test-rack" can't be removed because its status, that's used to determine members count, is not yet up to date with the generation of this resource; please retry later`,
 		},
 		{
 			name: "non-empty racks deleted",
 			old:  unit.NewMultiRackDatacenter(3, 2, 1, 0),
 			new:  racksDeleted(unit.NewSingleRackDatacenter(3)),
 			expectedErrorList: field.ErrorList{
-				&field.Error{Type: field.ErrorTypeForbidden, Field: "spec.datacenter.racks[0]", BadValue: "", Detail: `rack "rack-0" can't be removed because it still has members that have to be scaled down to zero first`},
-				&field.Error{Type: field.ErrorTypeForbidden, Field: "spec.datacenter.racks[1]", BadValue: "", Detail: `rack "rack-1" can't be removed because it still has members that have to be scaled down to zero first`},
-				&field.Error{Type: field.ErrorTypeForbidden, Field: "spec.datacenter.racks[2]", BadValue: "", Detail: `rack "rack-2" can't be removed because it still has members that have to be scaled down to zero first`},
+				&field.Error{Type: field.ErrorTypeForbidden, Field: "spec.racks[0]", BadValue: "", Detail: `rack "rack-0" can't be removed because it still has members that have to be scaled down to zero first`},
+				&field.Error{Type: field.ErrorTypeForbidden, Field: "spec.racks[1]", BadValue: "", Detail: `rack "rack-1" can't be removed because it still has members that have to be scaled down to zero first`},
+				&field.Error{Type: field.ErrorTypeForbidden, Field: "spec.racks[2]", BadValue: "", Detail: `rack "rack-2" can't be removed because it still has members that have to be scaled down to zero first`},
 			},
-			expectedErrorString: `[spec.datacenter.racks[0]: Forbidden: rack "rack-0" can't be removed because it still has members that have to be scaled down to zero first, spec.datacenter.racks[1]: Forbidden: rack "rack-1" can't be removed because it still has members that have to be scaled down to zero first, spec.datacenter.racks[2]: Forbidden: rack "rack-2" can't be removed because it still has members that have to be scaled down to zero first]`,
+			expectedErrorString: `[spec.racks[0]: Forbidden: rack "rack-0" can't be removed because it still has members that have to be scaled down to zero first, spec.racks[1]: Forbidden: rack "rack-1" can't be removed because it still has members that have to be scaled down to zero first, spec.racks[2]: Forbidden: rack "rack-2" can't be removed because it still has members that have to be scaled down to zero first]`,
 		},
 	}
 
@@ -253,23 +215,25 @@ func withStatus(sc *scyllav1alpha1.ScyllaDatacenter, status scyllav1alpha1.Scyll
 }
 
 func placementChanged(c *scyllav1alpha1.ScyllaDatacenter) *scyllav1alpha1.ScyllaDatacenter {
-	c.Spec.Datacenter.Racks[0].Placement = &scyllav1alpha1.PlacementSpec{}
+	c.Spec.Racks[0].Placement = &scyllav1alpha1.Placement{}
 	return c
 }
 
 func resourceChanged(c *scyllav1alpha1.ScyllaDatacenter) *scyllav1alpha1.ScyllaDatacenter {
-	c.Spec.Datacenter.Racks[0].ScyllaContainer.Resources.Requests = map[corev1.ResourceName]resource.Quantity{
-		corev1.ResourceCPU: *resource.NewMilliQuantity(1000, resource.DecimalSI),
+	c.Spec.Racks[0].Scylla.Resources = &corev1.ResourceRequirements{
+		Requests: map[corev1.ResourceName]resource.Quantity{
+			corev1.ResourceCPU: *resource.NewMilliQuantity(1111, resource.DecimalSI),
+		},
 	}
 	return c
 }
 
 func racksDeleted(c *scyllav1alpha1.ScyllaDatacenter) *scyllav1alpha1.ScyllaDatacenter {
-	c.Spec.Datacenter.Racks = nil
+	c.Spec.Racks = nil
 	return c
 }
 
 func storageChanged(c *scyllav1alpha1.ScyllaDatacenter) *scyllav1alpha1.ScyllaDatacenter {
-	c.Spec.Datacenter.Racks[0].Storage.Capacity = "15Gi"
+	c.Spec.Racks[0].Scylla.Storage.Resources.Requests[corev1.ResourceStorage] = resource.MustParse("15Gi")
 	return c
 }

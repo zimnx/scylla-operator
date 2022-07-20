@@ -6,6 +6,10 @@ package v1alpha1
 // NodeConfigLister.
 type NodeConfigListerExpansion interface{}
 
+// RemoteKubeClusterConfigListerExpansion allows custom methods to be added to
+// RemoteKubeClusterConfigLister.
+type RemoteKubeClusterConfigListerExpansion interface{}
+
 // ScyllaDatacenterListerExpansion allows custom methods to be added to
 // ScyllaDatacenterLister.
 type ScyllaDatacenterListerExpansion interface{}

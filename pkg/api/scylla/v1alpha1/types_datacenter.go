@@ -9,224 +9,53 @@ import (
 
 // ScyllaDatacenterSpec defines the desired state of Datacenter.
 type ScyllaDatacenterSpec struct {
-	// image holds a reference to the Scylla container image.
+	// scylla holds a specification of Scylla.
+	Scylla Scylla `json:"scylla"`
+
+	// scyllaManagerAgent holds a specification of Scylla Manager Agent.
 	// +optional
-	Image string `json:"image"`
+	ScyllaManagerAgent *ScyllaManagerAgent `json:"scyllaManagerAgent,omitempty"`
 
-	// managerAgentImageholds a reference to the Scylla Manager Agent container image.
-	// +optional
-	AgentImage string `json:"agentImage"`
-
-	// alternator designates this cluster an Alternator cluster.
-	// +optional
-	Alternator *AlternatorSpec `json:"alternator,omitempty"`
-
-	// cpuset determines if the cluster will use cpu-pinning for max performance.
-	// +optional
-	CpuSet *bool `json:"cpuset,omitempty"`
-
-	// developerMode determines if the cluster runs in developer-mode.
-	// +kubebuilder:default:=false
-	// +optional
-	EnableDeveloperMode *bool `json:"enableDeveloperMode,omitempty"`
-
-	// removeOrphanedPVs allows the controller to delete PVs bound to nodes that no longer exist and proceed by recreating the PV on some other node.
-	// +optional
-	// +kubebuilder:default:=true
-	RemoveOrphanedPVs *bool `json:"removeOrphanedPVs,omitempty"`
-
-	// genericUpgrade allows to configure behavior of generic upgrade logic.
-	// +optional
-	GenericUpgrade *GenericUpgradeSpec `json:"genericUpgrade,omitempty"`
-
-	// datacenter holds a specification of a Scylla datacenter.
-	Datacenter DatacenterSpec `json:"datacenter"`
-
-	// sysctls holds the sysctl properties to be applied during initialization given as a list of key=value pairs.
-	// Example: fs.aio-max-nr=232323
-	// +optional
-	Sysctls []string `json:"sysctls,omitempty"`
-
-	// scyllaArgs will be appended to the Scylla binary during startup.
-	// +optional
-	UnsupportedScyllaArgsOverrides []string `json:"unsupportedScyllaArgsOverrides,omitempty"`
-
-	// network holds the networking config.
-	// +optional
-	Network Network `json:"network,omitempty"`
-
-	// repairs specify repair tasks in Scylla Manager.
-	// When Scylla Manager is not installed, these will be ignored.
-	// +optional
-	Repairs []RepairTaskSpec `json:"repairs,omitempty"`
-
-	// backups specifies backup tasks in Scylla Manager.
-	// When Scylla Manager is not installed, these will be ignored.
-	// +optional
-	Backups []BackupTaskSpec `json:"backups,omitempty"`
-
-	// forceRedeploymentReason can be used to force a rolling update of all racks by providing a unique string.
+	// forceRedeploymentReason can be used to force a rolling update of all datacenters by providing a unique string.
 	// +optional
 	ForceRedeploymentReason string `json:"forceRedeploymentReason,omitempty"`
 
 	// imagePullSecrets is an optional list of references to secrets in the same namespace
-	// used for pulling Scylla and Agent images.
+	// used for pulling any images used by this spec.
 	// +optional
 	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
-}
 
-// DatacenterSpec is the desired state for a Scylla Datacenter.
-type DatacenterSpec struct {
+	// network holds network configuration.
+	// +optional
+	Network *Network `json:"network,omitempty"`
+
 	// name is the name of the scylla datacenter. Used in the cassandra-rackdc.properties file.
-	Name string `json:"name"`
+	DatacenterName string `json:"datacenterName"`
+
+	// dnsDomains specifies a list of DNS domains this cluster is reachable by.
+	// These domains are used when setting up the infrastructure, like certificates.
+	// +optional
+	DNSDomains []string `json:"dnsDomains,omitempty"`
+
+	// exposeOptions specifies parameters related to exposing ScyllaCluster backends.
+	// +optional
+	ExposeOptions *ExposeOptions `json:"exposeOptions,omitempty"`
+
+	// nodesPerRack specifies how many nodes are deployed in each rack.
+	// +optional
+	NodesPerRack *int32 `json:"nodesPerRack,omitempty"`
 
 	// racks specify the racks in the datacenter.
+	// +optional
 	Racks []RackSpec `json:"racks"`
-}
 
-// GenericUpgradeFailureStrategy allows to specify how upgrade logic should handle failures.
-type GenericUpgradeFailureStrategy string
-
-const (
-	// GenericUpgradeFailureStrategyRetry infinitely retries until node becomes ready.
-	GenericUpgradeFailureStrategyRetry GenericUpgradeFailureStrategy = "Retry"
-)
-
-// GenericUpgradeSpec hold generic upgrade procedure parameters.
-type GenericUpgradeSpec struct {
-	// failureStrategy specifies which logic is executed when upgrade failure happens.
-	// Currently only Retry is supported.
-	// +kubebuilder:default:="Retry"
+	// placement describes restrictions for the nodes Scylla is scheduled on.
 	// +optional
-	FailureStrategy GenericUpgradeFailureStrategy `json:"failureStrategy,omitempty"`
-}
+	Placement *Placement `json:"placement,omitempty"`
 
-type SchedulerTaskSpec struct {
-	// name is a unique name of a task.
-	Name string `json:"name"`
-
-	// startDate specifies the task start date expressed in the RFC3339 format or now[+duration],
-	// e.g. now+3d2h10m, valid units are d, h, m, s.
-	// +kubebuilder:default:="now"
+	// metadata defines custom metadata values added to all child resources of ScyllaCluster.
 	// +optional
-	StartDate string `json:"startDate,omitempty"`
-
-	// interval represents a task schedule interval e.g. 3d2h10m, valid units are d, h, m, s.
-	// +optional
-	// +kubebuilder:default:="0"
-	Interval string `json:"interval,omitempty"`
-
-	// numRetries indicates how many times a scheduled task will be retried before failing.
-	// +kubebuilder:default:=3
-	// +optional
-	NumRetries *int64 `json:"numRetries,omitempty"`
-}
-
-type RepairTaskSpec struct {
-	SchedulerTaskSpec `json:",inline"`
-
-	// dc is a list of datacenter glob patterns, e.g. 'dc1', '!otherdc*' used to specify the DCs
-	// to include or exclude from backup.
-	DC []string `json:"dc,omitempty" mapstructure:"dc,omitempty"`
-
-	// failFast indicates if a repair should be stopped on first error.
-	// +optional
-	FailFast bool `json:"failFast,omitempty" mapstructure:"fail_fast,omitempty"`
-
-	// intensity indicates how many token ranges (per shard) to repair in a single Scylla repair job. By default this is 1.
-	// If you set it to 0 the number of token ranges is adjusted to the maximum supported by node (see max_repair_ranges_in_parallel in Scylla logs).
-	// Valid values are 0 and integers >= 1. Higher values will result in increased cluster load and slightly faster repairs.
-	// Changing the intensity impacts repair granularity if you need to resume it, the higher the value the more work on resume.
-	// For Scylla clusters that *do not support row-level repair*, intensity can be a decimal between (0,1).
-	// In that case it specifies percent of shards that can be repaired in parallel on a repair master node.
-	// For Scylla clusters that are row-level repair enabled, setting intensity below 1 has the same effect as setting intensity 1.
-	// +kubebuilder:default:="1"
-	// +optional
-	Intensity string `json:"intensity,omitempty" mapstructure:"intensity,omitempty"`
-
-	// parallel is the maximum number of Scylla repair jobs that can run at the same time (on different token ranges and replicas).
-	// Each node can take part in at most one repair at any given moment. By default the maximum possible parallelism is used.
-	// The effective parallelism depends on a keyspace replication factor (RF) and the number of nodes.
-	// The formula to calculate it is as follows: number of nodes / RF, ex. for 6 node cluster with RF=3 the maximum parallelism is 2.
-	// +kubebuilder:default:=0
-	// +optional
-	Parallel int64 `json:"parallel,omitempty" mapstructure:"parallel,omitempty"`
-
-	// keyspace is a list of keyspace/tables glob patterns, e.g. 'keyspace,!keyspace.table_prefix_*'
-	// used to include or exclude keyspaces from repair.
-	Keyspace []string `json:"keyspace,omitempty" mapstructure:"keyspace,omitempty"`
-
-	// smallTableThreshold enable small table optimization for tables of size lower than given threshold.
-	// Supported units [B, MiB, GiB, TiB].
-	// +kubebuilder:default:="1GiB"
-	// +optional
-	SmallTableThreshold string `json:"smallTableThreshold,omitempty" mapstructure:"small_table_threshold,omitempty"`
-
-	// host specifies a host to repair. If empty, all hosts are repaired.
-	Host *string `json:"host,omitempty" mapstructure:"host,omitempty"`
-}
-
-type BackupTaskSpec struct {
-	SchedulerTaskSpec `json:",inline"`
-
-	// dc is a list of datacenter glob patterns, e.g. 'dc1,!otherdc*' used to specify the DCs
-	// to include or exclude from backup.
-	// +optional
-	DC []string `json:"dc,omitempty" mapstructure:"dc,omitempty"`
-
-	// keyspace is a list of keyspace/tables glob patterns,
-	// e.g. 'keyspace,!keyspace.table_prefix_*' used to include or exclude keyspaces from repair.
-	// +optional
-	Keyspace []string `json:"keyspace,omitempty" mapstructure:"keyspace,omitempty"`
-
-	// location is a list of backup locations in the format [<dc>:]<provider>:<name> ex. s3:my-bucket.
-	// The <dc>: part is optional and is only needed when different datacenters are being used to upload data
-	// to different locations. <name> must be an alphanumeric string and may contain a dash and or a dot,
-	// but other characters are forbidden.
-	// The only supported storage <provider> at the moment are s3 and gcs.
-	Location []string `json:"location" mapstructure:"location,omitempty"`
-
-	// rateLimit is a list of megabytes (MiB) per second rate limits expressed in the format [<dc>:]<limit>.
-	// The <dc>: part is optional and only needed when different datacenters need different upload limits.
-	// Set to 0 for no limit (default 100).
-	// +optional
-	RateLimit []string `json:"rateLimit,omitempty" mapstructure:"rate_limit,omitempty"`
-
-	// retention is the number of backups which are to be stored.
-	// +kubebuilder:default:=3
-	// +optional
-	Retention int64 `json:"retention,omitempty" mapstructure:"retention,omitempty"`
-
-	// snapshotParallel is a list of snapshot parallelism limits in the format [<dc>:]<limit>.
-	// The <dc>: part is optional and allows for specifying different limits in selected datacenters.
-	// If The <dc>: part is not set, the limit is global (e.g. 'dc1:2,5') the runs are parallel in n nodes (2 in dc1)
-	// and n nodes in all the other datacenters.
-	// +optional
-	SnapshotParallel []string `json:"snapshotParallel,omitempty" mapstructure:"snapshot_parallel,omitempty"`
-
-	// uploadParallel is a list of upload parallelism limits in the format [<dc>:]<limit>.
-	// The <dc>: part is optional and allows for specifying different limits in selected datacenters.
-	// If The <dc>: part is not set the limit is global (e.g. 'dc1:2,5') the runs are parallel in n nodes (2 in dc1)
-	// and n nodes in all the other datacenters.
-	// +optional
-	UploadParallel []string `json:"uploadParallel,omitempty" mapstructure:"upload_parallel,omitempty"`
-}
-
-type Network struct {
-	// hostNetworking determines if scylla uses the host's network namespace. Setting this option
-	// avoids going through Kubernetes SDN and exposes scylla on node's IP.
-	HostNetworking bool `json:"hostNetworking,omitempty"`
-
-	// dnsPolicy defines how a pod's DNS will be configured.
-	DNSPolicy corev1.DNSPolicy `json:"dnsPolicy,omitempty"`
-}
-
-func (s Network) GetDNSPolicy() corev1.DNSPolicy {
-	if len(s.DNSPolicy) != 0 {
-		return s.DNSPolicy
-	}
-
-	return corev1.DNSClusterFirstWithHostNet
+	Metadata *Metadata `json:"metadata,omitempty"`
 }
 
 // RackSpec is the desired state for a Scylla Rack.
@@ -234,60 +63,153 @@ type RackSpec struct {
 	// name is the name of the Scylla Rack. Used in the cassandra-rackdc.properties file.
 	Name string `json:"name"`
 
-	// members is the number of Scylla instances in this rack.
-	// +kubebuilder:default:=1
+	// nodes is the number of Scylla instances in this rack.
+	// It overrides Datacenter level settings.
 	// +optional
-	Members *int32 `json:"members"`
+	Nodes *int32 `json:"nodes"`
 
-	// storage describes the underlying storage that Scylla will consume.
-	Storage StorageSpec `json:"storage"`
+	// +optional
+	Scylla *ScyllaOverrides `json:"scylla,omitempty"`
+
+	// +optional
+	ScyllaManagerAgent *ScyllaManagerAgentOverrides `json:"scyllaManagerAgent,omitempty"`
 
 	// placement describes restrictions for the nodes Scylla is scheduled on.
 	// +optional
-	Placement *PlacementSpec `json:"placement,omitempty"`
+	Placement *Placement `json:"placement,omitempty"`
 
-	// scyllaContainer describes properties of Scylla container.
-	ScyllaContainer ScyllaContainerSpec `json:"scyllaContainer"`
-
-	// agentContainer describes properties of Scylla Manager Agent container.
-	AgentContainer AgentContainerSpec `json:"agentContainer"`
+	// +optional
+	UnsupportedVolumes []corev1.Volume `json:"unsupportedVolumes,omitempty"`
 }
 
-// ContainerSpec is the desired state of the container.
-type ContainerSpec struct {
-	// resources requirements for the container.
-	Resources corev1.ResourceRequirements `json:"resources"`
-
-	// Volumes to be added to the container.
+type ScyllaOverrides struct {
+	// resources requirements for the Scylla container
 	// +optional
-	Volumes []corev1.Volume `json:"volumes,omitempty"`
+	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
 
-	// VolumeMounts to be added to the container.
+	// storage requirements for the containers
 	// +optional
-	VolumeMounts []corev1.VolumeMount `json:"volumeMounts,omitempty"`
-}
+	Storage *Storage `json:"storage,omitempty"`
 
-type AgentContainerSpec struct {
-	ContainerSpec `json:",inline"`
-
-	// customConfigSecretRef is a reference to Secret holding custom Scylla Manager Agent configuration.
-	// +optional
-	CustomConfigSecretRef *corev1.LocalObjectReference `json:"customConfigSecretRef,omitempty"`
-}
-
-type ScyllaContainerSpec struct {
-	ContainerSpec `json:",inline"`
-
-	// customConfigMapRef is a reference to ConfigMap holding custom Scylla configuration.
+	// customConfigMapRef points to custom Scylla configuration stored as ConfigMap.
+	// Overrides upper level settings.
 	// +optional
 	CustomConfigMapRef *corev1.LocalObjectReference `json:"customConfigMapRef,omitempty"`
 
-	// customConfigRaw is a raw custom Scylla configuration.
+	// unsupportedVolumeMounts are volume mounts appended to Scylla container.
+	// Usage of this field is unsupported and may lead to unexpected behavior.
 	// +optional
-	CustomConfigRaw string `json:"customConfigRaw,omitempty"`
+	UnsupportedVolumeMounts []corev1.VolumeMount `json:"unsupportedVolumeMounts,omitempty"`
 }
 
-type PlacementSpec struct {
+type ScyllaManagerAgentOverrides struct {
+	// resources are requirements for the Scylla Manager Agent container.
+	// +optional
+	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
+
+	// customConfigSecretRef points to custom Scylla Manager Agent configuration stored as Secret.
+	// +optional
+	CustomConfigSecretRef *corev1.LocalObjectReference `json:"customConfigSecretRef,omitempty"`
+
+	// unsupportedVolumeMounts are volume mounts appended to Scylla Manager Agent container.
+	// Usage of this field is unsupported and may lead to unexpected behavior.
+	// +optional
+	UnsupportedVolumeMounts []corev1.VolumeMount `json:"unsupportedVolumeMounts,omitempty"`
+}
+
+// Scylla holds configuration options related to ScyllaDB.
+type Scylla struct {
+	// image holds a reference to the Scylla container image.
+	Image string `json:"image"`
+
+	// alternator designates this cluster an Alternator cluster.
+	// +optional
+	AlternatorOptions *AlternatorOptions `json:"alternatorOptions,omitempty"`
+
+	// scyllaArgs will be appended to the Scylla binary during startup.
+	// +optional
+	UnsupportedScyllaArgsOverrides []string `json:"unsupportedScyllaArgsOverrides,omitempty"`
+
+	// developerMode determines if the cluster runs in developer-mode.
+	// +optional
+	EnableDeveloperMode *bool `json:"enableDeveloperMode,omitempty"`
+}
+
+// Storage describes options of storage.
+type Storage struct {
+	// resources represents the minimum resources the data volume should have.
+	Resources corev1.ResourceRequirements `json:"resources"`
+
+	// storageClassName is the name of a storageClass to request.
+	// +optional
+	StorageClassName *string `json:"storageClassName,omitempty"`
+}
+
+// Metadata defined custom metadata added to child objects.
+type Metadata struct {
+	// labels is a map of string keys and values that can be used to organize and categorize objects.
+	// +optional
+	Labels map[string]string `json:"labels,omitempty"`
+
+	// annotations is a string key value map stored with a resource that may be used to store and retrieve arbitrary metadata.
+	// +optional
+	Annotations map[string]string `json:"annotations,omitempty"`
+}
+
+// AlternatorOptions holds Alternator settings.
+type AlternatorOptions struct {
+	// enabled controls if Alternator is enabled.
+	// +optional
+	Enabled *bool `json:"enabled"`
+
+	// writeIsolation indicates the isolation level.
+	WriteIsolation string `json:"writeIsolation,omitempty"`
+}
+
+// ScyllaManagerAgent holds configuration options related to Scylla Manager Agent.
+type ScyllaManagerAgent struct {
+	// image holds a reference to the Scylla Manager Agent container image.
+	Image string `json:"image"`
+}
+
+// Network holds configuration options related to networking.
+type Network struct {
+	// dnsPolicy defines how a pod's DNS will be configured.
+	DNSPolicy corev1.DNSPolicy `json:"dnsPolicy,omitempty"`
+}
+
+// ExposeOptions hold options related to exposing ScyllaCluster backends.
+type ExposeOptions struct {
+	// cql specifies expose options for CQL SSL backend.
+	// +optional
+	CQL *CQLExposeOptions `json:"cql,omitempty"`
+}
+
+type CQLExposeOptions struct {
+	// ingress is an Ingress configuration option.
+	// If provided, Ingress objects routing to CQL SSL port are generated for each Scylla node
+	// with the following options.
+	Ingress *IngressOptions `json:"ingress,omitempty"`
+}
+
+// IngressOptions defines configuration options for Ingress objects associated with cluster nodes.
+type IngressOptions struct {
+	// disabled controls if Ingress object creation is disabled.
+	// Unless disabled, there is an Ingress objects created for every Scylla node.
+	// +optional
+	Disabled *bool `json:"disabled,omitempty"`
+
+	// ingressClassName specifies Ingress class name.
+	// +optional
+	IngressClassName string `json:"ingressClassName,omitempty"`
+
+	// annotations specify custom annotations added to every Ingress object.
+	// +optional
+	Annotations map[string]string `json:"annotations,omitempty"`
+}
+
+// Placement holds configuration options related to scheduling.
+type Placement struct {
 	// nodeAffinity describes node affinity scheduling rules for the pod.
 	// +optional
 	NodeAffinity *corev1.NodeAffinity `json:"nodeAffinity,omitempty"`
@@ -306,47 +228,6 @@ type PlacementSpec struct {
 	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
 }
 
-type StorageSpec struct {
-	// capacity describes the requested size of each persistent volume.
-	Capacity string `json:"capacity"`
-
-	// storageClassName is the name of a storageClass to request.
-	// +optional
-	StorageClassName *string `json:"storageClassName,omitempty"`
-}
-
-type AlternatorSpec struct {
-	// port is the port number used to bind the Alternator API.
-	Port int32 `json:"port,omitempty"`
-
-	// writeIsolation indicates the isolation level.
-	WriteIsolation string `json:"writeIsolation,omitempty"`
-}
-
-func (a *AlternatorSpec) Enabled() bool {
-	return a != nil && a.Port > 0
-}
-
-type RepairTaskStatus struct {
-	RepairTaskSpec `json:",inline" mapstructure:",squash"`
-
-	// id is the identification number of the repair task.
-	ID string `json:"id"`
-
-	// error holds the repair task error, if any.
-	Error string `json:"error"`
-}
-
-type BackupTaskStatus struct {
-	BackupTaskSpec `json:",inline"`
-
-	// id is the identification number of the backup task.
-	ID string `json:"id"`
-
-	// error holds the backup task error, if any.
-	Error string `json:"error"`
-}
-
 // ScyllaDatacenterStatus defines the observed state of ScyllaDatacenter.
 type ScyllaDatacenterStatus struct {
 	// observedGeneration is the most recent generation observed for this ScyllaDatacenter. It corresponds to the
@@ -356,15 +237,6 @@ type ScyllaDatacenterStatus struct {
 
 	// racks reflect status of cluster racks.
 	Racks map[string]RackStatus `json:"racks,omitempty"`
-
-	// managerId contains ID under which cluster was registered in Scylla Manager.
-	ManagerID *string `json:"managerId,omitempty"`
-
-	// repairs reflects status of repair tasks.
-	Repairs []RepairTaskStatus `json:"repairs,omitempty"`
-
-	// backups reflects status of backup tasks.
-	Backups []BackupTaskStatus `json:"backups,omitempty"`
 
 	// upgrade reflects state of ongoing upgrade procedure.
 	Upgrade *UpgradeStatus `json:"upgrade,omitempty"`
@@ -376,14 +248,6 @@ type ScyllaDatacenterStatus struct {
 type UpgradeStatus struct {
 	// state reflects current upgrade state.
 	State string `json:"state"`
-
-	// currentNode node under upgrade.
-	// DEPRECATED.
-	CurrentNode string `json:"currentNode,omitempty"`
-
-	// currentRack rack under upgrade.
-	// DEPRECATED.
-	CurrentRack string `json:"currentRack,omitempty"`
 
 	// fromVersion reflects from which version ScyllaDatacenter is being upgraded.
 	FromVersion string `json:"fromVersion"`
@@ -403,15 +267,15 @@ type RackStatus struct {
 	// Image is the current image of Scylla in use.
 	Image string `json:"image"`
 
-	// members is the current number of members requested in the specific Rack
-	Members *int32 `json:"members,omitempty"`
+	// nodes is the current number of nodes requested in the specific Rack
+	Nodes *int32 `json:"nodes,omitempty"`
 
-	// readyMembers is the number of ready members in the specific Rack
-	ReadyMembers *int32 `json:"readyMembers,omitempty"`
+	// readyNodes is the number of ready nodes in the specific Rack
+	ReadyNodes *int32 `json:"readyNodes,omitempty"`
 
-	// updatedMembers is the number of members matching the current spec.
+	// updatedNodes is the number of nodes matching the current spec.
 	// +optional
-	UpdatedMembers *int32 `json:"updatedMembers,omitempty"`
+	UpdatedNodes *int32 `json:"updatedNodes,omitempty"`
 
 	// stale indicates if the current rack status is collected for a previous generation.
 	// stale should eventually become false when the appropriate controller writes a fresh status.
@@ -419,28 +283,17 @@ type RackStatus struct {
 	Stale *bool `json:"stale,omitempty"`
 
 	// conditions are the latest available observations of a rack's state.
-	Conditions []RackCondition `json:"conditions,omitempty"`
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
 	// replaceAddressFirstBoot holds addresses which should be replaced by new nodes.
 	ReplaceAddressFirstBoot map[string]string `json:"replaceAddressFirstBoot,omitempty"`
 }
 
-// RackCondition is an observation about the state of a rack.
-type RackCondition struct {
-	// type holds the condition type.
-	Type RackConditionType `json:"type"`
-
-	// status represent condition status.
-	Status corev1.ConditionStatus `json:"status"`
-}
-
-type RackConditionType string
-
 const (
-	RackConditionTypeMemberLeaving         RackConditionType = "MemberLeaving"
-	RackConditionTypeUpgrading             RackConditionType = "RackUpgrading"
-	RackConditionTypeMemberReplacing       RackConditionType = "MemberReplacing"
-	RackConditionTypeMemberDecommissioning RackConditionType = "MemberDecommissioning"
+	RackConditionTypeNodeLeaving         = "NodeLeaving"
+	RackConditionTypeUpgrading           = "RackUpgrading"
+	RackConditionTypeNodeReplacing       = "NodeReplacing"
+	RackConditionTypeNodeDecommissioning = "NodeDecommissioning"
 )
 
 // +kubebuilder:object:root=true

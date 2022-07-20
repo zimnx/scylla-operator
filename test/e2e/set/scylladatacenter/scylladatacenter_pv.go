@@ -3,7 +3,9 @@
 package scylladatacenter
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 
 	g "github.com/onsi/ginkgo/v2"
@@ -11,9 +13,10 @@ import (
 	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
 	"github.com/scylladb/scylla-operator/pkg/naming"
-	scyllafixture "github.com/scylladb/scylla-operator/test/e2e/fixture/scylla"
+	scyllav1fixture "github.com/scylladb/scylla-operator/test/e2e/fixture/scylla/v1"
+	scyllafixture "github.com/scylladb/scylla-operator/test/e2e/fixture/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/test/e2e/framework"
-	"github.com/scylladb/scylla-operator/test/e2e/utils"
+	"github.com/scylladb/scylla-operator/test/e2e/utils/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -30,20 +33,29 @@ var _ = g.Describe("ScyllaDatacenter Orphaned PV", func() {
 		defer cancel()
 
 		sd := scyllafixture.BasicScyllaDatacenter.ReadOrFail()
-		sd.Spec.Datacenter.Racks[0].Members = pointer.Int32(3)
-		sd.Spec.RemoveOrphanedPVs = pointer.Bool(true)
+		sd.Spec.Racks[0].Nodes = pointer.Int32(3)
+
+		// TODO: validate also new ScyllaOperatorConfig field once there
+		scv1 := scyllav1fixture.BasicScyllaCluster.ReadOrFail()
+		scv1.Spec.AutomaticOrphanedNodeCleanup = true
+
+		var buf bytes.Buffer
+		o.Expect(json.NewEncoder(&buf).Encode(scv1)).NotTo(o.HaveOccurred())
+		sd.Annotations = map[string]string{
+			naming.ScyllaClusterV1Annotation: buf.String(),
+		}
 
 		framework.By("Creating a ScyllaDatacenter")
 		sd, err := f.ScyllaClient().ScyllaV1alpha1().ScyllaDatacenters(f.Namespace()).Create(ctx, sd, metav1.CreateOptions{})
 		o.Expect(err).NotTo(o.HaveOccurred())
-
+		
 		framework.By("Waiting for the ScyllaDatacenter to rollout (RV=%s)", sd.ResourceVersion)
-		waitCtx1, waitCtx1Cancel := utils.ContextForRollout(ctx, sd)
+		waitCtx1, waitCtx1Cancel := v1alpha1.ContextForRollout(ctx, sd)
 		defer waitCtx1Cancel()
-		sd, err = utils.WaitForScyllaDatacenterState(waitCtx1, f.ScyllaClient().ScyllaV1alpha1(), sd.Namespace, sd.Name, utils.WaitForStateOptions{}, utils.IsScyllaDatacenterRolledOut)
+		sd, err = v1alpha1.WaitForScyllaDatacenterState(waitCtx1, f.ScyllaClient().ScyllaV1alpha1(), sd.Namespace, sd.Name, v1alpha1.WaitForStateOptions{}, v1alpha1.IsScyllaDatacenterRolledOut)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
-		di, err := NewDataInserter(ctx, f.KubeClient().CoreV1(), sd, utils.GetMemberCount(sd))
+		di, err := NewDataInserter(ctx, f.KubeClient().CoreV1(), sd, v1alpha1.GetMemberCount(sd))
 		o.Expect(err).NotTo(o.HaveOccurred())
 		defer di.Close()
 
@@ -53,8 +65,8 @@ var _ = g.Describe("ScyllaDatacenter Orphaned PV", func() {
 		verifyScyllaDatacenter(ctx, f.KubeClient(), sd, di)
 
 		framework.By("Simulating a PV on node that's gone")
-		stsName := naming.StatefulSetNameForRack(sd.Spec.Datacenter.Racks[0], sd)
-		podName := fmt.Sprintf("%s-%d", stsName, *sd.Spec.Datacenter.Racks[0].Members-1)
+		stsName := naming.StatefulSetNameForRack(sd.Spec.Racks[0], sd)
+		podName := fmt.Sprintf("%s-%d", stsName, *sd.Spec.Racks[0].Nodes-1)
 		pvcName := naming.PVCNameForPod(podName)
 
 		pvc, err := f.KubeClient().CoreV1().PersistentVolumeClaims(f.Namespace()).Get(ctx, pvcName, metav1.GetOptions{})
@@ -99,26 +111,26 @@ var _ = g.Describe("ScyllaDatacenter Orphaned PV", func() {
 		o.Expect(err).NotTo(o.HaveOccurred())
 
 		framework.By("Waiting for the PVC to be replaced")
-		waitCtx2, waitCtx2Cancel := utils.ContextForRollout(ctx, sd)
+		waitCtx2, waitCtx2Cancel := v1alpha1.ContextForRollout(ctx, sd)
 		defer waitCtx2Cancel()
-		pvc, err = utils.WaitForPVCState(waitCtx2, f.KubeClient().CoreV1(), pvc.Namespace, pvc.Name, utils.WaitForStateOptions{TolerateDelete: true}, func(freshPVC *corev1.PersistentVolumeClaim) (bool, error) {
+		pvc, err = v1alpha1.WaitForPVCState(waitCtx2, f.KubeClient().CoreV1(), pvc.Namespace, pvc.Name, v1alpha1.WaitForStateOptions{TolerateDelete: true}, func(freshPVC *corev1.PersistentVolumeClaim) (bool, error) {
 			return freshPVC.UID != pvc.UID, nil
 		})
 		o.Expect(err).NotTo(o.HaveOccurred())
 
 		framework.By("Waiting for the ScyllaDatacenter to observe the degradation")
-		waitCtx3, waitCtx3Cancel := utils.ContextForRollout(ctx, sd)
+		waitCtx3, waitCtx3Cancel := v1alpha1.ContextForRollout(ctx, sd)
 		defer waitCtx3Cancel()
-		sd, err = utils.WaitForScyllaDatacenterState(waitCtx3, f.ScyllaClient().ScyllaV1alpha1(), sd.Namespace, sd.Name, utils.WaitForStateOptions{}, func(sd *scyllav1alpha1.ScyllaDatacenter) (bool, error) {
-			rolledOut, err := utils.IsScyllaDatacenterRolledOut(sd)
+		sd, err = v1alpha1.WaitForScyllaDatacenterState(waitCtx3, f.ScyllaClient().ScyllaV1alpha1(), sd.Namespace, sd.Name, v1alpha1.WaitForStateOptions{}, func(sd *scyllav1alpha1.ScyllaDatacenter) (bool, error) {
+			rolledOut, err := v1alpha1.IsScyllaDatacenterRolledOut(sd)
 			return !rolledOut, err
 		})
 		o.Expect(err).NotTo(o.HaveOccurred())
 
 		framework.By("Waiting for the ScyllaDatacenter to rollout (RV=%s)", sd.ResourceVersion)
-		waitCtx4, waitCtx4Cancel := utils.ContextForRollout(ctx, sd)
+		waitCtx4, waitCtx4Cancel := v1alpha1.ContextForRollout(ctx, sd)
 		defer waitCtx4Cancel()
-		sd, err = utils.WaitForScyllaDatacenterState(waitCtx4, f.ScyllaClient().ScyllaV1alpha1(), sd.Namespace, sd.Name, utils.WaitForStateOptions{}, utils.IsScyllaDatacenterRolledOut)
+		sd, err = v1alpha1.WaitForScyllaDatacenterState(waitCtx4, f.ScyllaClient().ScyllaV1alpha1(), sd.Namespace, sd.Name, v1alpha1.WaitForStateOptions{}, v1alpha1.IsScyllaDatacenterRolledOut)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
 		verifyScyllaDatacenter(ctx, f.KubeClient(), sd, di)

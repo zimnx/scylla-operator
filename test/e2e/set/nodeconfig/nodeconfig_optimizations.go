@@ -14,9 +14,10 @@ import (
 	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/internalapi"
 	"github.com/scylladb/scylla-operator/pkg/naming"
-	scyllafixture "github.com/scylladb/scylla-operator/test/e2e/fixture/scylla"
+	"github.com/scylladb/scylla-operator/test/e2e/fixture/scylla/v1"
+	scyllafixture "github.com/scylladb/scylla-operator/test/e2e/fixture/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/test/e2e/framework"
-	"github.com/scylladb/scylla-operator/test/e2e/utils"
+	"github.com/scylladb/scylla-operator/test/e2e/utils/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -35,7 +36,7 @@ var _ = g.Describe("NodeConfig Optimizations", framework.Serial, func() {
 
 	f := framework.NewFramework("nodeconfig")
 
-	ncTemplate := scyllafixture.NodeConfig.ReadOrFail()
+	ncTemplate := v1.NodeConfig.ReadOrFail()
 	var matchingNodes []*corev1.Node
 
 	preconditionSuccessful := false
@@ -55,7 +56,7 @@ var _ = g.Describe("NodeConfig Optimizations", framework.Serial, func() {
 		preconditionSuccessful = true
 
 		g.By("Verifying there is at least one scylla node")
-		matchingNodes, err = utils.GetMatchingNodesForNodeConfig(ctx, f.KubeAdminClient().CoreV1(), ncTemplate)
+		matchingNodes, err = v1alpha1.GetMatchingNodesForNodeConfig(ctx, f.KubeAdminClient().CoreV1(), ncTemplate)
 		o.Expect(err).NotTo(o.HaveOccurred())
 		o.Expect(matchingNodes).NotTo(o.HaveLen(0))
 		framework.Infof("There are %d scylla nodes", len(matchingNodes))
@@ -100,13 +101,13 @@ var _ = g.Describe("NodeConfig Optimizations", framework.Serial, func() {
 		framework.By("Waiting for the NodeConfig to deploy")
 		ctx1, ctx1Cancel := context.WithTimeout(ctx, nodeConfigRolloutTimeout)
 		defer ctx1Cancel()
-		nc, err = utils.WaitForNodeConfigState(
+		nc, err = v1alpha1.WaitForNodeConfigState(
 			ctx1,
 			f.ScyllaAdminClient().ScyllaV1alpha1().NodeConfigs(),
 			nc.Name,
-			utils.WaitForStateOptions{TolerateDelete: false},
-			utils.IsNodeConfigRolledOut,
-			utils.IsNodeConfigDoneWithNodeTuningFunc(matchingNodes),
+			v1alpha1.WaitForStateOptions{TolerateDelete: false},
+			v1alpha1.IsNodeConfigRolledOut,
+			v1alpha1.IsNodeConfigDoneWithNodeTuningFunc(matchingNodes),
 		)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
@@ -192,8 +193,8 @@ var _ = g.Describe("NodeConfig Optimizations", framework.Serial, func() {
 		framework.By("Waiting for a ConfigMap to indicate blocking NodeConfig")
 		ctx1, ctx1Cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer ctx1Cancel()
-		podName := fmt.Sprintf("%s-%d", naming.StatefulSetNameForRack(sc.Spec.Datacenter.Racks[0], sc), 0)
-		pod, err := utils.WaitForPodState(ctx1, f.KubeClient().CoreV1().Pods(sc.Namespace), podName, utils.WaitForStateOptions{}, func(p *corev1.Pod) (bool, error) {
+		podName := fmt.Sprintf("%s-%d", naming.StatefulSetNameForRack(sc.Spec.Racks[0], sc), 0)
+		pod, err := v1alpha1.WaitForPodState(ctx1, f.KubeClient().CoreV1().Pods(sc.Namespace), podName, v1alpha1.WaitForStateOptions{}, func(p *corev1.Pod) (bool, error) {
 			return true, nil
 		})
 		o.Expect(err).NotTo(o.HaveOccurred())
@@ -202,7 +203,7 @@ var _ = g.Describe("NodeConfig Optimizations", framework.Serial, func() {
 		ctx2, ctx2Cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer ctx2Cancel()
 		src := &internalapi.SidecarRuntimeConfig{}
-		cm, err := utils.WaitForConfigMapState(ctx2, f.KubeClient().CoreV1().ConfigMaps(sc.Namespace), cmName, utils.WaitForStateOptions{}, func(cm *corev1.ConfigMap) (bool, error) {
+		cm, err := v1alpha1.WaitForConfigMapState(ctx2, f.KubeClient().CoreV1().ConfigMaps(sc.Namespace), cmName, v1alpha1.WaitForStateOptions{}, func(cm *corev1.ConfigMap) (bool, error) {
 			if cm.Data == nil {
 				return false, nil
 			}
@@ -223,14 +224,14 @@ var _ = g.Describe("NodeConfig Optimizations", framework.Serial, func() {
 		o.Expect(src.ContainerID).To(o.BeEmpty())
 		o.Expect(src.MatchingNodeConfigs).NotTo(o.BeEmpty())
 
-		waitTime := utils.RolloutTimeoutForScyllaDatacenter(sc)
+		waitTime := v1alpha1.RolloutTimeoutForScyllaDatacenter(sc)
 		framework.By("Sleeping for %v", waitTime)
 		time.Sleep(waitTime)
 
 		framework.By("Verifying ScyllaDatacenter is still not rolled out")
 		sc, err = f.ScyllaClient().ScyllaV1alpha1().ScyllaDatacenters(sc.Namespace).Get(ctx, sc.Name, metav1.GetOptions{})
 		o.Expect(err).NotTo(o.HaveOccurred())
-		o.Expect(utils.IsScyllaDatacenterRolledOut(sc)).To(o.BeFalse())
+		o.Expect(v1alpha1.IsScyllaDatacenterRolledOut(sc)).To(o.BeFalse())
 
 		framework.By("Unblocking tuning")
 		err = f.KubeAdminClient().CoreV1().ResourceQuotas(rq.Namespace).Delete(
@@ -243,22 +244,22 @@ var _ = g.Describe("NodeConfig Optimizations", framework.Serial, func() {
 		framework.By("Waiting for the NodeConfig to deploy")
 		ctx3, ctx3Cancel := context.WithTimeout(ctx, nodeConfigRolloutTimeout)
 		defer ctx3Cancel()
-		nc, err = utils.WaitForNodeConfigState(
+		nc, err = v1alpha1.WaitForNodeConfigState(
 			ctx3,
 			f.ScyllaAdminClient().ScyllaV1alpha1().NodeConfigs(),
 			nc.Name,
-			utils.WaitForStateOptions{TolerateDelete: false},
-			utils.IsNodeConfigRolledOut,
-			utils.IsNodeConfigDoneWithNodeTuningFunc(matchingNodes),
+			v1alpha1.WaitForStateOptions{TolerateDelete: false},
+			v1alpha1.IsNodeConfigRolledOut,
+			v1alpha1.IsNodeConfigDoneWithNodeTuningFunc(matchingNodes),
 		)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
 		verifyNodeConfig(ctx, f.KubeAdminClient(), nc)
 
 		framework.By("Waiting for the ScyllaDatacenter to rollout (RV=%s)", sc.ResourceVersion)
-		ctx4, ctx4Cancel := utils.ContextForRollout(ctx, sc)
+		ctx4, ctx4Cancel := v1alpha1.ContextForRollout(ctx, sc)
 		defer ctx4Cancel()
-		sc, err = utils.WaitForScyllaDatacenterState(ctx4, f.ScyllaClient().ScyllaV1alpha1(), sc.Namespace, sc.Name, utils.WaitForStateOptions{}, utils.IsScyllaDatacenterRolledOut)
+		sc, err = v1alpha1.WaitForScyllaDatacenterState(ctx4, f.ScyllaClient().ScyllaV1alpha1(), sc.Namespace, sc.Name, v1alpha1.WaitForStateOptions{}, v1alpha1.IsScyllaDatacenterRolledOut)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
 		framework.By("Verifying ConfigMap content")

@@ -9,7 +9,7 @@ import (
 	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	"github.com/scylladb/scylla-operator/test/e2e/framework"
-	"github.com/scylladb/scylla-operator/test/e2e/utils"
+	"github.com/scylladb/scylla-operator/test/e2e/utils/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -43,8 +43,8 @@ func verifyPersistentVolumeClaims(ctx context.Context, coreClient corev1client.C
 	framework.Infof("Found %d pvc(s) for ScyllaDatacenter %q", len(scPVCNames), naming.ObjRef(sd))
 
 	var expectedPvcNames []string
-	for _, rack := range sd.Spec.Datacenter.Racks {
-		for ord := int32(0); ord < *rack.Members; ord++ {
+	for _, rack := range sd.Spec.Racks {
+		for ord := int32(0); ord < *rack.Nodes; ord++ {
 			stsName := naming.StatefulSetNameForRack(rack, sd)
 			expectedPvcNames = append(expectedPvcNames, naming.PVCNameForStatefulSet(stsName, ord))
 		}
@@ -84,15 +84,15 @@ func verifyScyllaDatacenter(ctx context.Context, kubeClient kubernetes.Interface
 	framework.By("Verifying the ScyllaDatacenter")
 
 	o.Expect(sd.Status.ObservedGeneration).NotTo(o.BeNil())
-	o.Expect(sd.Status.Racks).To(o.HaveLen(len(sd.Spec.Datacenter.Racks)))
+	o.Expect(sd.Status.Racks).To(o.HaveLen(len(sd.Spec.Racks)))
 
-	statefulsets, err := utils.GetStatefulSetsForScyllaDatacenter(ctx, kubeClient.AppsV1(), sd)
+	statefulsets, err := v1alpha1.GetStatefulSetsForScyllaDatacenter(ctx, kubeClient.AppsV1(), sd)
 	o.Expect(err).NotTo(o.HaveOccurred())
-	o.Expect(statefulsets).To(o.HaveLen(len(sd.Spec.Datacenter.Racks)))
+	o.Expect(statefulsets).To(o.HaveLen(len(sd.Spec.Racks)))
 
 	memberCount := 0
-	for _, r := range sd.Spec.Datacenter.Racks {
-		memberCount += int(*r.Members)
+	for _, r := range sd.Spec.Racks {
+		memberCount += int(*r.Nodes)
 
 		s := statefulsets[r.Name]
 
@@ -100,16 +100,16 @@ func verifyScyllaDatacenter(ctx context.Context, kubeClient kubernetes.Interface
 
 		o.Expect(sd.Status.Racks[r.Name].Stale).NotTo(o.BeNil())
 		o.Expect(*sd.Status.Racks[r.Name].Stale).To(o.BeFalse())
-		o.Expect(sd.Status.Racks[r.Name].ReadyMembers).To(o.Equal(r.Members))
-		o.Expect(sd.Status.Racks[r.Name].ReadyMembers).To(o.Equal(s.Status.ReadyReplicas))
-		o.Expect(sd.Status.Racks[r.Name].UpdatedMembers).NotTo(o.BeNil())
-		o.Expect(*sd.Status.Racks[r.Name].UpdatedMembers).To(o.Equal(s.Status.UpdatedReplicas))
+		o.Expect(sd.Status.Racks[r.Name].ReadyNodes).To(o.Equal(r.Nodes))
+		o.Expect(sd.Status.Racks[r.Name].ReadyNodes).To(o.Equal(s.Status.ReadyReplicas))
+		o.Expect(sd.Status.Racks[r.Name].UpdatedNodes).NotTo(o.BeNil())
+		o.Expect(*sd.Status.Racks[r.Name].UpdatedNodes).To(o.Equal(s.Status.UpdatedReplicas))
 	}
 
 	if sd.Status.Upgrade != nil {
 		o.Expect(sd.Status.Upgrade.FromVersion).To(o.Equal(sd.Status.Upgrade.ToVersion))
 	}
-	
+
 	pdb, err := kubeClient.PolicyV1().PodDisruptionBudgets(sd.Namespace).Get(ctx, naming.PodDisruptionBudgetName(sd), metav1.GetOptions{})
 	o.Expect(err).NotTo(o.HaveOccurred())
 	verifyPodDisruptionBudget(sd, pdb)
@@ -117,7 +117,7 @@ func verifyScyllaDatacenter(ctx context.Context, kubeClient kubernetes.Interface
 	verifyPersistentVolumeClaims(ctx, kubeClient.CoreV1(), sd)
 
 	// TODO: Use scylla client to check at least "UN"
-	scyllaClient, hosts, err := utils.GetScyllaClient(ctx, kubeClient.CoreV1(), sd)
+	scyllaClient, hosts, err := v1alpha1.GetScyllaClient(ctx, kubeClient.CoreV1(), sd)
 	o.Expect(err).NotTo(o.HaveOccurred())
 	defer scyllaClient.Close()
 

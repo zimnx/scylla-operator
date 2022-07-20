@@ -11,7 +11,7 @@ import (
 	"github.com/scylladb/scylla-operator/pkg/controller/nodeconfig"
 	"github.com/scylladb/scylla-operator/pkg/controller/nodeconfigpod"
 	"github.com/scylladb/scylla-operator/pkg/controller/orphanedpv"
-	"github.com/scylladb/scylla-operator/pkg/controller/scyllacluster"
+	"github.com/scylladb/scylla-operator/pkg/controller/scylladatacenter"
 	"github.com/scylladb/scylla-operator/pkg/controller/scyllaoperatorconfig"
 	"github.com/scylladb/scylla-operator/pkg/genericclioptions"
 	"github.com/scylladb/scylla-operator/pkg/leaderelection"
@@ -174,7 +174,7 @@ func (o *OperatorOptions) run(ctx context.Context, streams genericclioptions.IOS
 		},
 	))
 
-	scc, err := scyllacluster.NewController(
+	sdc, err := scylladatacenter.NewController(
 		o.kubeClient,
 		o.scyllaClient.ScyllaV1alpha1(),
 		kubeInformers.Core().V1().Pods(),
@@ -256,7 +256,7 @@ func (o *OperatorOptions) run(ctx context.Context, streams genericclioptions.IOS
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		scc.Run(ctx, o.ConcurrentSyncs)
+		sdc.Run(ctx, o.ConcurrentSyncs)
 	}()
 
 	wg.Add(1)

@@ -11,8 +11,8 @@ import (
 )
 
 // NewSingleRackDatacenter returns ScyllaDatacenter having single racks.
-func NewSingleRackDatacenter(members int32) *scyllav1alpha1.ScyllaDatacenter {
-	return NewDetailedSingleRackDatacenter("test-datacenter", "test-ns", "repo:2.3.1", "test-dc", "test-rack", members)
+func NewSingleRackDatacenter(nodes int32) *scyllav1alpha1.ScyllaDatacenter {
+	return NewDetailedSingleRackDatacenter("test-datacenter", "test-ns", "repo:2.3.1", "test-dc", "test-rack", nodes)
 }
 
 // NewMultiRackDatacenter returns ScyllaDatacenter having multiple racks.
@@ -21,7 +21,7 @@ func NewMultiRackDatacenter(members ...int32) *scyllav1alpha1.ScyllaDatacenter {
 }
 
 // NewDetailedSingleRackDatacenter returns ScyllaDatacenter having single rack with supplied information.
-func NewDetailedSingleRackDatacenter(name, namespace, image, dc, rack string, members int32) *scyllav1alpha1.ScyllaDatacenter {
+func NewDetailedSingleRackDatacenter(name, namespace, image, dc, rack string, nodes int32) *scyllav1alpha1.ScyllaDatacenter {
 	return &scyllav1alpha1.ScyllaDatacenter{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:       name,
@@ -29,23 +29,25 @@ func NewDetailedSingleRackDatacenter(name, namespace, image, dc, rack string, me
 			Generation: 1,
 		},
 		Spec: scyllav1alpha1.ScyllaDatacenterSpec{
-			Image: image,
-			Datacenter: scyllav1alpha1.DatacenterSpec{
-				Name: dc,
-				Racks: []scyllav1alpha1.RackSpec{
-					{
-						Name:    rack,
-						Members: pointer.Int32(members),
-						Storage: scyllav1alpha1.StorageSpec{
-							Capacity: "5Gi",
+			Scylla: scyllav1alpha1.Scylla{
+				Image: image,
+			},
+			DatacenterName: dc,
+			Racks: []scyllav1alpha1.RackSpec{
+				{
+					Name:  rack,
+					Nodes: pointer.Int32(nodes),
+					Scylla: &scyllav1alpha1.ScyllaOverrides{
+						Resources: &corev1.ResourceRequirements{
+							Limits: map[corev1.ResourceName]resource.Quantity{
+								corev1.ResourceCPU:    resource.MustParse("2"),
+								corev1.ResourceMemory: resource.MustParse("2Gi"),
+							},
 						},
-						ScyllaContainer: scyllav1alpha1.ScyllaContainerSpec{
-							ContainerSpec: scyllav1alpha1.ContainerSpec{
-								Resources: corev1.ResourceRequirements{
-									Limits: map[corev1.ResourceName]resource.Quantity{
-										corev1.ResourceCPU:    resource.MustParse("2"),
-										corev1.ResourceMemory: resource.MustParse("2Gi"),
-									},
+						Storage: &scyllav1alpha1.Storage{
+							Resources: corev1.ResourceRequirements{
+								Requests: map[corev1.ResourceName]resource.Quantity{
+									corev1.ResourceStorage: resource.MustParse("5Gi"),
 								},
 							},
 						},
@@ -58,8 +60,9 @@ func NewDetailedSingleRackDatacenter(name, namespace, image, dc, rack string, me
 			Racks: map[string]scyllav1alpha1.RackStatus{
 				rack: {
 					Image:        image,
-					Members:      pointer.Int32(members),
-					ReadyMembers: pointer.Int32(members),
+					Nodes:        pointer.Int32(nodes),
+					ReadyNodes:   pointer.Int32(nodes),
+					UpdatedNodes: pointer.Int32(nodes),
 					Stale:        pointer.Bool(false),
 				},
 			},
@@ -68,7 +71,7 @@ func NewDetailedSingleRackDatacenter(name, namespace, image, dc, rack string, me
 }
 
 // NewDetailedMultiRackDatacenter creates multi rack database with supplied information.
-func NewDetailedMultiRackDatacenter(name, namespace, image, dc string, members ...int32) *scyllav1alpha1.ScyllaDatacenter {
+func NewDetailedMultiRackDatacenter(name, namespace, image, dc string, nodes ...int32) *scyllav1alpha1.ScyllaDatacenter {
 	c := &scyllav1alpha1.ScyllaDatacenter{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:       name,
@@ -76,11 +79,11 @@ func NewDetailedMultiRackDatacenter(name, namespace, image, dc string, members .
 			Generation: 1,
 		},
 		Spec: scyllav1alpha1.ScyllaDatacenterSpec{
-			Image: image,
-			Datacenter: scyllav1alpha1.DatacenterSpec{
-				Name:  dc,
-				Racks: []scyllav1alpha1.RackSpec{},
+			Scylla: scyllav1alpha1.Scylla{
+				Image: image,
 			},
+			DatacenterName: dc,
+			Racks:          []scyllav1alpha1.RackSpec{},
 		},
 		Status: scyllav1alpha1.ScyllaDatacenterStatus{
 			ObservedGeneration: pointer.Int64(1),
@@ -88,20 +91,26 @@ func NewDetailedMultiRackDatacenter(name, namespace, image, dc string, members .
 		},
 	}
 
-	for i, m := range members {
+	for i, n := range nodes {
 		rack := fmt.Sprintf("rack-%d", i)
-		c.Spec.Datacenter.Racks = append(c.Spec.Datacenter.Racks, scyllav1alpha1.RackSpec{
-			Name:    rack,
-			Members: pointer.Int32(m),
-			Storage: scyllav1alpha1.StorageSpec{
-				Capacity: "5Gi",
+		c.Spec.Racks = append(c.Spec.Racks, scyllav1alpha1.RackSpec{
+			Name:  rack,
+			Nodes: pointer.Int32(n),
+			Scylla: &scyllav1alpha1.ScyllaOverrides{
+				Storage: &scyllav1alpha1.Storage{
+					Resources: corev1.ResourceRequirements{
+						Requests: map[corev1.ResourceName]resource.Quantity{
+							corev1.ResourceStorage: resource.MustParse("5Gi"),
+						},
+					},
+				},
 			},
 		})
 		c.Status.Racks[rack] = scyllav1alpha1.RackStatus{
-			Image:        image,
-			Members:      pointer.Int32(m),
-			ReadyMembers: pointer.Int32(m),
-			Stale:        pointer.Bool(false),
+			Image:      image,
+			Nodes:      pointer.Int32(n),
+			ReadyNodes: pointer.Int32(n),
+			Stale:      pointer.Bool(false),
 		}
 	}
 

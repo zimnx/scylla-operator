@@ -168,9 +168,9 @@ func (o *ManagerControllerOptions) run(ctx context.Context, streams genericcliop
 
 	scc, err := manager.NewController(
 		o.kubeClient,
-		o.scyllaClient.ScyllaV1alpha1(),
+		o.scyllaClient.ScyllaV1(),
 		kubeInformers.Core().V1().Secrets(),
-		scyllaInformers.Scylla().V1alpha1().ScyllaDatacenters(),
+		scyllaInformers.Scylla().V1().ScyllaClusters(),
 		o.managerClient,
 	)
 	if err != nil {

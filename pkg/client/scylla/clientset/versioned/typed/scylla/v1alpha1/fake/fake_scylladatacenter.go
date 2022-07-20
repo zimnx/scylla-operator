@@ -101,7 +101,7 @@ func (c *FakeScyllaDatacenters) UpdateStatus(ctx context.Context, scyllaDatacent
 // Delete takes name of the scyllaDatacenter and deletes it. Returns an error if one occurs.
 func (c *FakeScyllaDatacenters) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewDeleteAction(scylladatacentersResource, c.ns, name), &v1alpha1.ScyllaDatacenter{})
+		Invokes(testing.NewDeleteActionWithOptions(scylladatacentersResource, c.ns, name, opts), &v1alpha1.ScyllaDatacenter{})
 
 	return err
 }

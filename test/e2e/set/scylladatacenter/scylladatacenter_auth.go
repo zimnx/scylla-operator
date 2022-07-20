@@ -13,9 +13,9 @@ import (
 	"github.com/scylladb/scylla-operator/pkg/helpers"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	"github.com/scylladb/scylla-operator/pkg/scyllaclient"
-	scyllafixture "github.com/scylladb/scylla-operator/test/e2e/fixture/scylla"
+	scyllafixture "github.com/scylladb/scylla-operator/test/e2e/fixture/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/test/e2e/framework"
-	"github.com/scylladb/scylla-operator/test/e2e/utils"
+	"github.com/scylladb/scylla-operator/test/e2e/utils/v1alpha1"
 	"gopkg.in/yaml.v2"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -33,19 +33,19 @@ var _ = g.Describe("ScyllaDatacenter authentication", func() {
 		defer cancel()
 
 		sd := scyllafixture.BasicScyllaDatacenter.ReadOrFail()
-		sd.Spec.Datacenter.Racks[0].Members = pointer.Int32(1)
+		sd.Spec.Racks[0].Nodes = pointer.Int32(1)
 
 		framework.By("Creating a ScyllaDatacenter")
 		sd, err := f.ScyllaClient().ScyllaV1alpha1().ScyllaDatacenters(f.Namespace()).Create(ctx, sd, metav1.CreateOptions{})
 		o.Expect(err).NotTo(o.HaveOccurred())
 
 		framework.By("Waiting for the ScyllaDatacenter to rollout (RV=%s)", sd.ResourceVersion)
-		waitCtx1, waitCtx1Cancel := utils.ContextForRollout(ctx, sd)
+		waitCtx1, waitCtx1Cancel := v1alpha1.ContextForRollout(ctx, sd)
 		defer waitCtx1Cancel()
-		sd, err = utils.WaitForScyllaDatacenterState(waitCtx1, f.ScyllaClient().ScyllaV1alpha1(), sd.Namespace, sd.Name, utils.WaitForStateOptions{}, utils.IsScyllaDatacenterRolledOut)
+		sd, err = v1alpha1.WaitForScyllaDatacenterState(waitCtx1, f.ScyllaClient().ScyllaV1alpha1(), sd.Namespace, sd.Name, v1alpha1.WaitForStateOptions{}, v1alpha1.IsScyllaDatacenterRolledOut)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
-		di, err := NewDataInserter(ctx, f.KubeClient().CoreV1(), sd, utils.GetMemberCount(sd))
+		di, err := NewDataInserter(ctx, f.KubeClient().CoreV1(), sd, v1alpha1.GetMemberCount(sd))
 		o.Expect(err).NotTo(o.HaveOccurred())
 		defer di.Close()
 
@@ -56,7 +56,7 @@ var _ = g.Describe("ScyllaDatacenter authentication", func() {
 
 		framework.By("Rejecting an unauthorized request")
 
-		_, hosts, err := utils.GetScyllaClient(ctx, f.KubeClient().CoreV1(), sd)
+		_, hosts, err := v1alpha1.GetScyllaClient(ctx, f.KubeClient().CoreV1(), sd)
 
 		emptyAuthToken := ""
 		_, err = getScyllaClientStatus(ctx, hosts, emptyAuthToken)
@@ -119,9 +119,9 @@ var _ = g.Describe("ScyllaDatacenter authentication", func() {
 		o.Expect(err).NotTo(o.HaveOccurred())
 
 		framework.By("Waiting for the ScyllaDatacenter to pick up token change")
-		waitCtx2, waitCtx2Cancel := utils.ContextForRollout(ctx, sd)
+		waitCtx2, waitCtx2Cancel := v1alpha1.ContextForRollout(ctx, sd)
 		defer waitCtx2Cancel()
-		sd, err = utils.WaitForScyllaDatacenterState(waitCtx2, f.ScyllaClient().ScyllaV1alpha1(), sd.Namespace, sd.Name, utils.WaitForStateOptions{}, utils.IsScyllaDatacenterRolledOut)
+		sd, err = v1alpha1.WaitForScyllaDatacenterState(waitCtx2, f.ScyllaClient().ScyllaV1alpha1(), sd.Namespace, sd.Name, v1alpha1.WaitForStateOptions{}, v1alpha1.IsScyllaDatacenterRolledOut)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
 		verifyScyllaDatacenter(ctx, f.KubeClient(), sd, di)
@@ -152,9 +152,9 @@ var _ = g.Describe("ScyllaDatacenter authentication", func() {
 
 		framework.By("Waiting for the ScyllaDatacenter to pick up token change")
 
-		waitCtx3, waitCtx3Cancel := utils.ContextForRollout(ctx, sd)
+		waitCtx3, waitCtx3Cancel := v1alpha1.ContextForRollout(ctx, sd)
 		defer waitCtx3Cancel()
-		sd, err = utils.WaitForScyllaDatacenterState(waitCtx3, f.ScyllaClient().ScyllaV1alpha1(), sd.Namespace, sd.Name, utils.WaitForStateOptions{}, utils.IsScyllaDatacenterRolledOut)
+		sd, err = v1alpha1.WaitForScyllaDatacenterState(waitCtx3, f.ScyllaClient().ScyllaV1alpha1(), sd.Namespace, sd.Name, v1alpha1.WaitForStateOptions{}, v1alpha1.IsScyllaDatacenterRolledOut)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
 		verifyScyllaDatacenter(ctx, f.KubeClient(), sd, di)

@@ -193,7 +193,7 @@ func (s *ScyllaConfig) setupEntrypoint(ctx context.Context) (*exec.Cmd, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "error getting cluster")
 	}
-	if sd.Spec.EnableDeveloperMode != nil && *sd.Spec.EnableDeveloperMode {
+	if sd.Spec.Scylla.EnableDeveloperMode != nil && *sd.Spec.Scylla.EnableDeveloperMode {
 		devMode = "1"
 	}
 
@@ -215,33 +215,35 @@ func (s *ScyllaConfig) setupEntrypoint(ctx context.Context) (*exec.Cmd, error) {
 		fmt.Sprintf("--smp=%d", s.cpuCount),
 		fmt.Sprintf("--prometheus-address=%s", prometheusAddress),
 	}
-	if sd.Spec.Alternator.Enabled() {
-		args = append(args, fmt.Sprintf("--alternator-port=%d", sd.Spec.Alternator.Port))
-		if sd.Spec.Alternator.WriteIsolation != "" {
-			args = append(args, fmt.Sprintf("--alternator-write-isolation=%s", sd.Spec.Alternator.WriteIsolation))
+	if sd.Spec.Scylla.AlternatorOptions != nil && sd.Spec.Scylla.AlternatorOptions.Enabled != nil && *sd.Spec.Scylla.AlternatorOptions.Enabled {
+		args = append(args, fmt.Sprintf("--alternator-port=%d", naming.DefaultAlternatorPort))
+		if sd.Spec.Scylla.AlternatorOptions.WriteIsolation != "" {
+			args = append(args, fmt.Sprintf("--alternator-write-isolation=%s", sd.Spec.Scylla.AlternatorOptions.WriteIsolation))
 		}
 	}
 	// If node is being replaced
 	if addr, ok := m.ServiceLabels[naming.ReplaceLabel]; ok {
 		args = append(args, fmt.Sprintf("--replace-address-first-boot=%s", addr))
 	}
-	// See if we need to use cpu-pinning
-	// TODO: Add more checks to make sure this is valid.
-	// eg. parse the cpuset and check the number of cpus is the same as cpu limits
-	// Now we rely completely on the user to have the cpu policy correctly
-	// configured in the kubelet, otherwise scylla will crash.
-	if sd.Spec.CpuSet != nil && *sd.Spec.CpuSet {
-		cpusAllowed, err := getCPUsAllowedList("/proc/1/status")
-		if err != nil {
-			return nil, errors.WithStack(err)
-		}
-		if err := s.validateCpuSet(cpusAllowed, s.cpuCount); err != nil {
-			return nil, errors.WithStack(err)
-		}
-		args = append(args, fmt.Sprintf("--cpuset=%s", cpusAllowed))
-	}
+	// // See if we need to use cpu-pinning
+	// // TODO: Add more checks to make sure this is valid.
+	// // eg. parse the cpuset and check the number of cpus is the same as cpu limits
+	// // Now we rely completely on the user to have the cpu policy correctly
+	// // configured in the kubelet, otherwise scylla will crash.
+	// if sd.Spec.CpuSet != nil && *sd.Spec.CpuSet {
+	// 	cpusAllowed, err := getCPUsAllowedList("/proc/1/status")
+	// 	if err != nil {
+	// 		return nil, errors.WithStack(err)
+	// 	}
+	// 	if err := s.validateCpuSet(cpusAllowed, s.cpuCount); err != nil {
+	// 		return nil, errors.WithStack(err)
+	// 	}
+	// 	args = append(args, fmt.Sprintf("--cpuset=%s", cpusAllowed))
+	// }
 
-	args = append(args, sd.Spec.UnsupportedScyllaArgsOverrides...)
+	args = append(args, sd.Spec.Scylla.UnsupportedScyllaArgsOverrides...)
+
+	// TODO: apply values from scyllaclusterv1 annotation
 
 	if _, err := os.Stat(scyllaIOPropertiesPath); err == nil {
 		klog.InfoS("Scylla IO properties are already set, skipping io tuning")

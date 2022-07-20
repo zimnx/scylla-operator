@@ -10,9 +10,9 @@ import (
 	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
 	"github.com/scylladb/scylla-operator/pkg/helpers"
 	"github.com/scylladb/scylla-operator/pkg/naming"
-	scyllafixture "github.com/scylladb/scylla-operator/test/e2e/fixture/scylla"
+	scyllafixture "github.com/scylladb/scylla-operator/test/e2e/fixture/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/test/e2e/framework"
-	"github.com/scylladb/scylla-operator/test/e2e/utils"
+	"github.com/scylladb/scylla-operator/test/e2e/utils/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -29,16 +29,16 @@ var _ = g.Describe("ScyllaDatacenter", func() {
 		defer cancel()
 
 		sd := scyllafixture.BasicScyllaDatacenter.ReadOrFail()
-		sd.Spec.Datacenter.Racks[0].Members = pointer.Int32(1)
+		sd.Spec.Racks[0].Nodes = pointer.Int32(1)
 
 		framework.By("Creating a ScyllaDatacenter with 1 member")
 		sd, err := f.ScyllaClient().ScyllaV1alpha1().ScyllaDatacenters(f.Namespace()).Create(ctx, sd, metav1.CreateOptions{})
 		o.Expect(err).NotTo(o.HaveOccurred())
 
 		framework.By("Waiting for the ScyllaDatacenter to rollout")
-		waitCtx1, waitCtx1Cancel := utils.ContextForRollout(ctx, sd)
+		waitCtx1, waitCtx1Cancel := v1alpha1.ContextForRollout(ctx, sd)
 		defer waitCtx1Cancel()
-		sd, err = utils.WaitForScyllaDatacenterState(waitCtx1, f.ScyllaClient().ScyllaV1alpha1(), sd.Namespace, sd.Name, utils.IsScyllaDatacenterRolledOut)
+		sd, err = v1alpha1.WaitForScyllaDatacenterState(waitCtx1, f.ScyllaClient().ScyllaV1alpha1(), sd.Namespace, sd.Name, v1alpha1.WaitForStateOptions{}, v1alpha1.IsScyllaDatacenterRolledOut)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
 		di, err := NewDataInserter(ctx, f.KubeClient().CoreV1(), sd, 1)
@@ -55,17 +55,17 @@ var _ = g.Describe("ScyllaDatacenter", func() {
 			ctx,
 			sd.Name,
 			types.JSONPatchType,
-			[]byte(`[{"op": "replace", "path": "/spec/datacenter/racks/0/members", "value": 3}]`),
+			[]byte(`[{"op": "replace", "path": "/spec/racks/0/nodes", "value": 3}]`),
 			metav1.PatchOptions{},
 		)
 		o.Expect(err).NotTo(o.HaveOccurred())
-		o.Expect(sd.Spec.Datacenter.Racks).To(o.HaveLen(1))
-		o.Expect(sd.Spec.Datacenter.Racks[0].Members).To(o.BeEquivalentTo(3))
+		o.Expect(sd.Spec.Racks).To(o.HaveLen(1))
+		o.Expect(sd.Spec.Racks[0].Nodes).To(o.BeEquivalentTo(3))
 
 		framework.By("Waiting for the ScyllaDatacenter to rollout")
-		waitCtx2, waitCtx2Cancel := utils.ContextForRollout(ctx, sd)
+		waitCtx2, waitCtx2Cancel := v1alpha1.ContextForRollout(ctx, sd)
 		defer waitCtx2Cancel()
-		sd, err = utils.WaitForScyllaDatacenterState(waitCtx2, f.ScyllaClient().ScyllaV1alpha1(), sd.Namespace, sd.Name, utils.IsScyllaDatacenterRolledOut)
+		sd, err = v1alpha1.WaitForScyllaDatacenterState(waitCtx2, f.ScyllaClient().ScyllaV1alpha1(), sd.Namespace, sd.Name, v1alpha1.WaitForStateOptions{}, v1alpha1.IsScyllaDatacenterRolledOut)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
 		verifyScyllaDatacenter(ctx, f.KubeClient(), sd, di)
@@ -82,21 +82,21 @@ var _ = g.Describe("ScyllaDatacenter", func() {
 			ctx,
 			sd.Name,
 			types.JSONPatchType,
-			[]byte(`[{"op": "replace", "path": "/spec/datacenter/racks/0/members", "value": 2}]`),
+			[]byte(`[{"op": "replace", "path": "/spec/racks/0/nodes", "value": 2}]`),
 			metav1.PatchOptions{},
 		)
 		o.Expect(err).NotTo(o.HaveOccurred())
-		o.Expect(sd.Spec.Datacenter.Racks[0].Members).To(o.BeEquivalentTo(2))
+		o.Expect(sd.Spec.Racks[0].Nodes).To(o.BeEquivalentTo(2))
 
 		framework.By("Waiting for the ScyllaDatacenter to rollout")
-		waitCtx3, waitCtx3Cancel := utils.ContextForRollout(ctx, sd)
+		waitCtx3, waitCtx3Cancel := v1alpha1.ContextForRollout(ctx, sd)
 		defer waitCtx3Cancel()
-		sd, err = utils.WaitForScyllaDatacenterState(waitCtx3, f.ScyllaClient().ScyllaV1alpha1(), sd.Namespace, sd.Name, utils.IsScyllaDatacenterRolledOut)
+		sd, err = v1alpha1.WaitForScyllaDatacenterState(waitCtx3, f.ScyllaClient().ScyllaV1alpha1(), sd.Namespace, sd.Name, v1alpha1.WaitForStateOptions{}, v1alpha1.IsScyllaDatacenterRolledOut)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
 		verifyScyllaDatacenter(ctx, f.KubeClient(), sd, di)
 
-		podName := naming.StatefulSetNameForRack(sd.Spec.Datacenter.Racks[0], sd) + "-1"
+		podName := naming.StatefulSetNameForRack(sd.Spec.Racks[0], sd) + "-1"
 		svcName := podName
 		framework.By("Marking ScyllaDatacenter node #2 (%s) for maintenance", podName)
 		svc := &corev1.Service{
@@ -122,13 +122,13 @@ var _ = g.Describe("ScyllaDatacenter", func() {
 			TargetContainerName: naming.ScyllaContainerName,
 			EphemeralContainerCommon: corev1.EphemeralContainerCommon{
 				Name:            "e2e-drain-scylla",
-				Image:           sd.Spec.Image,
+				Image:           sd.Spec.Scylla.Image,
 				ImagePullPolicy: corev1.PullIfNotPresent,
 				Command:         []string{"/usr/bin/nodetool", "drain"},
 				Args:            []string{},
 			},
 		}
-		pod, err := utils.RunEphemeralContainerAndWaitForCompletion(ctx, f.KubeClient().CoreV1().Pods(sd.Namespace), podName, ec)
+		pod, err := v1alpha1.RunEphemeralContainerAndWaitForCompletion(ctx, f.KubeClient().CoreV1().Pods(sd.Namespace), podName, ec)
 		o.Expect(err).NotTo(o.HaveOccurred())
 		ephemeralContainerState := controllerhelpers.FindContainerStatus(pod, ec.Name)
 		o.Expect(ephemeralContainerState).NotTo(o.BeNil())
@@ -140,16 +140,16 @@ var _ = g.Describe("ScyllaDatacenter", func() {
 			ctx,
 			sd.Name,
 			types.JSONPatchType,
-			[]byte(`[{"op": "replace", "path": "/spec/datacenter/racks/0/members", "value": 1}]`),
+			[]byte(`[{"op": "replace", "path": "/spec/racks/0/nodes", "value": 1}]`),
 			metav1.PatchOptions{},
 		)
 		o.Expect(err).NotTo(o.HaveOccurred())
-		o.Expect(sd.Spec.Datacenter.Racks[0].Members).To(o.BeEquivalentTo(1))
+		o.Expect(sd.Spec.Racks[0].Nodes).To(o.BeEquivalentTo(1))
 
 		framework.By("Waiting for the ScyllaDatacenter to rollout")
-		waitCtx5, waitCtx5Cancel := utils.ContextForRollout(ctx, sd)
+		waitCtx5, waitCtx5Cancel := v1alpha1.ContextForRollout(ctx, sd)
 		defer waitCtx5Cancel()
-		sd, err = utils.WaitForScyllaDatacenterState(waitCtx5, f.ScyllaClient().ScyllaV1alpha1(), sd.Namespace, sd.Name, utils.IsScyllaDatacenterRolledOut)
+		sd, err = v1alpha1.WaitForScyllaDatacenterState(waitCtx5, f.ScyllaClient().ScyllaV1alpha1(), sd.Namespace, sd.Name, v1alpha1.WaitForStateOptions{}, v1alpha1.IsScyllaDatacenterRolledOut)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
 		verifyScyllaDatacenter(ctx, f.KubeClient(), sd, di)
@@ -159,16 +159,16 @@ var _ = g.Describe("ScyllaDatacenter", func() {
 			ctx,
 			sd.Name,
 			types.JSONPatchType,
-			[]byte(`[{"op": "replace", "path": "/spec/datacenter/racks/0/members", "value": 3}]`),
+			[]byte(`[{"op": "replace", "path": "/spec/racks/0/nodes", "value": 3}]`),
 			metav1.PatchOptions{},
 		)
 		o.Expect(err).NotTo(o.HaveOccurred())
-		o.Expect(sd.Spec.Datacenter.Racks[0].Members).To(o.BeEquivalentTo(3))
+		o.Expect(sd.Spec.Racks[0].Nodes).To(o.BeEquivalentTo(3))
 
 		framework.By("Waiting for the ScyllaDatacenter to rollout")
-		waitCtx6, waitCtx6Cancel := utils.ContextForRollout(ctx, sd)
+		waitCtx6, waitCtx6Cancel := v1alpha1.ContextForRollout(ctx, sd)
 		defer waitCtx6Cancel()
-		sd, err = utils.WaitForScyllaDatacenterState(waitCtx6, f.ScyllaClient().ScyllaV1alpha1(), sd.Namespace, sd.Name, utils.IsScyllaDatacenterRolledOut)
+		sd, err = v1alpha1.WaitForScyllaDatacenterState(waitCtx6, f.ScyllaClient().ScyllaV1alpha1(), sd.Namespace, sd.Name, v1alpha1.WaitForStateOptions{}, v1alpha1.IsScyllaDatacenterRolledOut)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
 		verifyScyllaDatacenter(ctx, f.KubeClient(), sd, di)

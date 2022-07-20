@@ -1,10 +1,13 @@
 package orphanedpv
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
+	scyllav1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1"
 	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
 	"github.com/scylladb/scylla-operator/pkg/naming"
@@ -27,9 +30,9 @@ func (opc *Controller) getPVsForScyllaDatacenter(ctx context.Context, sd *scylla
 	var errs []error
 	var requeueReasons []string
 	var pis []*PVItem
-	for _, rack := range sd.Spec.Datacenter.Racks {
+	for _, rack := range sd.Spec.Racks {
 		stsName := naming.StatefulSetNameForRack(rack, sd)
-		for i := int32(0); i < *rack.Members; i++ {
+		for i := int32(0); i < *rack.Nodes; i++ {
 			svcName := fmt.Sprintf("%s-%d", stsName, i)
 			pvcName := fmt.Sprintf("%s-%s", naming.PVCTemplateName, svcName)
 			pvc, err := opc.pvcLister.PersistentVolumeClaims(sd.Namespace).Get(pvcName)
@@ -79,21 +82,33 @@ func (opc *Controller) sync(ctx context.Context, key string) error {
 		klog.V(4).InfoS("Finished syncing ScyllaDatacenter", "ScyllaDatacenter", klog.KRef(namespace, name), "duration", time.Since(startTime))
 	}()
 
-	sc, err := opc.scyllaLister.ScyllaDatacenters(namespace).Get(name)
+	sd, err := opc.scyllaLister.ScyllaDatacenters(namespace).Get(name)
 	if apierrors.IsNotFound(err) {
-		klog.V(2).InfoS("ScyllaDatacenter has been deleted", "ScyllaDatacenter", klog.KObj(sc))
+		klog.V(2).InfoS("ScyllaDatacenter has been deleted", "ScyllaDatacenter", klog.KObj(sd))
 		return nil
 	}
 	if err != nil {
 		return err
 	}
 
-	if sc.DeletionTimestamp != nil {
+	if sd.DeletionTimestamp != nil {
 		return nil
 	}
 
-	if sc.Spec.RemoveOrphanedPVs == nil || !*sc.Spec.RemoveOrphanedPVs {
-		klog.V(4).InfoS("ScyllaDatacenter doesn't have RemoveOrphanedPVs enabled", "ScyllaDatacenter", klog.KRef(namespace, name))
+	// TODO: take it from ScyllaOperatorConfig
+	removedOrphanedPVs := false
+
+	if v, ok := sd.Annotations[naming.ScyllaClusterV1Annotation]; ok {
+		sc := &scyllav1.ScyllaCluster{}
+		if err := json.NewDecoder(bytes.NewBufferString(v)).Decode(sc); err != nil {
+			return fmt.Errorf("can't decode scyllav1.ScyllaCluster from annotation: %w", err)
+		}
+
+		removedOrphanedPVs = sc.Spec.AutomaticOrphanedNodeCleanup
+	}
+
+	if removedOrphanedPVs {
+		klog.V(4).InfoS("ScyllaDatacenter doesn't have RemoveOrphanedPVs enabled in it's scyllav1.ScyllaCluster annotation", "ScyllaDatacenter", klog.KRef(namespace, name))
 		return nil
 	}
 
@@ -104,7 +119,7 @@ func (opc *Controller) sync(ctx context.Context, key string) error {
 
 	var errs []error
 
-	pis, requeueReasons, err := opc.getPVsForScyllaDatacenter(ctx, sc)
+	pis, requeueReasons, err := opc.getPVsForScyllaDatacenter(ctx, sd)
 	// Process at least some PVs even if there were errors retrieving the rest
 	if err != nil {
 		errs = append(errs, err)
@@ -121,7 +136,7 @@ func (opc *Controller) sync(ctx context.Context, key string) error {
 			continue
 		}
 
-		klog.V(2).InfoS("PV is orphaned", "ScyllaDatacenter", sc, "PV", klog.KObj(pi.PV))
+		klog.V(2).InfoS("PV is orphaned", "ScyllaDatacenter", sd, "PV", klog.KObj(pi.PV))
 
 		// Verify that the node doesn't exist with a live call.
 		freshNodes, err := opc.kubeClient.CoreV1().Nodes().List(ctx, metav1.ListOptions{
@@ -142,9 +157,9 @@ func (opc *Controller) sync(ctx context.Context, key string) error {
 			continue
 		}
 
-		klog.V(2).InfoS("PV is verified as orphaned.", "ScyllaDatacenter", sc, "PV", klog.KObj(pi.PV))
+		klog.V(2).InfoS("PV is verified as orphaned.", "ScyllaDatacenter", sd, "PV", klog.KObj(pi.PV))
 
-		_, err = opc.kubeClient.CoreV1().Services(sc.Namespace).Patch(
+		_, err = opc.kubeClient.CoreV1().Services(sd.Namespace).Patch(
 			ctx,
 			pi.ServiceName,
 			types.MergePatchType,
@@ -156,7 +171,7 @@ func (opc *Controller) sync(ctx context.Context, key string) error {
 			continue
 		}
 
-		klog.V(2).InfoS("Marked service for replacement", "ScyllaDatacenter", sc, "Service", pi.ServiceName)
+		klog.V(2).InfoS("Marked service for replacement", "ScyllaDatacenter", sd, "Service", pi.ServiceName)
 	}
 
 	err = utilerrors.NewAggregate(errs)

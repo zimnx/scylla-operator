@@ -9,9 +9,9 @@ import (
 
 	g "github.com/onsi/ginkgo/v2"
 	o "github.com/onsi/gomega"
-	scyllafixture "github.com/scylladb/scylla-operator/test/e2e/fixture/scylla"
+	scyllafixture "github.com/scylladb/scylla-operator/test/e2e/fixture/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/test/e2e/framework"
-	"github.com/scylladb/scylla-operator/test/e2e/utils"
+	"github.com/scylladb/scylla-operator/test/e2e/utils/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -39,18 +39,18 @@ var _ = g.Describe("ScyllaDatacenter", func() {
 
 		framework.By("Creating a ScyllaDatacenter")
 		sd := scyllafixture.BasicScyllaDatacenter.ReadOrFail()
-		o.Expect(sd.Spec.Datacenter.Racks).To(o.HaveLen(1))
+		o.Expect(sd.Spec.Racks).To(o.HaveLen(1))
 
 		sd, err := f.ScyllaClient().ScyllaV1alpha1().ScyllaDatacenters(f.Namespace()).Create(ctx, sd, metav1.CreateOptions{})
 		o.Expect(err).NotTo(o.HaveOccurred())
 
 		framework.By("Waiting for the ScyllaDatacenter to rollout (RV=%s)", sd.ResourceVersion)
-		waitCtx1, waitCtx1Cancel := utils.ContextForRollout(ctx, sd)
+		waitCtx1, waitCtx1Cancel := v1alpha1.ContextForRollout(ctx, sd)
 		defer waitCtx1Cancel()
-		sd, err = utils.WaitForScyllaDatacenterState(waitCtx1, f.ScyllaClient().ScyllaV1alpha1(), sd.Namespace, sd.Name, utils.WaitForStateOptions{}, utils.IsScyllaDatacenterRolledOut)
+		sd, err = v1alpha1.WaitForScyllaDatacenterState(waitCtx1, f.ScyllaClient().ScyllaV1alpha1(), sd.Namespace, sd.Name, v1alpha1.WaitForStateOptions{}, v1alpha1.IsScyllaDatacenterRolledOut)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
-		di, err := NewDataInserter(ctx, f.KubeClient().CoreV1(), sd, utils.GetMemberCount(sd))
+		di, err := NewDataInserter(ctx, f.KubeClient().CoreV1(), sd, v1alpha1.GetMemberCount(sd))
 		o.Expect(err).NotTo(o.HaveOccurred())
 		defer di.Close()
 
@@ -60,7 +60,7 @@ var _ = g.Describe("ScyllaDatacenter", func() {
 		verifyScyllaDatacenter(ctx, f.KubeClient(), sd, di)
 
 		framework.By("Changing pod resources")
-		oldResources := *sd.Spec.Datacenter.Racks[0].ScyllaContainer.Resources.DeepCopy()
+		oldResources := *sd.Spec.Racks[0].Scylla.Resources.DeepCopy()
 		newResources := *oldResources.DeepCopy()
 		o.Expect(oldResources.Requests).To(o.HaveKey(corev1.ResourceCPU))
 		o.Expect(oldResources.Requests).To(o.HaveKey(corev1.ResourceMemory))
@@ -85,40 +85,40 @@ var _ = g.Describe("ScyllaDatacenter", func() {
 			sd.Name,
 			types.JSONPatchType,
 			[]byte(fmt.Sprintf(
-				`[{"op": "replace", "path": "/spec/datacenter/racks/0/scyllaContainer/resources", "value": %s}]`,
+				`[{"op": "replace", "path": "/spec/racks/0/scylla/resources", "value": %s}]`,
 				newResourcesJSON,
 			)),
 			metav1.PatchOptions{},
 		)
 		o.Expect(err).NotTo(o.HaveOccurred())
-		o.Expect(sd.Spec.Datacenter.Racks[0].ScyllaContainer.Resources).To(o.BeEquivalentTo(newResources))
+		o.Expect(sd.Spec.Racks[0].Scylla.Resources).To(o.BeEquivalentTo(newResources))
 
 		framework.By("Waiting for the ScyllaDatacenter to redeploy")
-		waitCtx2, waitCtx2Cancel := utils.ContextForRollout(ctx, sd)
+		waitCtx2, waitCtx2Cancel := v1alpha1.ContextForRollout(ctx, sd)
 		defer waitCtx2Cancel()
-		sd, err = utils.WaitForScyllaDatacenterState(waitCtx2, f.ScyllaClient().ScyllaV1alpha1(), sd.Namespace, sd.Name, utils.WaitForStateOptions{}, utils.IsScyllaDatacenterRolledOut)
+		sd, err = v1alpha1.WaitForScyllaDatacenterState(waitCtx2, f.ScyllaClient().ScyllaV1alpha1(), sd.Namespace, sd.Name, v1alpha1.WaitForStateOptions{}, v1alpha1.IsScyllaDatacenterRolledOut)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
 		framework.By("Scaling the ScyllaDatacenter up to create a new replica")
-		oldMembers := *sd.Spec.Datacenter.Racks[0].Members
+		oldMembers := *sd.Spec.Racks[0].Nodes
 		newMebmers := oldMembers + 1
 		sd, err = f.ScyllaClient().ScyllaV1alpha1().ScyllaDatacenters(f.Namespace()).Patch(
 			ctx,
 			sd.Name,
 			types.JSONPatchType,
 			[]byte(fmt.Sprintf(
-				`[{"op": "replace", "path": "/spec/datacenter/racks/0/members", "value": %d}]`,
+				`[{"op": "replace", "path": "/spec/racks/0/nodes", "value": %d}]`,
 				newMebmers,
 			)),
 			metav1.PatchOptions{},
 		)
 		o.Expect(err).NotTo(o.HaveOccurred())
-		o.Expect(sd.Spec.Datacenter.Racks[0].Members).To(o.Equal(newMebmers))
+		o.Expect(sd.Spec.Racks[0].Nodes).To(o.Equal(newMebmers))
 
 		framework.By("Waiting for the ScyllaDatacenter to redeploy")
-		waitCtx4, waitCtx4Cancel := utils.ContextForRollout(ctx, sd)
+		waitCtx4, waitCtx4Cancel := v1alpha1.ContextForRollout(ctx, sd)
 		defer waitCtx4Cancel()
-		sd, err = utils.WaitForScyllaDatacenterState(waitCtx4, f.ScyllaClient().ScyllaV1alpha1(), sd.Namespace, sd.Name, utils.WaitForStateOptions{}, utils.IsScyllaDatacenterRolledOut)
+		sd, err = v1alpha1.WaitForScyllaDatacenterState(waitCtx4, f.ScyllaClient().ScyllaV1alpha1(), sd.Namespace, sd.Name, v1alpha1.WaitForStateOptions{}, v1alpha1.IsScyllaDatacenterRolledOut)
 		o.Expect(err).NotTo(o.HaveOccurred())
 	})
 })

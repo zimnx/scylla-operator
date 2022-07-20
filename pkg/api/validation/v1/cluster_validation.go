@@ -154,6 +154,7 @@ func ValidateScyllaClusterRackSpec(rack scyllav1.RackSpec, rackNames sets.String
 
 		// CPU limits must be whole cores
 		if cores%1000 != 0 {
+
 			allErrs = append(allErrs, field.Invalid(fldPath.Child("resources", "limits", "cpu"), cores, "when using cpuset, you must use whole cpu cores"))
 		}
 

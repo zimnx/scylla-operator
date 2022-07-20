@@ -10,8 +10,6 @@ metadata:
 apiVersion: scylla.scylladb.com/v1
 kind: ScyllaCluster
 metadata:
-  labels:
-    controller-tools.k8s.io: "1.0"
   name: simple-cluster
   namespace: scylla
 spec:

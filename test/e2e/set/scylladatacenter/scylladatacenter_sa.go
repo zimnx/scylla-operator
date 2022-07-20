@@ -8,9 +8,9 @@ import (
 
 	g "github.com/onsi/ginkgo/v2"
 	o "github.com/onsi/gomega"
-	scyllafixture "github.com/scylladb/scylla-operator/test/e2e/fixture/scylla"
+	scyllafixture "github.com/scylladb/scylla-operator/test/e2e/fixture/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/test/e2e/framework"
-	"github.com/scylladb/scylla-operator/test/e2e/utils"
+	"github.com/scylladb/scylla-operator/test/e2e/utils/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -69,9 +69,9 @@ var _ = g.Describe("ScyllaDatacenter", func() {
 		o.Expect(err).NotTo(o.HaveOccurred())
 
 		framework.By("Waiting for the ServiceAccount to be adopted")
-		waitCtx1, waitCtx1Cancel := utils.ContextForRollout(ctx, sd)
+		waitCtx1, waitCtx1Cancel := v1alpha1.ContextForRollout(ctx, sd)
 		defer waitCtx1Cancel()
-		sa, err = utils.WaitForServiceAccountState(waitCtx1, f.KubeClient().CoreV1(), sa.Namespace, sa.Name, utils.WaitForStateOptions{}, func(sa *corev1.ServiceAccount) (bool, error) {
+		sa, err = v1alpha1.WaitForServiceAccountState(waitCtx1, f.KubeClient().CoreV1(), sa.Namespace, sa.Name, v1alpha1.WaitForStateOptions{}, func(sa *corev1.ServiceAccount) (bool, error) {
 			ref := metav1.GetControllerOfNoCopy(sa)
 			if ref == nil {
 				klog.V(2).InfoS("No controller ref")
@@ -91,9 +91,9 @@ var _ = g.Describe("ScyllaDatacenter", func() {
 		o.Expect(sa.Annotations).To(o.HaveKeyWithValue("user-annotation", "123"))
 
 		framework.By("Waiting for the RoleBinding to be adopted")
-		waitCtx2, waitCtx2Cancel := utils.ContextForRollout(ctx, sd)
+		waitCtx2, waitCtx2Cancel := v1alpha1.ContextForRollout(ctx, sd)
 		defer waitCtx2Cancel()
-		rb, err = utils.WaitForRoleBindingState(waitCtx2, f.KubeClient().RbacV1(), rb.Namespace, rb.Name, utils.WaitForStateOptions{}, func(sa *rbacv1.RoleBinding) (bool, error) {
+		rb, err = v1alpha1.WaitForRoleBindingState(waitCtx2, f.KubeClient().RbacV1(), rb.Namespace, rb.Name, v1alpha1.WaitForStateOptions{}, func(sa *rbacv1.RoleBinding) (bool, error) {
 			ref := metav1.GetControllerOfNoCopy(sa)
 			if ref == nil {
 				return false, nil

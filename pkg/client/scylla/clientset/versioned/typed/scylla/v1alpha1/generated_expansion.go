@@ -4,6 +4,8 @@ package v1alpha1
 
 type NodeConfigExpansion interface{}
 
+type RemoteKubeClusterConfigExpansion interface{}
+
 type ScyllaDatacenterExpansion interface{}
 
 type ScyllaOperatorConfigExpansion interface{}

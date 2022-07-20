@@ -6,7 +6,9 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
+	scyllav1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1"
 	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
+	scyllav2alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v2alpha1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -29,7 +31,7 @@ func ObjRefWithUID(obj metav1.Object) string {
 }
 
 func StatefulSetNameForRack(r scyllav1alpha1.RackSpec, sd *scyllav1alpha1.ScyllaDatacenter) string {
-	return fmt.Sprintf("%s-%s-%s", sd.Name, sd.Spec.Datacenter.Name, r.Name)
+	return fmt.Sprintf("%s-%s-%s", sd.Name, sd.Spec.DatacenterName, r.Name)
 }
 
 func ServiceNameFromPod(pod *corev1.Pod) string {
@@ -45,11 +47,11 @@ func MemberServiceName(r scyllav1alpha1.RackSpec, sd *scyllav1alpha1.ScyllaDatac
 	return fmt.Sprintf("%s-%d", StatefulSetNameForRack(r, sd), idx)
 }
 
-func ServiceDNSName(service string, sd *scyllav1alpha1.ScyllaDatacenter) string {
-	return fmt.Sprintf("%s.%s", service, CrossNamespaceServiceNameForCluster(sd))
+func HeadlessServiceNameForCluster(sc *scyllav1.ScyllaCluster) string {
+	return fmt.Sprintf("%s-client", sc.Name)
 }
 
-func HeadlessServiceNameForCluster(sd *scyllav1alpha1.ScyllaDatacenter) string {
+func HeadlessServiceNameForDatacenter(sd *scyllav1alpha1.ScyllaDatacenter) string {
 	return fmt.Sprintf("%s-client", sd.Name)
 }
 
@@ -57,12 +59,12 @@ func PodDisruptionBudgetName(sd *scyllav1alpha1.ScyllaDatacenter) string {
 	return sd.Name
 }
 
-func CrossNamespaceServiceNameForCluster(sd *scyllav1alpha1.ScyllaDatacenter) string {
-	return fmt.Sprintf("%s.%s.svc", HeadlessServiceNameForCluster(sd), sd.Namespace)
+func CrossNamespaceServiceNameForCluster(sc *scyllav1.ScyllaCluster) string {
+	return fmt.Sprintf("%s.%s.svc", HeadlessServiceNameForCluster(sc), sc.Namespace)
 }
 
-func ManagerClusterName(sd *scyllav1alpha1.ScyllaDatacenter) string {
-	return sd.Namespace + "/" + sd.Name
+func ManagerClusterName(sc *scyllav1.ScyllaCluster) string {
+	return sc.Namespace + "/" + sc.Name
 }
 
 func PVCNameForPod(podName string) string {
@@ -162,4 +164,11 @@ func GetTuningConfigMapNameForPod(pod *corev1.Pod) string {
 
 func MemberServiceAccountNameForScyllaDatacenter(scName string) string {
 	return fmt.Sprintf("%s-member", scName)
+}
+
+func RemoteNamespace(sc *scyllav2alpha1.ScyllaCluster, dc scyllav2alpha1.Datacenter) string {
+	if dc.RemoteKubeClusterConfigRef == nil {
+		return sc.Namespace
+	}
+	return fmt.Sprintf("%s-%s-%s-%s", dc.RemoteKubeClusterConfigRef.Name, sc.Namespace, sc.Name, dc.Name)
 }

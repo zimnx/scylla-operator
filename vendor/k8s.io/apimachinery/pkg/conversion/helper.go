@@ -19,6 +19,7 @@ package conversion
 import (
 	"fmt"
 	"reflect"
+	"runtime/debug"
 )
 
 // EnforcePtr ensures that obj is a pointer of some sort. Returns a reflect.Value
@@ -30,6 +31,7 @@ func EnforcePtr(obj interface{}) (reflect.Value, error) {
 		if v.Kind() == reflect.Invalid {
 			return reflect.Value{}, fmt.Errorf("expected pointer, but got invalid kind")
 		}
+		debug.PrintStack()
 		return reflect.Value{}, fmt.Errorf("expected pointer, but got %v type", v.Type())
 	}
 	if v.IsNil() {

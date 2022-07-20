@@ -6,10 +6,10 @@ import (
 	"sync"
 	"time"
 
-	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
-	scyllav1alpha1client "github.com/scylladb/scylla-operator/pkg/client/scylla/clientset/versioned/typed/scylla/v1alpha1"
-	scyllav1alpha1informers "github.com/scylladb/scylla-operator/pkg/client/scylla/informers/externalversions/scylla/v1alpha1"
-	scyllav1alpha1listers "github.com/scylladb/scylla-operator/pkg/client/scylla/listers/scylla/v1alpha1"
+	scyllav1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1"
+	scyllav1client "github.com/scylladb/scylla-operator/pkg/client/scylla/clientset/versioned/typed/scylla/v1"
+	scyllav1informers "github.com/scylladb/scylla-operator/pkg/client/scylla/informers/externalversions/scylla/v1"
+	scyllav1listers "github.com/scylladb/scylla-operator/pkg/client/scylla/listers/scylla/v1"
 	"github.com/scylladb/scylla-operator/pkg/mermaidclient"
 	"github.com/scylladb/scylla-operator/pkg/scheme"
 	corev1 "k8s.io/api/core/v1"
@@ -41,10 +41,10 @@ var (
 
 type Controller struct {
 	kubeClient   kubernetes.Interface
-	scyllaClient scyllav1alpha1client.ScyllaV1alpha1Interface
+	scyllaClient scyllav1client.ScyllaV1Interface
 
 	secretLister corev1listers.SecretLister
-	scyllaLister scyllav1alpha1listers.ScyllaDatacenterLister
+	scyllaLister scyllav1listers.ScyllaClusterLister
 
 	managerClient *mermaidclient.Client
 
@@ -57,9 +57,9 @@ type Controller struct {
 
 func NewController(
 	kubeClient kubernetes.Interface,
-	scyllaClient scyllav1alpha1client.ScyllaV1alpha1Interface,
+	scyllaClient scyllav1client.ScyllaV1Interface,
 	secretInformer corev1informers.SecretInformer,
-	scyllaDatacenterInformer scyllav1alpha1informers.ScyllaDatacenterInformer,
+	scyllaClusterInformer scyllav1informers.ScyllaClusterInformer,
 	managerClient *mermaidclient.Client,
 ) (*Controller, error) {
 	eventBroadcaster := record.NewBroadcaster()
@@ -81,13 +81,13 @@ func NewController(
 		scyllaClient: scyllaClient,
 
 		secretLister: secretInformer.Lister(),
-		scyllaLister: scyllaDatacenterInformer.Lister(),
+		scyllaLister: scyllaClusterInformer.Lister(),
 
 		managerClient: managerClient,
 
 		cachesToSync: []cache.InformerSynced{
 			secretInformer.Informer().HasSynced,
-			scyllaDatacenterInformer.Informer().HasSynced,
+			scyllaClusterInformer.Informer().HasSynced,
 		},
 
 		eventRecorder: eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "manager-controller"}),
@@ -95,10 +95,10 @@ func NewController(
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "manager"),
 	}
 
-	scyllaDatacenterInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    c.addScyllaDatacenter,
-		UpdateFunc: c.updateScyllaDatacenter,
-		DeleteFunc: c.deleteScyllaDatacenter,
+	scyllaClusterInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    c.addScyllaCluster,
+		UpdateFunc: c.updateScyllaCluster,
+		DeleteFunc: c.deleteScyllaCluster,
 	})
 
 	return c, nil
@@ -169,57 +169,57 @@ func (c *Controller) Run(ctx context.Context, workers int) {
 	<-ctx.Done()
 }
 
-func (c *Controller) enqueue(sd *scyllav1alpha1.ScyllaDatacenter) {
+func (c *Controller) enqueue(sd *scyllav1.ScyllaCluster) {
 	key, err := keyFunc(sd)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", sd, err))
 		return
 	}
 
-	klog.V(4).InfoS("Enqueuing", "ScyllaDatacenter", klog.KObj(sd))
+	klog.V(4).InfoS("Enqueuing", "ScyllaCluster", klog.KObj(sd))
 	c.queue.Add(key)
 }
 
-func (c *Controller) addScyllaDatacenter(obj interface{}) {
-	sd := obj.(*scyllav1alpha1.ScyllaDatacenter)
-	klog.V(4).InfoS("Observed addition of ScyllaDatacenter", "ScyllaDatacenter", klog.KObj(sd))
-	c.enqueue(sd)
+func (c *Controller) addScyllaCluster(obj interface{}) {
+	sc := obj.(*scyllav1.ScyllaCluster)
+	klog.V(4).InfoS("Observed addition of ScyllaCluster", "ScyllaCluster", klog.KObj(sc))
+	c.enqueue(sc)
 }
 
-func (c *Controller) updateScyllaDatacenter(old, cur interface{}) {
-	oldSD := old.(*scyllav1alpha1.ScyllaDatacenter)
-	currentSD := cur.(*scyllav1alpha1.ScyllaDatacenter)
+func (c *Controller) updateScyllaCluster(old, cur interface{}) {
+	oldSC := old.(*scyllav1.ScyllaCluster)
+	currentSC := cur.(*scyllav1.ScyllaCluster)
 
-	if currentSD.UID != oldSD.UID {
-		key, err := keyFunc(oldSD)
+	if currentSC.UID != oldSC.UID {
+		key, err := keyFunc(oldSC)
 		if err != nil {
-			utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", oldSD, err))
+			utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", oldSC, err))
 			return
 		}
-		c.deleteScyllaDatacenter(cache.DeletedFinalStateUnknown{
+		c.deleteScyllaCluster(cache.DeletedFinalStateUnknown{
 			Key: key,
-			Obj: oldSD,
+			Obj: oldSC,
 		})
 	}
 
-	klog.V(4).InfoS("Observed update of ScyllaDatacenter", "ScyllaDatacenter", klog.KObj(oldSD))
-	c.enqueue(currentSD)
+	klog.V(4).InfoS("Observed update of ScyllaCluster", "ScyllaCluster", klog.KObj(oldSC))
+	c.enqueue(currentSC)
 }
 
-func (c *Controller) deleteScyllaDatacenter(obj interface{}) {
-	sd, ok := obj.(*scyllav1alpha1.ScyllaDatacenter)
+func (c *Controller) deleteScyllaCluster(obj interface{}) {
+	sc, ok := obj.(*scyllav1.ScyllaCluster)
 	if !ok {
 		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
 			return
 		}
-		sd, ok = tombstone.Obj.(*scyllav1alpha1.ScyllaDatacenter)
+		sc, ok = tombstone.Obj.(*scyllav1.ScyllaCluster)
 		if !ok {
-			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a ScyllaDatacenter %#v", obj))
+			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a ScyllaCluster %#v", obj))
 			return
 		}
 	}
-	klog.V(4).InfoS("Observed deletion of ScyllaDatacenter", "ScyllaDatacenter", klog.KObj(sd))
-	c.enqueue(sd)
+	klog.V(4).InfoS("Observed deletion of ScyllaCluster", "ScyllaCluster", klog.KObj(sc))
+	c.enqueue(sc)
 }

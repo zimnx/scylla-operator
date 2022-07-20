@@ -13,9 +13,9 @@ import (
 	g "github.com/onsi/ginkgo/v2"
 	o "github.com/onsi/gomega"
 	"github.com/scylladb/gocqlx/v2"
-	scyllaclusterfixture "github.com/scylladb/scylla-operator/test/e2e/fixture/scylla"
+	scyllaclusterfixture "github.com/scylladb/scylla-operator/test/e2e/fixture/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/test/e2e/framework"
-	"github.com/scylladb/scylla-operator/test/e2e/utils"
+	"github.com/scylladb/scylla-operator/test/e2e/utils/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -43,22 +43,22 @@ var _ = g.Describe("ScyllaDatacenter", func() {
 		defer cancel()
 
 		sd := scyllaclusterfixture.BasicScyllaDatacenter.ReadOrFail()
-		sd.Spec.Datacenter.Racks[0].Members = pointer.Int32(1)
+		sd.Spec.Racks[0].Nodes = pointer.Int32(1)
 
 		// Ensure 2 shards.
-		sd.Spec.Datacenter.Racks[0].ScyllaContainer.Resources.Limits[corev1.ResourceCPU] = resource.MustParse(fmt.Sprintf("%d", nrShards))
+		sd.Spec.Racks[0].Scylla.Resources.Limits[corev1.ResourceCPU] = resource.MustParse(fmt.Sprintf("%d", nrShards))
 
 		framework.By("Creating a ScyllaDatacenter")
 		sd, err := f.ScyllaClient().ScyllaV1alpha1().ScyllaDatacenters(f.Namespace()).Create(ctx, sd, metav1.CreateOptions{})
 		o.Expect(err).NotTo(o.HaveOccurred())
 
 		framework.By("Waiting for the ScyllaDatacenter to rollout (RV=%s)", sd.ResourceVersion)
-		waitCtx1, waitCtx1Cancel := utils.ContextForRollout(ctx, sd)
+		waitCtx1, waitCtx1Cancel := v1alpha1.ContextForRollout(ctx, sd)
 		defer waitCtx1Cancel()
-		sd, err = utils.WaitForScyllaDatacenterState(waitCtx1, f.ScyllaClient().ScyllaV1alpha1(), sd.Namespace, sd.Name, utils.WaitForStateOptions{}, utils.IsScyllaDatacenterRolledOut)
+		sd, err = v1alpha1.WaitForScyllaDatacenterState(waitCtx1, f.ScyllaClient().ScyllaV1alpha1(), sd.Namespace, sd.Name, v1alpha1.WaitForStateOptions{}, v1alpha1.IsScyllaDatacenterRolledOut)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
-		hosts, err := utils.GetHosts(ctx, f.KubeClient().CoreV1(), sd)
+		hosts, err := v1alpha1.GetHosts(ctx, f.KubeClient().CoreV1(), sd)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
 		connections := make(map[uint16]string)
