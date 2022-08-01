@@ -13,6 +13,7 @@ import (
 type ScyllaV1alpha1Interface interface {
 	RESTClient() rest.Interface
 	NodeConfigsGetter
+	ScyllaDatacentersGetter
 	ScyllaOperatorConfigsGetter
 }
 
@@ -23,6 +24,10 @@ type ScyllaV1alpha1Client struct {
 
 func (c *ScyllaV1alpha1Client) NodeConfigs() NodeConfigInterface {
 	return newNodeConfigs(c)
+}
+
+func (c *ScyllaV1alpha1Client) ScyllaDatacenters(namespace string) ScyllaDatacenterInterface {
+	return newScyllaDatacenters(c, namespace)
 }
 
 func (c *ScyllaV1alpha1Client) ScyllaOperatorConfigs() ScyllaOperatorConfigInterface {

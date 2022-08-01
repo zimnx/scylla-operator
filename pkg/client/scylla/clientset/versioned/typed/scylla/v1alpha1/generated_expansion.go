@@ -4,4 +4,6 @@ package v1alpha1
 
 type NodeConfigExpansion interface{}
 
+type ScyllaDatacenterExpansion interface{}
+
 type ScyllaOperatorConfigExpansion interface{}
