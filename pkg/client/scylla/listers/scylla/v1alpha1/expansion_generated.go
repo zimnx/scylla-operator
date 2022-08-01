@@ -6,6 +6,14 @@ package v1alpha1
 // NodeConfigLister.
 type NodeConfigListerExpansion interface{}
 
+// ScyllaDatacenterListerExpansion allows custom methods to be added to
+// ScyllaDatacenterLister.
+type ScyllaDatacenterListerExpansion interface{}
+
+// ScyllaDatacenterNamespaceListerExpansion allows custom methods to be added to
+// ScyllaDatacenterNamespaceLister.
+type ScyllaDatacenterNamespaceListerExpansion interface{}
+
 // ScyllaOperatorConfigListerExpansion allows custom methods to be added to
 // ScyllaOperatorConfigLister.
 type ScyllaOperatorConfigListerExpansion interface{}
