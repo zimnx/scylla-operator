@@ -63,7 +63,7 @@ This will install the operator in namespace `scylla-operator`.
 Wait until it's ready:
 
 ```console
-kubectl wait --for condition=established crd/scyllaclusters.scylla.scylladb.com
+kubectl wait --for condition=established crd/scylladatacenters.scylla.scylladb.com
 kubectl -n scylla-operator rollout status deployment.apps/scylla-operator
 ```
 
@@ -77,7 +77,7 @@ kubectl -n scylla-operator logs deployment.apps/scylla-operator
 
 Now that the operator is running, we can create an instance of a Scylla cluster by creating an instance of the `clusters.scylla.scylladb.com` resource.
 Some of that resource's values are configurable, so feel free to browse `cluster.yaml` and tweak the settings to your liking.
-Full details for all the configuration options can be found in the [Scylla Cluster CRD documentation](scylla_cluster_crd.md).
+Full details for all the configuration options can be found in the [Scylla Cluster CRD documentation](scylla_datacenter_crd.md).
 
 When you are ready to create a Scylla cluster, simply run:
 
@@ -128,7 +128,7 @@ kubectl -n scylla get pod -l app=scylla
 You can also track the state of a Scylla cluster from its status. To check the current status of a Cluster, run:
 
 ```console
-kubectl -n scylla describe ScyllaCluster simple-cluster
+kubectl -n scylla describe ScyllaDatacenter simple-cluster
 ```
 
 Checking the logs of the running scylla instances can be done like this:
@@ -277,13 +277,13 @@ To set up monitoring using Prometheus and Grafana follow [this guide](monitoring
 
 The operator supports scale up of a rack as well as addition of new racks. To make the changes, you can use:
 ```console
-kubectl -n scylla edit ScyllaCluster simple-cluster
+kubectl -n scylla edit ScyllaDatacenter simple-cluster
 ```
 * To scale up a rack, change the `Spec.Members` field of the rack to the desired value.
 * To add a new rack, append the `racks` list with a new rack. Remember to choose a different rack name for the new rack.
 * After editing and saving the yaml, check your cluster's Status and Events for information on what's happening:
 ```console
-kubectl -n scylla describe ScyllaCluster simple-cluster
+kubectl -n scylla describe ScyllaDatacenter simple-cluster
 ```
 
 ## Benchmark with cassandra-stress
@@ -340,12 +340,12 @@ kubectl delete -f scripts/cassandra-stress.yaml
 
 The operator supports scale down of a rack. To make the changes, you can use:
 ```console
-kubectl -n scylla edit ScyllaCluster simple-cluster
+kubectl -n scylla edit ScyllaDatacenter simple-cluster
 ```
 * To scale down a rack, change the `Spec.Members` field of the rack to the desired value.
 * After editing and saving the yaml, check your cluster's Status and Events for information on what's happening:
 ```console
-kubectl -n scylla describe ScyllaCluster simple-cluster
+kubectl -n scylla describe ScyllaDatacenter simple-cluster
 ```
 
 ## Clean Up

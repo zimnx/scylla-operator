@@ -8,7 +8,7 @@ sctool backup list -c <CLUSTER_ID> --all-clusters -L <BACKUP_LOCATION>
 ```
 
 Where:
-* `CLUSTER_ID` - is a name of a cluster or ID under which ScyllaCluster was registered. You can find it in ScyllaCluster Status.
+* `CLUSTER_ID` - is a name of a cluster or ID under which ScyllaDatacenter was registered. You can find it in ScyllaDatacenter Status.
 * `BACKUP_LOCATION` - is a location where backup is stored. For example, for bucket called `backups` stored in AWS S3, location is `s3:backups`.
 
 ```bash

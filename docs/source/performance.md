@@ -40,7 +40,7 @@ We take advantage of it, and we pin IRQs to CPUs not used by any Scylla Pods exc
 
 Tuning resources are created in a special namespace called `scylla-operator-node-tuning`.
 
-The tuning is applied only to pods with `Guaranteed` QoS class. Please double check your ScyllaCluster resource specification
+The tuning is applied only to pods with `Guaranteed` QoS class. Please double check your ScyllaDatacenter resource specification
 to see if it meets all conditions.
 
 ## Kubernetes tuning
@@ -56,15 +56,15 @@ provider.
 Only pods within the [Guaranteed QoS class](https://kubernetes.io/docs/tasks/configure-pod-container/quality-service-pod/#create-a-pod-that-gets-assigned-a-qos-class-of-guaranteed)) can take advantage of this option. 
 When such pod lands on a Node, kubelet will pin them to specific CPUs, and those won't be part of the shared pool.
 
-In our case there are two requirements each ScyllaCluster must fulfill to receive a Guaranteed QoS class:
+In our case there are two requirements each ScyllaDatacenter must fulfill to receive a Guaranteed QoS class:
 * resource request and limits must be equal or only limits have to be provided
 * agentResources must be provided and their requests and limits must be equal, or only limits have to be provided
 
-An example of such a ScyllaCluster that receives a Guaranteed QoS class is below:
+An example of such a ScyllaDatacenter that receives a Guaranteed QoS class is below:
 
 ```
 apiVersion: scylla.scylladb.com/v1
-kind: ScyllaCluster
+kind: ScyllaDatacenter
 metadata:
   name: guaranteed-cluster
   namespace: scylla

@@ -1,10 +1,10 @@
 # Upgrading version of Scylla
 
-To upgrade Scylla version using Operator user have to modify existing ScyllaCluster definition.
+To upgrade Scylla version using Operator user have to modify existing ScyllaDatacenter definition.
 
 In this example cluster will be upgraded to version `4.4.5`.
 ```bash
-kubectl -n scylla patch ScyllaCluster simple-cluster  -p '{"spec":{"version": "4.4.5"}}' --type=merge
+kubectl -n scylla patch ScyllaDatacenter simple-cluster  -p '{"spec":{"image": "docker.io/scylladb/scylla:4.4.5"}}' --type=merge
 ```
 
 Operator supports two types of version upgrades:
@@ -25,24 +25,24 @@ Generic upgrades are executed for the non patch version changes.
 
 Example: `4.0.0 -> 2020.1.0` or `4.0.0 -> 4.1.0` or even `4.0.0 -> nightly`
 
-User can observe current state of upgrade in ScyllaCluster status.
+User can observe current state of upgrade in ScyllaDatacenter status.
 ```bash
-kubectl -n scylla describe ScyllaCluster simple-cluster
+kubectl -n scylla describe ScyllaDatacenter simple-cluster
 [...]
 Status:
   Racks:
     us-east-1a:
       Members:        3
       Ready Members:  3
-      Version:        4.1.9
+      Image:        docker.io/scylladb/scylla:4.1.9
   Upgrade:
     Current Node:         simple-cluster-us-east-1-us-east-1a-2
     Current Rack:         us-east-1a
     Data Snapshot Tag:    so_data_20201228135002UTC
-    From Version:         4.1.9
+    From Version:         docker.io/scylladb/scylla:4.1.9
     State:                validate_upgrade
     System Snapshot Tag:  so_system_20201228135002UTC
-    To Version:           4.2.2
+    To Version:           docker.io/scylladb/scylla:4.2.2
 ```
 
 Each upgrade begins with taking a snapshot of `system` and `system_schema` keyspaces on all nodes in parallel.
@@ -92,7 +92,7 @@ To continue with upgrade, first turn off operator by scaling Operator replicas t
 kubectl -n scylla-operator scale deployment.apps/scylla-operator --replicas=0
 ```
 Then user have to manually resolve issue with Scylla by checking what is the root cause of a failure in Scylla container logs.
-If needed data and system keyspaces SSTable snapshots are available on the node. You can check ScyllaCluster status for their names.
+If needed data and system keyspaces SSTable snapshots are available on the node. You can check ScyllaDatacenter status for their names.
 
 Once issue is resolved and Scylla Pod is up and running (Pod is in Ready state), scale Operator back to two replicas:
 ```bash
