@@ -183,10 +183,10 @@ var _ = g.Describe("NodeConfig Optimizations", framework.Serial, func() {
 		nc, err = f.ScyllaAdminClient().ScyllaV1alpha1().NodeConfigs().Create(ctx, nc, metav1.CreateOptions{})
 		o.Expect(err).NotTo(o.HaveOccurred())
 
-		sc := scyllafixture.BasicScyllaCluster.ReadOrFail()
+		sc := scyllafixture.BasicScyllaDatacenter.ReadOrFail()
 
-		framework.By("Creating a ScyllaCluster")
-		sc, err = f.ScyllaClient().ScyllaV1().ScyllaClusters(f.Namespace()).Create(ctx, sc, metav1.CreateOptions{})
+		framework.By("Creating a ScyllaDatacenter")
+		sc, err = f.ScyllaClient().ScyllaV1alpha1().ScyllaDatacenters(f.Namespace()).Create(ctx, sc, metav1.CreateOptions{})
 		o.Expect(err).NotTo(o.HaveOccurred())
 
 		framework.By("Waiting for a ConfigMap to indicate blocking NodeConfig")
@@ -223,14 +223,14 @@ var _ = g.Describe("NodeConfig Optimizations", framework.Serial, func() {
 		o.Expect(src.ContainerID).To(o.BeEmpty())
 		o.Expect(src.MatchingNodeConfigs).NotTo(o.BeEmpty())
 
-		waitTime := utils.RolloutTimeoutForScyllaCluster(sc)
+		waitTime := utils.RolloutTimeoutForScyllaDatacenter(sc)
 		framework.By("Sleeping for %v", waitTime)
 		time.Sleep(waitTime)
 
-		framework.By("Verifying ScyllaCluster is still not rolled out")
-		sc, err = f.ScyllaClient().ScyllaV1().ScyllaClusters(sc.Namespace).Get(ctx, sc.Name, metav1.GetOptions{})
+		framework.By("Verifying ScyllaDatacenter is still not rolled out")
+		sc, err = f.ScyllaClient().ScyllaV1alpha1().ScyllaDatacenters(sc.Namespace).Get(ctx, sc.Name, metav1.GetOptions{})
 		o.Expect(err).NotTo(o.HaveOccurred())
-		o.Expect(utils.IsScyllaClusterRolledOut(sc)).To(o.BeFalse())
+		o.Expect(utils.IsScyllaDatacenterRolledOut(sc)).To(o.BeFalse())
 
 		framework.By("Unblocking tuning")
 		err = f.KubeAdminClient().CoreV1().ResourceQuotas(rq.Namespace).Delete(
@@ -255,10 +255,10 @@ var _ = g.Describe("NodeConfig Optimizations", framework.Serial, func() {
 
 		verifyNodeConfig(ctx, f.KubeAdminClient(), nc)
 
-		framework.By("Waiting for the ScyllaCluster to deploy")
+		framework.By("Waiting for the ScyllaDatacenter to deploy")
 		ctx4, ctx4Cancel := utils.ContextForRollout(ctx, sc)
 		defer ctx4Cancel()
-		sc, err = utils.WaitForScyllaClusterState(ctx4, f.ScyllaClient().ScyllaV1(), sc.Namespace, sc.Name, utils.IsScyllaClusterRolledOut)
+		sc, err = utils.WaitForScyllaDatacenterState(ctx4, f.ScyllaClient().ScyllaV1alpha1(), sc.Namespace, sc.Name, utils.IsScyllaDatacenterRolledOut)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
 		framework.By("Verifying ConfigMap content")

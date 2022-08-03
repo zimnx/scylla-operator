@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	scyllav1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1"
+	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/helpers"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	appsv1 "k8s.io/api/apps/v1"
@@ -30,23 +31,23 @@ const (
 	rootGID = 0
 )
 
-func HeadlessServiceForCluster(c *scyllav1.ScyllaCluster) *corev1.Service {
-	labels := naming.ClusterLabels(c)
+func HeadlessServiceForDatacenter(sd *scyllav1alpha1.ScyllaDatacenter) *corev1.Service {
+	labels := naming.ClusterLabels(sd)
 	labels[naming.ScyllaServiceTypeLabel] = string(naming.ScyllaServiceTypeIdentity)
 
 	return &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      naming.HeadlessServiceNameForCluster(c),
-			Namespace: c.Namespace,
+			Name:      naming.HeadlessServiceNameForCluster(sd),
+			Namespace: sd.Namespace,
 			Labels:    labels,
 			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(c, controllerGVK),
+				*metav1.NewControllerRef(sd, controllerGVK),
 			},
 		},
 		Spec: corev1.ServiceSpec{
 			ClusterIP: corev1.ClusterIPNone,
 			Type:      corev1.ServiceTypeClusterIP,
-			Selector:  naming.ClusterLabels(c),
+			Selector:  naming.ClusterLabels(sd),
 			Ports: []corev1.ServicePort{
 				{
 					Name: "prometheus",
@@ -61,9 +62,9 @@ func HeadlessServiceForCluster(c *scyllav1.ScyllaCluster) *corev1.Service {
 	}
 }
 
-func MemberService(sc *scyllav1.ScyllaCluster, rackName, name string, oldService *corev1.Service) *corev1.Service {
-	labels := naming.ClusterLabels(sc)
-	labels[naming.DatacenterNameLabel] = sc.Spec.Datacenter.Name
+func MemberService(sd *scyllav1alpha1.ScyllaDatacenter, rackName, name string, oldService *corev1.Service) *corev1.Service {
+	labels := naming.ClusterLabels(sd)
+	labels[naming.DatacenterNameLabel] = sd.Spec.Datacenter.Name
 	labels[naming.RackNameLabel] = rackName
 	labels[naming.ScyllaServiceTypeLabel] = string(naming.ScyllaServiceTypeMember)
 
@@ -85,7 +86,7 @@ func MemberService(sc *scyllav1.ScyllaCluster, rackName, name string, oldService
 
 	// Only new service should get the replace address, old service keeps "" until deleted.
 	if !hasReplaceLabel || len(replaceAddr) != 0 {
-		rackStatus, ok := sc.Status.Racks[rackName]
+		rackStatus, ok := sd.Status.Racks[rackName]
 		if ok {
 			replaceAddr := rackStatus.ReplaceAddressFirstBoot[name]
 			if len(replaceAddr) != 0 {
@@ -97,22 +98,22 @@ func MemberService(sc *scyllav1.ScyllaCluster, rackName, name string, oldService
 	return &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
-			Namespace: sc.Namespace,
+			Namespace: sd.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(sc, controllerGVK),
+				*metav1.NewControllerRef(sd, controllerGVK),
 			},
 			Labels: labels,
 		},
 		Spec: corev1.ServiceSpec{
 			Type:                     corev1.ServiceTypeClusterIP,
 			Selector:                 naming.StatefulSetPodLabel(name),
-			Ports:                    memberServicePorts(sc),
+			Ports:                    memberServicePorts(sd),
 			PublishNotReadyAddresses: true,
 		},
 	}
 }
 
-func memberServicePorts(cluster *scyllav1.ScyllaCluster) []corev1.ServicePort {
+func memberServicePorts(sd *scyllav1alpha1.ScyllaDatacenter) []corev1.ServicePort {
 	ports := []corev1.ServicePort{
 		{
 			Name: "inter-node-communication",
@@ -151,10 +152,10 @@ func memberServicePorts(cluster *scyllav1.ScyllaCluster) []corev1.ServicePort {
 			Port: 9100,
 		},
 	}
-	if cluster.Spec.Alternator.Enabled() {
+	if sd.Spec.Alternator.Enabled() {
 		ports = append(ports, corev1.ServicePort{
 			Name: "alternator",
-			Port: cluster.Spec.Alternator.Port,
+			Port: sd.Spec.Alternator.Port,
 		})
 	} else {
 		ports = append(ports, corev1.ServicePort{
@@ -167,14 +168,14 @@ func memberServicePorts(cluster *scyllav1.ScyllaCluster) []corev1.ServicePort {
 
 // StatefulSetForRack make a StatefulSet for the rack.
 // existingSts may be nil if it doesn't exist yet.
-func StatefulSetForRack(r scyllav1.RackSpec, c *scyllav1.ScyllaCluster, existingSts *appsv1.StatefulSet, sidecarImage string) (*appsv1.StatefulSet, error) {
-	matchLabels := naming.RackLabels(r, c)
-	rackLabels := naming.RackLabels(r, c)
-	rackLabels[naming.ScyllaVersionLabel] = c.Spec.Version
+func StatefulSetForRack(r scyllav1alpha1.RackSpec, sd *scyllav1alpha1.ScyllaDatacenter, existingSts *appsv1.StatefulSet, sidecarImage string) (*appsv1.StatefulSet, error) {
+	matchLabels := naming.RackLabels(r, sd)
+	rackLabels := naming.RackLabels(r, sd)
+	rackLabels[naming.ScyllaVersionLabel] = sd.Spec.Image
 
 	placement := r.Placement
 	if placement == nil {
-		placement = &scyllav1.PlacementSpec{}
+		placement = &scyllav1alpha1.PlacementSpec{}
 	}
 	opt := true
 
@@ -185,17 +186,17 @@ func StatefulSetForRack(r scyllav1.RackSpec, c *scyllav1.ScyllaCluster, existing
 
 	sts := &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      naming.StatefulSetNameForRack(r, c),
-			Namespace: c.Namespace,
+			Name:      naming.StatefulSetNameForRack(r, sd),
+			Namespace: sd.Namespace,
 			Labels:    rackLabels,
 			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(c, controllerGVK),
+				*metav1.NewControllerRef(sd, controllerGVK),
 			},
 		},
 		Spec: appsv1.StatefulSetSpec{
-			Replicas: pointer.Int32Ptr(r.Members),
+			Replicas: r.Members,
 			// Use a common Headless Service for all StatefulSets
-			ServiceName: naming.HeadlessServiceNameForCluster(c),
+			ServiceName: naming.HeadlessServiceNameForCluster(sd),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: matchLabels,
 			},
@@ -216,8 +217,8 @@ func StatefulSetForRack(r scyllav1.RackSpec, c *scyllav1.ScyllaCluster, existing
 					},
 				},
 				Spec: corev1.PodSpec{
-					HostNetwork: c.Spec.Network.HostNetworking,
-					DNSPolicy:   c.Spec.Network.GetDNSPolicy(),
+					HostNetwork: sd.Spec.Network.HostNetworking,
+					DNSPolicy:   sd.Spec.Network.GetDNSPolicy(),
 					SecurityContext: &corev1.PodSecurityContext{
 						RunAsUser:  pointer.Int64(rootUID),
 						RunAsGroup: pointer.Int64(rootGID),
@@ -262,7 +263,7 @@ func StatefulSetForRack(r scyllav1.RackSpec, c *scyllav1.ScyllaCluster, existing
 							Name: scyllaAgentAuthTokenVolumeName,
 							VolumeSource: corev1.VolumeSource{
 								Secret: &corev1.SecretVolumeSource{
-									SecretName: naming.AgentAuthTokenSecretName(c.Name),
+									SecretName: naming.AgentAuthTokenSecretName(sd.Name),
 								},
 							},
 						},
@@ -300,9 +301,9 @@ func StatefulSetForRack(r scyllav1.RackSpec, c *scyllav1.ScyllaCluster, existing
 					Containers: []corev1.Container{
 						{
 							Name:            naming.ScyllaContainerName,
-							Image:           ImageForCluster(c),
+							Image:           sd.Spec.Image,
 							ImagePullPolicy: corev1.PullIfNotPresent,
-							Ports:           containerPorts(c),
+							Ports:           containerPorts(sd),
 							// TODO: unprivileged entrypoint
 							Command: []string{
 								path.Join(naming.SharedDirName, "scylla-operator"),
@@ -420,13 +421,13 @@ func StatefulSetForRack(r scyllav1.RackSpec, c *scyllav1.ScyllaCluster, existing
 							},
 						},
 					},
-					ServiceAccountName: naming.MemberServiceAccountNameForScyllaCluster(c.Name),
+					ServiceAccountName: naming.MemberServiceAccountNameForScyllaCluster(sd.Name),
 					Affinity: &corev1.Affinity{
 						NodeAffinity:    placement.NodeAffinity,
 						PodAffinity:     placement.PodAffinity,
 						PodAntiAffinity: placement.PodAntiAffinity,
 					},
-					ImagePullSecrets:              c.Spec.ImagePullSecrets,
+					ImagePullSecrets:              sd.Spec.ImagePullSecrets,
 					TerminationGracePeriodSeconds: pointer.Int64Ptr(900),
 				},
 			},
@@ -450,8 +451,8 @@ func StatefulSetForRack(r scyllav1.RackSpec, c *scyllav1.ScyllaCluster, existing
 		},
 	}
 
-	if len(c.Spec.ForceRedeploymentReason) != 0 {
-		sts.Spec.Template.Annotations[naming.ForceRedeploymentReasonAnnotation] = c.Spec.ForceRedeploymentReason
+	if len(sd.Spec.ForceRedeploymentReason) != 0 {
+		sts.Spec.Template.Annotations[naming.ForceRedeploymentReasonAnnotation] = sd.Spec.ForceRedeploymentReason
 	}
 
 	if existingSts != nil {
@@ -469,7 +470,7 @@ func StatefulSetForRack(r scyllav1.RackSpec, c *scyllav1.ScyllaCluster, existing
 		sts.Spec.UpdateStrategy.RollingUpdate.Partition = pointer.Int32Ptr(*sts.Spec.Replicas)
 	}
 
-	sysctlContainer := sysctlInitContainer(c.Spec.Sysctls, sidecarImage)
+	sysctlContainer := sysctlInitContainer(sd.Spec.Sysctls, sidecarImage)
 	if sysctlContainer != nil {
 		sts.Spec.Template.Spec.InitContainers = append(sts.Spec.Template.Spec.InitContainers, *sysctlContainer)
 	}
@@ -481,11 +482,11 @@ func StatefulSetForRack(r scyllav1.RackSpec, c *scyllav1.ScyllaCluster, existing
 		sts.Spec.Template.Spec.Volumes = append(
 			sts.Spec.Template.Spec.Volumes, *Volume.DeepCopy())
 	}
-	sts.Spec.Template.Spec.Containers = append(sts.Spec.Template.Spec.Containers, agentContainer(r, c))
+	sts.Spec.Template.Spec.Containers = append(sts.Spec.Template.Spec.Containers, agentContainer(r, sd))
 	return sts, nil
 }
 
-func containerPorts(c *scyllav1.ScyllaCluster) []corev1.ContainerPort {
+func containerPorts(sd *scyllav1alpha1.ScyllaDatacenter) []corev1.ContainerPort {
 	ports := []corev1.ContainerPort{
 		{
 			Name:          "intra-node",
@@ -509,10 +510,10 @@ func containerPorts(c *scyllav1.ScyllaCluster) []corev1.ContainerPort {
 		},
 	}
 
-	if c.Spec.Alternator.Enabled() {
+	if sd.Spec.Alternator.Enabled() {
 		ports = append(ports, corev1.ContainerPort{
 			Name:          "alternator",
-			ContainerPort: c.Spec.Alternator.Port,
+			ContainerPort: sd.Spec.Alternator.Port,
 		})
 	} else {
 		ports = append(ports, corev1.ContainerPort{
@@ -560,10 +561,10 @@ func sysctlInitContainer(sysctls []string, image string) *corev1.Container {
 	}
 }
 
-func agentContainer(r scyllav1.RackSpec, c *scyllav1.ScyllaCluster) corev1.Container {
+func agentContainer(r scyllav1.RackSpec, sd *scyllav1alpha1.ScyllaDatacenter) corev1.Container {
 	cnt := corev1.Container{
 		Name:            "scylla-manager-agent",
-		Image:           agentImageForCluster(c),
+		Image:           sd.Spec.AgentImage,
 		ImagePullPolicy: corev1.PullIfNotPresent,
 		Args: []string{
 			"-c",
@@ -607,25 +608,25 @@ func agentContainer(r scyllav1.RackSpec, c *scyllav1.ScyllaCluster) corev1.Conta
 	return cnt
 }
 
-func MakePodDisruptionBudget(c *scyllav1.ScyllaCluster) *v1beta1.PodDisruptionBudget {
+func MakePodDisruptionBudget(sd *scyllav1alpha1.ScyllaDatacenter) *v1beta1.PodDisruptionBudget {
 	maxUnavailable := intstr.FromInt(1)
 	return &v1beta1.PodDisruptionBudget{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      naming.PodDisruptionBudgetName(c),
-			Namespace: c.Namespace,
+			Name:      naming.PodDisruptionBudgetName(sd),
+			Namespace: sd.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(c, controllerGVK),
+				*metav1.NewControllerRef(sd, controllerGVK),
 			},
-			Labels: naming.ClusterLabels(c),
+			Labels: naming.ClusterLabels(sd),
 		},
 		Spec: v1beta1.PodDisruptionBudgetSpec{
 			MaxUnavailable: &maxUnavailable,
-			Selector:       metav1.SetAsLabelSelector(naming.ClusterLabels(c)),
+			Selector:       metav1.SetAsLabelSelector(naming.ClusterLabels(sd)),
 		},
 	}
 }
 
-func MakeAgentAuthTokenSecret(c *scyllav1.ScyllaCluster, authToken string) (*corev1.Secret, error) {
+func MakeAgentAuthTokenSecret(sd *scyllav1alpha1.ScyllaDatacenter, authToken string) (*corev1.Secret, error) {
 	data, err := helpers.GetAgentAuthTokenConfig(authToken)
 	if err != nil {
 		return nil, err
@@ -633,26 +634,18 @@ func MakeAgentAuthTokenSecret(c *scyllav1.ScyllaCluster, authToken string) (*cor
 
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      naming.AgentAuthTokenSecretName(c.Name),
-			Namespace: c.Namespace,
+			Name:      naming.AgentAuthTokenSecretName(sd.Name),
+			Namespace: sd.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(c, controllerGVK),
+				*metav1.NewControllerRef(sd, controllerGVK),
 			},
-			Labels: naming.ClusterLabels(c),
+			Labels: naming.ClusterLabels(sd),
 		},
 		Type: corev1.SecretTypeOpaque,
 		Data: map[string][]byte{
 			naming.ScyllaAgentAuthTokenFileName: data,
 		},
 	}, nil
-}
-
-func ImageForCluster(c *scyllav1.ScyllaCluster) string {
-	return fmt.Sprintf("%s:%s", c.Spec.Repository, c.Spec.Version)
-}
-
-func agentImageForCluster(c *scyllav1.ScyllaCluster) string {
-	return fmt.Sprintf("%s:%s", c.Spec.AgentRepository, c.Spec.AgentVersion)
 }
 
 func stringOrDefault(str, def string) string {
@@ -662,9 +655,9 @@ func stringOrDefault(str, def string) string {
 	return def
 }
 
-func MakeServiceAccount(sc *scyllav1.ScyllaCluster, serviceAccounts map[string]*corev1.ServiceAccount, serviceAccountLister corev1listers.ServiceAccountLister) (*corev1.ServiceAccount, error) {
+func MakeServiceAccount(sd *scyllav1alpha1.ScyllaDatacenter, serviceAccounts map[string]*corev1.ServiceAccount, serviceAccountLister corev1listers.ServiceAccountLister) (*corev1.ServiceAccount, error) {
 	annotations := map[string]string{}
-	name := naming.MemberServiceAccountNameForScyllaCluster(sc.Name)
+	name := naming.MemberServiceAccountNameForScyllaCluster(sd.Name)
 
 	existing, found := serviceAccounts[name]
 	if !found {
@@ -676,9 +669,9 @@ func MakeServiceAccount(sc *scyllav1.ScyllaCluster, serviceAccounts map[string]*
 		// It can be removed in 1.8.0 because all SAs will be already adopted, and they will match our selector.
 		// TODO: https://github.com/scylladb/scylla-operator/issues/934
 		var err error
-		existing, err = serviceAccountLister.ServiceAccounts(sc.Namespace).Get(name)
+		existing, err = serviceAccountLister.ServiceAccounts(sd.Namespace).Get(name)
 		if err != nil && !apierrors.IsNotFound(err) {
-			return nil, fmt.Errorf("can't get %s service account: %w", naming.ManualRef(sc.Namespace, name), err)
+			return nil, fmt.Errorf("can't get %s service account: %w", naming.ManualRef(sd.Namespace, name), err)
 		}
 	}
 
@@ -693,39 +686,39 @@ func MakeServiceAccount(sc *scyllav1.ScyllaCluster, serviceAccounts map[string]*
 	return &corev1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
-			Namespace: sc.Namespace,
+			Namespace: sd.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(sc, controllerGVK),
+				*metav1.NewControllerRef(sd, controllerGVK),
 			},
-			Labels:      naming.ClusterLabels(sc),
+			Labels:      naming.ClusterLabels(sd),
 			Annotations: annotations,
 		},
 	}, nil
 }
 
-func MakeRoleBinding(sc *scyllav1.ScyllaCluster) *rbacv1.RoleBinding {
-	saName := naming.MemberServiceAccountNameForScyllaCluster(sc.Name)
+func MakeRoleBinding(sd *scyllav1alpha1.ScyllaDatacenter) *rbacv1.RoleBinding {
+	saName := naming.MemberServiceAccountNameForScyllaCluster(sd.Name)
 	return &rbacv1.RoleBinding{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      saName,
-			Namespace: sc.Namespace,
+			Namespace: sd.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(sc, controllerGVK),
+				*metav1.NewControllerRef(sd, controllerGVK),
 			},
-			Labels: naming.ClusterLabels(sc),
+			Labels: naming.ClusterLabels(sd),
 		},
 		Subjects: []rbacv1.Subject{
 			{
 				APIGroup:  corev1.GroupName,
 				Kind:      rbacv1.ServiceAccountKind,
-				Namespace: sc.Namespace,
+				Namespace: sd.Namespace,
 				Name:      saName,
 			},
 		},
 		RoleRef: rbacv1.RoleRef{
 			APIGroup: rbacv1.GroupName,
 			Kind:     "ClusterRole",
-			Name:     naming.ScyllaClusterMemberClusterRoleName,
+			Name:     naming.ScyllaDatacenterMemberClusterRoleName,
 		},
 	}
 }

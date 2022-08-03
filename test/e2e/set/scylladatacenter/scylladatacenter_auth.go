@@ -1,6 +1,6 @@
 // Copyright (C) 2021 ScyllaDB
 
-package scyllacluster
+package scylladatacenter
 
 import (
 	"context"
@@ -22,40 +22,40 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
-var _ = g.Describe("ScyllaCluster authentication", func() {
+var _ = g.Describe("ScyllaDatacenter authentication", func() {
 	defer g.GinkgoRecover()
 
-	f := framework.NewFramework("scyllacluster")
+	f := framework.NewFramework("scylladatacenter")
 
 	g.It("agent requires authentication", func() {
 		ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 		defer cancel()
 
-		sc := scyllafixture.BasicScyllaCluster.ReadOrFail()
-		sc.Spec.Datacenter.Racks[0].Members = 1
+		sd := scyllafixture.BasicScyllaDatacenter.ReadOrFail()
+		sd.Spec.Datacenter.Racks[0].Members = 1
 
-		framework.By("Creating a ScyllaCluster")
-		sc, err := f.ScyllaClient().ScyllaV1().ScyllaClusters(f.Namespace()).Create(ctx, sc, metav1.CreateOptions{})
+		framework.By("Creating a ScyllaDatacenter")
+		sd, err := f.ScyllaClient().ScyllaV1alpha1().ScyllaDatacenters(f.Namespace()).Create(ctx, sd, metav1.CreateOptions{})
 		o.Expect(err).NotTo(o.HaveOccurred())
 
-		framework.By("Waiting for the ScyllaCluster to deploy")
-		waitCtx1, waitCtx1Cancel := utils.ContextForRollout(ctx, sc)
+		framework.By("Waiting for the ScyllaDatacenter to deploy")
+		waitCtx1, waitCtx1Cancel := utils.ContextForRollout(ctx, sd)
 		defer waitCtx1Cancel()
-		sc, err = utils.WaitForScyllaClusterState(waitCtx1, f.ScyllaClient().ScyllaV1(), sc.Namespace, sc.Name, utils.IsScyllaClusterRolledOut)
+		sd, err = utils.WaitForScyllaDatacenterState(waitCtx1, f.ScyllaClient().ScyllaV1(), sd.Namespace, sd.Name, utils.IsScyllaDatacenterRolledOut)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
-		di, err := NewDataInserter(ctx, f.KubeClient().CoreV1(), sc, utils.GetMemberCount(sc))
+		di, err := NewDataInserter(ctx, f.KubeClient().CoreV1(), sd, utils.GetMemberCount(sd))
 		o.Expect(err).NotTo(o.HaveOccurred())
 		defer di.Close()
 
 		err = di.Insert()
 		o.Expect(err).NotTo(o.HaveOccurred())
 
-		verifyScyllaCluster(ctx, f.KubeClient(), sc, di)
+		verifyScyllaDatacenter(ctx, f.KubeClient(), sd, di)
 
 		framework.By("Rejecting an unauthorized request")
 
-		_, hosts, err := utils.GetScyllaClient(ctx, f.KubeClient().CoreV1(), sc)
+		_, hosts, err := utils.GetScyllaClient(ctx, f.KubeClient().CoreV1(), sd)
 
 		emptyAuthToken := ""
 		_, err = getScyllaClientStatus(ctx, hosts, emptyAuthToken)
@@ -64,7 +64,7 @@ var _ = g.Describe("ScyllaCluster authentication", func() {
 
 		framework.By("Accepting requests authorized using token from provisioned secret")
 
-		tokenSecret, err := f.KubeClient().CoreV1().Secrets(sc.Namespace).Get(ctx, naming.AgentAuthTokenSecretName(sc.Name), metav1.GetOptions{})
+		tokenSecret, err := f.KubeClient().CoreV1().Secrets(sd.Namespace).Get(ctx, naming.AgentAuthTokenSecretName(sd.Name), metav1.GetOptions{})
 		o.Expect(err).ToNot(o.HaveOccurred())
 
 		token, err := helpers.GetAgentAuthTokenFromSecret(tokenSecret)
@@ -96,9 +96,9 @@ var _ = g.Describe("ScyllaCluster authentication", func() {
 		_, err = f.KubeClient().CoreV1().Secrets(f.Namespace()).Create(ctx, agentConfigSecret, metav1.CreateOptions{})
 		o.Expect(err).NotTo(o.HaveOccurred())
 
-		_, err = f.ScyllaClient().ScyllaV1().ScyllaClusters(f.Namespace()).Patch(
+		_, err = f.ScyllaClient().ScyllaV1alpha1().ScyllaDatacenters(f.Namespace()).Patch(
 			ctx,
-			sc.Name,
+			sd.Name,
 			types.JSONPatchType,
 			[]byte(fmt.Sprintf(`[{"op":"replace","path":"/spec/datacenter/racks/0/scyllaAgentConfig","value":"%s"}]`, agentConfigSecret.Name)),
 			metav1.PatchOptions{},
@@ -108,22 +108,22 @@ var _ = g.Describe("ScyllaCluster authentication", func() {
 		// TODO: restart should be triggered by the Operator
 		framework.By("Initiating a rolling restart")
 
-		_, err = f.ScyllaClient().ScyllaV1().ScyllaClusters(f.Namespace()).Patch(
+		_, err = f.ScyllaClient().ScyllaV1alpha1().ScyllaDatacenters(f.Namespace()).Patch(
 			ctx,
-			sc.Name,
+			sd.Name,
 			types.MergePatchType,
 			[]byte(fmt.Sprintf(`{"spec": {"forceRedeploymentReason": "%s"}}`, "scyllaAgenConfig was updated to contain a token")),
 			metav1.PatchOptions{},
 		)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
-		framework.By("Waiting for the ScyllaCluster to pick up token change")
-		waitCtx2, waitCtx2Cancel := utils.ContextForRollout(ctx, sc)
+		framework.By("Waiting for the ScyllaDatacenter to pick up token change")
+		waitCtx2, waitCtx2Cancel := utils.ContextForRollout(ctx, sd)
 		defer waitCtx2Cancel()
-		sc, err = utils.WaitForScyllaClusterState(waitCtx2, f.ScyllaClient().ScyllaV1(), sc.Namespace, sc.Name, utils.IsScyllaClusterRolledOut)
+		sd, err = utils.WaitForScyllaDatacenterState(waitCtx2, f.ScyllaClient().ScyllaV1(), sd.Namespace, sd.Name, utils.IsScyllaDatacenterRolledOut)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
-		verifyScyllaCluster(ctx, f.KubeClient(), sc, di)
+		verifyScyllaDatacenter(ctx, f.KubeClient(), sd, di)
 
 		framework.By("Accepting requests authorized using token from user agent config")
 		_, err = getScyllaClientStatus(ctx, hosts, agentConfig.AuthToken)
@@ -140,23 +140,23 @@ var _ = g.Describe("ScyllaCluster authentication", func() {
 
 		framework.By("Initiating a rolling restart")
 
-		_, err = f.ScyllaClient().ScyllaV1().ScyllaClusters(f.Namespace()).Patch(
+		_, err = f.ScyllaClient().ScyllaV1alpha1().ScyllaDatacenters(f.Namespace()).Patch(
 			ctx,
-			sc.Name,
+			sd.Name,
 			types.MergePatchType,
 			[]byte(fmt.Sprintf(`{"spec": {"forceRedeploymentReason": "%s"}}`, "scyllaAgenConfig token was changed")),
 			metav1.PatchOptions{},
 		)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
-		framework.By("Waiting for the ScyllaCluster to pick up token change")
+		framework.By("Waiting for the ScyllaDatacenter to pick up token change")
 
-		waitCtx3, waitCtx3Cancel := utils.ContextForRollout(ctx, sc)
+		waitCtx3, waitCtx3Cancel := utils.ContextForRollout(ctx, sd)
 		defer waitCtx3Cancel()
-		sc, err = utils.WaitForScyllaClusterState(waitCtx3, f.ScyllaClient().ScyllaV1(), sc.Namespace, sc.Name, utils.IsScyllaClusterRolledOut)
+		sd, err = utils.WaitForScyllaDatacenterState(waitCtx3, f.ScyllaClient().ScyllaV1alpha1(), sd.Namespace, sd.Name, utils.IsScyllaDatacenterRolledOut)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
-		verifyScyllaCluster(ctx, f.KubeClient(), sc, di)
+		verifyScyllaDatacenter(ctx, f.KubeClient(), sd, di)
 
 		framework.By("Accepting requests authorized using token from user agent config")
 		_, err = getScyllaClientStatus(ctx, hosts, agentConfig.AuthToken)

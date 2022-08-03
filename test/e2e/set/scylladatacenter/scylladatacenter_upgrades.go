@@ -1,6 +1,6 @@
 // Copyright (C) 2021 ScyllaDB
 
-package scyllacluster
+package scylladatacenter
 
 import (
 	"context"
@@ -16,10 +16,10 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
-var _ = g.Describe("ScyllaCluster upgrades", func() {
+var _ = g.Describe("ScyllaDatacenter upgrades", func() {
 	defer g.GinkgoRecover()
 
-	f := framework.NewFramework("scyllacluster")
+	f := framework.NewFramework("scylladatacenter")
 
 	type entry struct {
 		rackSize       int32
@@ -37,64 +37,64 @@ var _ = g.Describe("ScyllaCluster upgrades", func() {
 			ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 			defer cancel()
 
-			sc := scyllafixture.BasicScyllaCluster.ReadOrFail()
-			sc.Spec.Version = e.initialVersion
+			sd := scyllafixture.BasicScyllaDatacenter.ReadOrFail()
+			sd.Spec.Version = e.initialVersion
 
-			o.Expect(sc.Spec.Datacenter.Racks).To(o.HaveLen(1))
-			rack := &sc.Spec.Datacenter.Racks[0]
-			sc.Spec.Datacenter.Racks = make([]scyllav1.RackSpec, 0, e.rackCount)
+			o.Expect(sd.Spec.Datacenter.Racks).To(o.HaveLen(1))
+			rack := &sd.Spec.Datacenter.Racks[0]
+			sd.Spec.Datacenter.Racks = make([]scyllav1.RackSpec, 0, e.rackCount)
 			for i := int32(0); i < e.rackCount; i++ {
 				r := rack.DeepCopy()
 				r.Name = fmt.Sprintf("rack-%d", i)
 				r.Members = e.rackSize
-				sc.Spec.Datacenter.Racks = append(sc.Spec.Datacenter.Racks, *r)
+				sd.Spec.Datacenter.Racks = append(sd.Spec.Datacenter.Racks, *r)
 			}
 
-			framework.By("Creating a ScyllaCluster")
-			sc, err := f.ScyllaClient().ScyllaV1().ScyllaClusters(f.Namespace()).Create(ctx, sc, metav1.CreateOptions{})
+			framework.By("Creating a ScyllaDatacenter")
+			sd, err := f.ScyllaClient().ScyllaV1alpha1().ScyllaDatacenters(f.Namespace()).Create(ctx, sd, metav1.CreateOptions{})
 			o.Expect(err).NotTo(o.HaveOccurred())
-			o.Expect(sc.Spec.Version).To(o.Equal(e.initialVersion))
+			o.Expect(sd.Spec.Version).To(o.Equal(e.initialVersion))
 
-			framework.By("Waiting for the ScyllaCluster to deploy")
-			waitCtx1, waitCtx1Cancel := utils.ContextForRollout(ctx, sc)
+			framework.By("Waiting for the ScyllaDatacenter to deploy")
+			waitCtx1, waitCtx1Cancel := utils.ContextForRollout(ctx, sd)
 			defer waitCtx1Cancel()
-			sc, err = utils.WaitForScyllaClusterState(waitCtx1, f.ScyllaClient().ScyllaV1(), sc.Namespace, sc.Name, utils.IsScyllaClusterRolledOut)
+			sd, err = utils.WaitForScyllaDatacenterState(waitCtx1, f.ScyllaClient().ScyllaV1alpha1(), sd.Namespace, sd.Name, utils.IsScyllaDatacenterRolledOut)
 			o.Expect(err).NotTo(o.HaveOccurred())
 
-			di, err := NewDataInserter(ctx, f.KubeClient().CoreV1(), sc, utils.GetMemberCount(sc))
+			di, err := NewDataInserter(ctx, f.KubeClient().CoreV1(), sd, utils.GetMemberCount(sd))
 			o.Expect(err).NotTo(o.HaveOccurred())
 			defer di.Close()
 
 			err = di.Insert()
 			o.Expect(err).NotTo(o.HaveOccurred())
 
-			verifyScyllaCluster(ctx, f.KubeClient(), sc, di)
+			verifyScyllaDatacenter(ctx, f.KubeClient(), sd, di)
 
 			framework.By("triggering and update")
-			sc, err = f.ScyllaClient().ScyllaV1().ScyllaClusters(f.Namespace()).Patch(
+			sd, err = f.ScyllaClient().ScyllaV1alpha1().ScyllaDatacenters(f.Namespace()).Patch(
 				ctx,
-				sc.Name,
+				sd.Name,
 				types.MergePatchType,
 				[]byte(fmt.Sprintf(
 					`{"metadata":{"uid":"%s"},"spec":{"version":"%s"}}`,
-					sc.UID,
+					sd.UID,
 					e.updatedVersion,
 				)),
 				metav1.PatchOptions{},
 			)
 			o.Expect(err).NotTo(o.HaveOccurred())
-			o.Expect(sc.Spec.Version).To(o.Equal(e.updatedVersion))
+			o.Expect(sd.Spec.Version).To(o.Equal(e.updatedVersion))
 
-			framework.By("Waiting for the ScyllaCluster to re-deploy")
-			waitCtx2, waitCtx2Cancel := utils.ContextForRollout(ctx, sc)
+			framework.By("Waiting for the ScyllaDatacenter to re-deploy")
+			waitCtx2, waitCtx2Cancel := utils.ContextForRollout(ctx, sd)
 			defer waitCtx2Cancel()
-			sc, err = utils.WaitForScyllaClusterState(waitCtx2, f.ScyllaClient().ScyllaV1(), sc.Namespace, sc.Name, utils.IsScyllaClusterRolledOut)
+			sd, err = utils.WaitForScyllaDatacenterState(waitCtx2, f.ScyllaClient().ScyllaV1alpha1(), sd.Namespace, sd.Name, utils.IsScyllaDatacenterRolledOut)
 			o.Expect(err).NotTo(o.HaveOccurred())
 
-			err = di.UpdateClientEndpoints(ctx, sc)
+			err = di.UpdateClientEndpoints(ctx, sd)
 			o.Expect(err).NotTo(o.HaveOccurred())
 
-			verifyScyllaCluster(ctx, f.KubeClient(), sc, di)
+			verifyScyllaDatacenter(ctx, f.KubeClient(), sd, di)
 		},
 		// Test 1 and 3 member rack to cover e.g. handling PDBs correctly.
 		g.Entry(describeEntry, &entry{

@@ -1,6 +1,6 @@
 // Copyright (c) 2022 ScyllaDB
 
-package scyllacluster
+package scylladatacenter
 
 import (
 	"context"
@@ -15,44 +15,44 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-var _ = g.Describe("ScyllaCluster HostID", func() {
+var _ = g.Describe("ScyllaDatacenter HostID", func() {
 	defer g.GinkgoRecover()
 
-	f := framework.NewFramework("scyllacluster")
+	f := framework.NewFramework("scylladatacenter")
 
 	g.It("should be reflected as a Service annotation", func() {
 		ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 		defer cancel()
 
-		sc := scyllafixture.BasicScyllaCluster.ReadOrFail()
-		sc.Spec.Datacenter.Racks[0].Members = 2
+		sd := scyllafixture.BasicScyllaDatacenter.ReadOrFail()
+		sd.Spec.Datacenter.Racks[0].Members = 2
 
-		framework.By("Creating a ScyllaCluster")
-		sc, err := f.ScyllaClient().ScyllaV1().ScyllaClusters(f.Namespace()).Create(ctx, sc, metav1.CreateOptions{})
+		framework.By("Creating a ScyllaDatacenter")
+		sd, err := f.ScyllaClient().ScyllaV1alpha1().ScyllaDatacenters(f.Namespace()).Create(ctx, sd, metav1.CreateOptions{})
 		o.Expect(err).NotTo(o.HaveOccurred())
 
-		framework.By("Waiting for ScyllaCluster to deploy")
-		waitCtx, waitCtxCancel := utils.ContextForRollout(ctx, sc)
+		framework.By("Waiting for ScyllaDatacenter to deploy")
+		waitCtx, waitCtxCancel := utils.ContextForRollout(ctx, sd)
 		defer waitCtxCancel()
 
-		sc, err = utils.WaitForScyllaClusterState(waitCtx, f.ScyllaClient().ScyllaV1(), sc.Namespace, sc.Name, utils.IsScyllaClusterRolledOut)
+		sd, err = utils.WaitForScyllaDatacenterState(waitCtx, f.ScyllaClient().ScyllaV1alpha1(), sd.Namespace, sd.Name, utils.IsScyllaDatacenterRolledOut)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
-		di, err := NewDataInserter(ctx, f.KubeClient().CoreV1(), sc, utils.GetMemberCount(sc))
+		di, err := NewDataInserter(ctx, f.KubeClient().CoreV1(), sd, utils.GetMemberCount(sd))
 		o.Expect(err).NotTo(o.HaveOccurred())
 		defer di.Close()
 
 		err = di.Insert()
 		o.Expect(err).NotTo(o.HaveOccurred())
 
-		verifyScyllaCluster(ctx, f.KubeClient(), sc, di)
+		verifyScyllaDatacenter(ctx, f.KubeClient(), sd, di)
 
 		framework.By("Verifying annotations")
-		scyllaClient, _, err := utils.GetScyllaClient(ctx, f.KubeClient().CoreV1(), sc)
+		scyllaClient, _, err := utils.GetScyllaClient(ctx, f.KubeClient().CoreV1(), sd)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
-		svcs, err := f.KubeClient().CoreV1().Services(sc.Namespace).List(ctx, metav1.ListOptions{
-			LabelSelector: utils.GetMemberServiceSelector(sc.Name).String(),
+		svcs, err := f.KubeClient().CoreV1().Services(sd.Namespace).List(ctx, metav1.ListOptions{
+			LabelSelector: utils.GetMemberServiceSelector(sd.Name).String(),
 		})
 		o.Expect(err).NotTo(o.HaveOccurred())
 

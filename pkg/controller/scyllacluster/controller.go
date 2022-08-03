@@ -6,10 +6,10 @@ import (
 	"sync"
 	"time"
 
-	scyllav1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1"
-	scyllav1client "github.com/scylladb/scylla-operator/pkg/client/scylla/clientset/versioned/typed/scylla/v1"
-	scyllav1informers "github.com/scylladb/scylla-operator/pkg/client/scylla/informers/externalversions/scylla/v1"
-	scyllav1listers "github.com/scylladb/scylla-operator/pkg/client/scylla/listers/scylla/v1"
+	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
+	scyllav1alpha1client "github.com/scylladb/scylla-operator/pkg/client/scylla/clientset/versioned/typed/scylla/v1alpha1"
+	scyllav1alpha1informers "github.com/scylladb/scylla-operator/pkg/client/scylla/informers/externalversions/scylla/v1alpha1"
+	scyllav1alpha1listers "github.com/scylladb/scylla-operator/pkg/client/scylla/listers/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/resource"
 	"github.com/scylladb/scylla-operator/pkg/scheme"
 	appsv1 "k8s.io/api/apps/v1"
@@ -40,7 +40,7 @@ import (
 )
 
 const (
-	ControllerName = "ScyllaClusterController"
+	ControllerName = "ScyllaDatacenterController"
 	// maxSyncDuration enforces preemption. Do not raise the value! Controllers shouldn't actively wait,
 	// but rather use the queue.
 	maxSyncDuration = 40 * time.Second
@@ -50,7 +50,7 @@ const (
 
 var (
 	keyFunc                  = cache.DeletionHandlingMetaNamespaceKeyFunc
-	controllerGVK            = scyllav1.GroupVersion.WithKind("ScyllaCluster")
+	controllerGVK            = scyllav1alpha1.GroupVersion.WithKind("ScyllaDatacenter")
 	statefulSetControllerGVK = appsv1.SchemeGroupVersion.WithKind("StatefulSet")
 )
 
@@ -58,7 +58,7 @@ type Controller struct {
 	operatorImage string
 
 	kubeClient   kubernetes.Interface
-	scyllaClient scyllav1client.ScyllaV1Interface
+	scyllaClient scyllav1alpha1client.ScyllaV1alpha1Interface
 
 	podLister            corev1listers.PodLister
 	serviceLister        corev1listers.ServiceLister
@@ -67,7 +67,7 @@ type Controller struct {
 	roleBindingLister    rbacv1listers.RoleBindingLister
 	statefulSetLister    appsv1listers.StatefulSetLister
 	pdbLister            policyv1beta1listers.PodDisruptionBudgetLister
-	scyllaLister         scyllav1listers.ScyllaClusterLister
+	scyllaLister         scyllav1alpha1listers.ScyllaDatacenterLister
 
 	cachesToSync []cache.InformerSynced
 
@@ -78,7 +78,7 @@ type Controller struct {
 
 func NewController(
 	kubeClient kubernetes.Interface,
-	scyllaClient scyllav1client.ScyllaV1Interface,
+	scyllaClient scyllav1alpha1client.ScyllaV1alpha1Interface,
 	podInformer corev1informers.PodInformer,
 	serviceInformer corev1informers.ServiceInformer,
 	secretInformer corev1informers.SecretInformer,
@@ -86,7 +86,7 @@ func NewController(
 	roleBindingInformer rbacv1informers.RoleBindingInformer,
 	statefulSetInformer appsv1informers.StatefulSetInformer,
 	pdbInformer policyv1beta1informers.PodDisruptionBudgetInformer,
-	scyllaClusterInformer scyllav1informers.ScyllaClusterInformer,
+	scyllaDatacenterInformer scyllav1alpha1informers.ScyllaDatacenterInformer,
 	operatorImage string,
 ) (*Controller, error) {
 	eventBroadcaster := record.NewBroadcaster()
@@ -116,7 +116,7 @@ func NewController(
 		roleBindingLister:    roleBindingInformer.Lister(),
 		statefulSetLister:    statefulSetInformer.Lister(),
 		pdbLister:            pdbInformer.Lister(),
-		scyllaLister:         scyllaClusterInformer.Lister(),
+		scyllaLister:         scyllaDatacenterInformer.Lister(),
 
 		cachesToSync: []cache.InformerSynced{
 			podInformer.Informer().HasSynced,
@@ -126,7 +126,7 @@ func NewController(
 			roleBindingInformer.Informer().HasSynced,
 			statefulSetInformer.Informer().HasSynced,
 			pdbInformer.Informer().HasSynced,
-			scyllaClusterInformer.Informer().HasSynced,
+			scyllaDatacenterInformer.Informer().HasSynced,
 		},
 
 		eventRecorder: eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "scyllacluster-controller"}),
@@ -177,30 +177,30 @@ func NewController(
 		DeleteFunc: scc.deletePodDisruptionBudget,
 	})
 
-	scyllaClusterInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    scc.addScyllaCluster,
-		UpdateFunc: scc.updateScyllaCluster,
-		DeleteFunc: scc.deleteScyllaCluster,
+	scyllaDatacenterInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    scc.addScyllaDatacenter,
+		UpdateFunc: scc.updateScyllaDatacenter,
+		DeleteFunc: scc.deleteScyllaDatacenter,
 	})
 
 	return scc, nil
 }
 
-func (scc *Controller) processNextItem(ctx context.Context) bool {
-	key, quit := scc.queue.Get()
+func (sdc *Controller) processNextItem(ctx context.Context) bool {
+	key, quit := sdc.queue.Get()
 	if quit {
 		return false
 	}
-	defer scc.queue.Done(key)
+	defer sdc.queue.Done(key)
 
 	ctx, cancel := context.WithTimeout(ctx, maxSyncDuration)
 	defer cancel()
-	err := scc.sync(ctx, key.(string))
+	err := sdc.sync(ctx, key.(string))
 	// TODO: Do smarter filtering then just Reduce to handle cases like 2 conflict errors.
 	err = utilerrors.Reduce(err)
 	switch {
 	case err == nil:
-		scc.queue.Forget(key)
+		sdc.queue.Forget(key)
 		return true
 
 	case apierrors.IsConflict(err):
@@ -213,30 +213,30 @@ func (scc *Controller) processNextItem(ctx context.Context) bool {
 		utilruntime.HandleError(fmt.Errorf("syncing key '%v' failed: %v", key, err))
 	}
 
-	scc.queue.AddRateLimited(key)
+	sdc.queue.AddRateLimited(key)
 
 	return true
 }
 
-func (scc *Controller) runWorker(ctx context.Context) {
-	for scc.processNextItem(ctx) {
+func (sdc *Controller) runWorker(ctx context.Context) {
+	for sdc.processNextItem(ctx) {
 	}
 }
 
-func (scc *Controller) Run(ctx context.Context, workers int) {
+func (sdc *Controller) Run(ctx context.Context, workers int) {
 	defer utilruntime.HandleCrash()
 
-	klog.InfoS("Starting controller", "controller", "ScyllaCluster")
+	klog.InfoS("Starting controller", "controller", "ScyllaDatacenter")
 
 	var wg sync.WaitGroup
 	defer func() {
-		klog.InfoS("Shutting down controller", "controller", "ScyllaCluster")
-		scc.queue.ShutDown()
+		klog.InfoS("Shutting down controller", "controller", "ScyllaDatacenter")
+		sdc.queue.ShutDown()
 		wg.Wait()
-		klog.InfoS("Shut down controller", "controller", "ScyllaCluster")
+		klog.InfoS("Shut down controller", "controller", "ScyllaDatacenter")
 	}()
 
-	if !cache.WaitForNamedCacheSync(ControllerName, ctx.Done(), scc.cachesToSync...) {
+	if !cache.WaitForNamedCacheSync(ControllerName, ctx.Done(), sdc.cachesToSync...) {
 		return
 	}
 
@@ -244,14 +244,14 @@ func (scc *Controller) Run(ctx context.Context, workers int) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			wait.UntilWithContext(ctx, scc.runWorker, time.Second)
+			wait.UntilWithContext(ctx, sdc.runWorker, time.Second)
 		}()
 	}
 
 	<-ctx.Done()
 }
 
-func (scc *Controller) resolveScyllaClusterController(obj metav1.Object) *scyllav1.ScyllaCluster {
+func (sdc *Controller) resolveScyllaDatacenterController(obj metav1.Object) *scyllav1alpha1.ScyllaDatacenter {
 	controllerRef := metav1.GetControllerOf(obj)
 	if controllerRef == nil {
 		return nil
@@ -261,19 +261,19 @@ func (scc *Controller) resolveScyllaClusterController(obj metav1.Object) *scylla
 		return nil
 	}
 
-	sc, err := scc.scyllaLister.ScyllaClusters(obj.GetNamespace()).Get(controllerRef.Name)
+	sd, err := sdc.scyllaLister.ScyllaDatacenters(obj.GetNamespace()).Get(controllerRef.Name)
 	if err != nil {
 		return nil
 	}
 
-	if sc.UID != controllerRef.UID {
+	if sd.UID != controllerRef.UID {
 		return nil
 	}
 
-	return sc
+	return sd
 }
 
-func (scc *Controller) resolveStatefulSetController(obj metav1.Object) *appsv1.StatefulSet {
+func (sdc *Controller) resolveStatefulSetController(obj metav1.Object) *appsv1.StatefulSet {
 	controllerRef := metav1.GetControllerOf(obj)
 	if controllerRef == nil {
 		return nil
@@ -283,7 +283,7 @@ func (scc *Controller) resolveStatefulSetController(obj metav1.Object) *appsv1.S
 		return nil
 	}
 
-	sts, err := scc.statefulSetLister.StatefulSets(obj.GetNamespace()).Get(controllerRef.Name)
+	sts, err := sdc.statefulSetLister.StatefulSets(obj.GetNamespace()).Get(controllerRef.Name)
 	if err != nil {
 		return nil
 	}
@@ -295,33 +295,33 @@ func (scc *Controller) resolveStatefulSetController(obj metav1.Object) *appsv1.S
 	return sts
 }
 
-func (scc *Controller) resolveScyllaClusterControllerThroughStatefulSet(obj metav1.Object) *scyllav1.ScyllaCluster {
-	sts := scc.resolveStatefulSetController(obj)
+func (sdc *Controller) resolveScyllaDatacenterControllerThroughStatefulSet(obj metav1.Object) *scyllav1alpha1.ScyllaDatacenter {
+	sts := sdc.resolveStatefulSetController(obj)
 	if sts == nil {
 		return nil
 	}
-	sc := scc.resolveScyllaClusterController(sts)
-	if sc == nil {
+	sd := sdc.resolveScyllaDatacenterController(sts)
+	if sd == nil {
 		return nil
 	}
 
-	return sc
+	return sd
 }
 
-func (scc *Controller) enqueue(sc *scyllav1.ScyllaCluster) {
-	key, err := keyFunc(sc)
+func (sdc *Controller) enqueue(sd *scyllav1alpha1.ScyllaDatacenter) {
+	key, err := keyFunc(sd)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", sc, err))
+		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", sd, err))
 		return
 	}
 
-	klog.V(4).InfoS("Enqueuing", "ScyllaCluster", klog.KObj(sc))
-	scc.queue.Add(key)
+	klog.V(4).InfoS("Enqueuing", "ScyllaDatacenter", klog.KObj(sd))
+	sdc.queue.Add(key)
 }
 
-func (scc *Controller) enqueueOwner(obj metav1.Object) {
-	sc := scc.resolveScyllaClusterController(obj)
-	if sc == nil {
+func (sdc *Controller) enqueueOwner(obj metav1.Object) {
+	sd := sdc.resolveScyllaDatacenterController(obj)
+	if sd == nil {
 		return
 	}
 
@@ -331,13 +331,13 @@ func (scc *Controller) enqueueOwner(obj metav1.Object) {
 		return
 	}
 
-	klog.V(4).InfoS("Enqueuing owner", gvk.Kind, klog.KObj(obj), "ScyllaCluster", klog.KObj(sc))
-	scc.enqueue(sc)
+	klog.V(4).InfoS("Enqueuing owner", gvk.Kind, klog.KObj(obj), "ScyllaDatacenter", klog.KObj(sd))
+	sdc.enqueue(sd)
 }
 
-func (scc *Controller) enqueueOwnerThroughStatefulSet(obj metav1.Object) {
-	sc := scc.resolveScyllaClusterControllerThroughStatefulSet(obj)
-	if sc == nil {
+func (sdc *Controller) enqueueOwnerThroughStatefulSet(obj metav1.Object) {
+	sd := sdc.resolveScyllaDatacenterControllerThroughStatefulSet(obj)
+	if sd == nil {
 		return
 	}
 
@@ -348,26 +348,26 @@ func (scc *Controller) enqueueOwnerThroughStatefulSet(obj metav1.Object) {
 	}
 
 	klog.V(4).InfoS(fmt.Sprintf("%s added", gvk.Kind), gvk.Kind, klog.KObj(obj))
-	scc.enqueue(sc)
+	sdc.enqueue(sd)
 }
 
-func (scc *Controller) enqueueScyllaClusterFromPod(pod *corev1.Pod) {
-	sc := scc.resolveScyllaClusterControllerThroughStatefulSet(pod)
-	if sc == nil {
+func (sdc *Controller) enqueueScyllaDatacenterFromPod(pod *corev1.Pod) {
+	sd := sdc.resolveScyllaDatacenterControllerThroughStatefulSet(pod)
+	if sd == nil {
 		return
 	}
 
-	klog.V(4).InfoS("Pod added", "ScyllaCluster", klog.KObj(sc))
-	scc.enqueue(sc)
+	klog.V(4).InfoS("Pod added", "ScyllaDatacenter", klog.KObj(sd))
+	sdc.enqueue(sd)
 }
 
-func (scc *Controller) addService(obj interface{}) {
+func (sdc *Controller) addService(obj interface{}) {
 	svc := obj.(*corev1.Service)
 	klog.V(4).InfoS("Observed addition of Service", "Service", klog.KObj(svc))
-	scc.enqueueOwner(svc)
+	sdc.enqueueOwner(svc)
 }
 
-func (scc *Controller) updateService(old, cur interface{}) {
+func (sdc *Controller) updateService(old, cur interface{}) {
 	oldService := old.(*corev1.Service)
 	currentService := cur.(*corev1.Service)
 
@@ -377,17 +377,17 @@ func (scc *Controller) updateService(old, cur interface{}) {
 			utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", oldService, err))
 			return
 		}
-		scc.deleteService(cache.DeletedFinalStateUnknown{
+		sdc.deleteService(cache.DeletedFinalStateUnknown{
 			Key: key,
 			Obj: oldService,
 		})
 	}
 
 	klog.V(4).InfoS("Observed update of Service", "Service", klog.KObj(oldService))
-	scc.enqueueOwner(currentService)
+	sdc.enqueueOwner(currentService)
 }
 
-func (scc *Controller) deleteService(obj interface{}) {
+func (sdc *Controller) deleteService(obj interface{}) {
 	svc, ok := obj.(*corev1.Service)
 	if !ok {
 		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
@@ -402,16 +402,16 @@ func (scc *Controller) deleteService(obj interface{}) {
 		}
 	}
 	klog.V(4).InfoS("Observed deletion of Service", "Service", klog.KObj(svc))
-	scc.enqueueOwner(svc)
+	sdc.enqueueOwner(svc)
 }
 
-func (scc *Controller) addSecret(obj interface{}) {
+func (sdc *Controller) addSecret(obj interface{}) {
 	secret := obj.(*corev1.Secret)
 	klog.V(4).InfoS("Observed addition of Secret", "Secret", klog.KObj(secret))
-	scc.enqueueOwner(secret)
+	sdc.enqueueOwner(secret)
 }
 
-func (scc *Controller) updateSecret(old, cur interface{}) {
+func (sdc *Controller) updateSecret(old, cur interface{}) {
 	oldSecret := old.(*corev1.Secret)
 	currentSecret := cur.(*corev1.Secret)
 
@@ -421,17 +421,17 @@ func (scc *Controller) updateSecret(old, cur interface{}) {
 			utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", oldSecret, err))
 			return
 		}
-		scc.deleteSecret(cache.DeletedFinalStateUnknown{
+		sdc.deleteSecret(cache.DeletedFinalStateUnknown{
 			Key: key,
 			Obj: oldSecret,
 		})
 	}
 
 	klog.V(4).InfoS("Observed update of Secret", "Secret", klog.KObj(oldSecret))
-	scc.enqueueOwner(currentSecret)
+	sdc.enqueueOwner(currentSecret)
 }
 
-func (scc *Controller) deleteSecret(obj interface{}) {
+func (sdc *Controller) deleteSecret(obj interface{}) {
 	secret, ok := obj.(*corev1.Secret)
 	if !ok {
 		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
@@ -446,16 +446,16 @@ func (scc *Controller) deleteSecret(obj interface{}) {
 		}
 	}
 	klog.V(4).InfoS("Observed deletion of Secret", "Secret", klog.KObj(secret))
-	scc.enqueueOwner(secret)
+	sdc.enqueueOwner(secret)
 }
 
-func (sac *Controller) addServiceAccount(obj interface{}) {
+func (sdc *Controller) addServiceAccount(obj interface{}) {
 	sa := obj.(*corev1.ServiceAccount)
 	klog.V(4).InfoS("Observed addition of ServiceAccount", "ServiceAccount", klog.KObj(sa))
-	sac.enqueueOwner(sa)
+	sdc.enqueueOwner(sa)
 }
 
-func (sac *Controller) updateServiceAccount(old, cur interface{}) {
+func (sdc *Controller) updateServiceAccount(old, cur interface{}) {
 	oldSA := old.(*corev1.ServiceAccount)
 	currentSA := cur.(*corev1.ServiceAccount)
 
@@ -465,17 +465,17 @@ func (sac *Controller) updateServiceAccount(old, cur interface{}) {
 			utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", oldSA, err))
 			return
 		}
-		sac.deleteServiceAccount(cache.DeletedFinalStateUnknown{
+		sdc.deleteServiceAccount(cache.DeletedFinalStateUnknown{
 			Key: key,
 			Obj: oldSA,
 		})
 	}
 
 	klog.V(4).InfoS("Observed update of ServiceAccount", "ServiceAccount", klog.KObj(oldSA))
-	sac.enqueueOwner(currentSA)
+	sdc.enqueueOwner(currentSA)
 }
 
-func (sac *Controller) deleteServiceAccount(obj interface{}) {
+func (sdc *Controller) deleteServiceAccount(obj interface{}) {
 	svc, ok := obj.(*corev1.ServiceAccount)
 	if !ok {
 		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
@@ -490,16 +490,16 @@ func (sac *Controller) deleteServiceAccount(obj interface{}) {
 		}
 	}
 	klog.V(4).InfoS("Observed deletion of ServiceAccount", "ServiceAccount", klog.KObj(svc))
-	sac.enqueueOwner(svc)
+	sdc.enqueueOwner(svc)
 }
 
-func (sac *Controller) addRoleBinding(obj interface{}) {
+func (sdc *Controller) addRoleBinding(obj interface{}) {
 	roleBinding := obj.(*rbacv1.RoleBinding)
 	klog.V(4).InfoS("Observed addition of RoleBinding", "RoleBinding", klog.KObj(roleBinding))
-	sac.enqueueOwner(roleBinding)
+	sdc.enqueueOwner(roleBinding)
 }
 
-func (sac *Controller) updateRoleBinding(old, cur interface{}) {
+func (sdc *Controller) updateRoleBinding(old, cur interface{}) {
 	oldRoleBinding := old.(*rbacv1.RoleBinding)
 	currentRoleBinding := cur.(*rbacv1.RoleBinding)
 
@@ -509,17 +509,17 @@ func (sac *Controller) updateRoleBinding(old, cur interface{}) {
 			utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", oldRoleBinding, err))
 			return
 		}
-		sac.deleteRoleBinding(cache.DeletedFinalStateUnknown{
+		sdc.deleteRoleBinding(cache.DeletedFinalStateUnknown{
 			Key: key,
 			Obj: oldRoleBinding,
 		})
 	}
 
 	klog.V(4).InfoS("Observed update of RoleBinding", "RoleBinding", klog.KObj(oldRoleBinding))
-	sac.enqueueOwner(currentRoleBinding)
+	sdc.enqueueOwner(currentRoleBinding)
 }
 
-func (sac *Controller) deleteRoleBinding(obj interface{}) {
+func (sdc *Controller) deleteRoleBinding(obj interface{}) {
 	roleBinding, ok := obj.(*rbacv1.RoleBinding)
 	if !ok {
 		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
@@ -534,16 +534,16 @@ func (sac *Controller) deleteRoleBinding(obj interface{}) {
 		}
 	}
 	klog.V(4).InfoS("Observed deletion of RoleBinding", "RoleBinding", klog.KObj(roleBinding))
-	sac.enqueueOwner(roleBinding)
+	sdc.enqueueOwner(roleBinding)
 }
 
-func (scc *Controller) addPod(obj interface{}) {
+func (sdc *Controller) addPod(obj interface{}) {
 	pod := obj.(*corev1.Pod)
 	klog.V(4).InfoS("Observed addition of Pod", "Pod", klog.KObj(pod))
-	scc.enqueueScyllaClusterFromPod(pod)
+	sdc.enqueueScyllaDatacenterFromPod(pod)
 }
 
-func (scc *Controller) updatePod(old, cur interface{}) {
+func (sdc *Controller) updatePod(old, cur interface{}) {
 	oldPod := old.(*corev1.Pod)
 	currentPod := cur.(*corev1.Pod)
 
@@ -553,17 +553,17 @@ func (scc *Controller) updatePod(old, cur interface{}) {
 			utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", oldPod, err))
 			return
 		}
-		scc.deletePod(cache.DeletedFinalStateUnknown{
+		sdc.deletePod(cache.DeletedFinalStateUnknown{
 			Key: key,
 			Obj: oldPod,
 		})
 	}
 
 	klog.V(4).InfoS("Observed update of Pod", "Pod", klog.KObj(oldPod))
-	scc.enqueueScyllaClusterFromPod(currentPod)
+	sdc.enqueueScyllaDatacenterFromPod(currentPod)
 }
 
-func (scc *Controller) deletePod(obj interface{}) {
+func (sdc *Controller) deletePod(obj interface{}) {
 	pod, ok := obj.(*corev1.Pod)
 	if !ok {
 		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
@@ -578,16 +578,16 @@ func (scc *Controller) deletePod(obj interface{}) {
 		}
 	}
 	klog.V(4).InfoS("Observed deletion of Pod", "Pod", klog.KObj(pod), "RV", pod.ResourceVersion)
-	scc.enqueueScyllaClusterFromPod(pod)
+	sdc.enqueueScyllaDatacenterFromPod(pod)
 }
 
-func (scc *Controller) addStatefulSet(obj interface{}) {
+func (sdc *Controller) addStatefulSet(obj interface{}) {
 	sts := obj.(*appsv1.StatefulSet)
 	klog.V(4).InfoS("Observed addition of StatefulSet", "StatefulSet", klog.KObj(sts), "RV", sts.ResourceVersion)
-	scc.enqueueOwner(sts)
+	sdc.enqueueOwner(sts)
 }
 
-func (scc *Controller) updateStatefulSet(old, cur interface{}) {
+func (sdc *Controller) updateStatefulSet(old, cur interface{}) {
 	oldSts := old.(*appsv1.StatefulSet)
 	currentSts := cur.(*appsv1.StatefulSet)
 
@@ -597,17 +597,17 @@ func (scc *Controller) updateStatefulSet(old, cur interface{}) {
 			utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", oldSts, err))
 			return
 		}
-		scc.deleteStatefulSet(cache.DeletedFinalStateUnknown{
+		sdc.deleteStatefulSet(cache.DeletedFinalStateUnknown{
 			Key: key,
 			Obj: oldSts,
 		})
 	}
 
 	klog.V(4).InfoS("Observed update of StatefulSet", "StatefulSet", klog.KObj(oldSts), "NewRV", currentSts.ResourceVersion)
-	scc.enqueueOwner(currentSts)
+	sdc.enqueueOwner(currentSts)
 }
 
-func (scc *Controller) deleteStatefulSet(obj interface{}) {
+func (sdc *Controller) deleteStatefulSet(obj interface{}) {
 	sts, ok := obj.(*appsv1.StatefulSet)
 	if !ok {
 		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
@@ -622,16 +622,16 @@ func (scc *Controller) deleteStatefulSet(obj interface{}) {
 		}
 	}
 	klog.V(4).InfoS("Observed deletion of StatefulSet", "StatefulSet", klog.KObj(sts), "RV", sts.ResourceVersion)
-	scc.enqueueOwner(sts)
+	sdc.enqueueOwner(sts)
 }
 
-func (scc *Controller) addPodDisruptionBudget(obj interface{}) {
+func (sdc *Controller) addPodDisruptionBudget(obj interface{}) {
 	pdb := obj.(*policyv1beta1.PodDisruptionBudget)
 	klog.V(4).InfoS("Observed addition of PodDisruptionBudget", "PodDisruptionBudget", klog.KObj(pdb))
-	scc.enqueueOwner(pdb)
+	sdc.enqueueOwner(pdb)
 }
 
-func (scc *Controller) updatePodDisruptionBudget(old, cur interface{}) {
+func (sdc *Controller) updatePodDisruptionBudget(old, cur interface{}) {
 	oldPDB := old.(*policyv1beta1.PodDisruptionBudget)
 	currentPDB := cur.(*policyv1beta1.PodDisruptionBudget)
 
@@ -641,17 +641,17 @@ func (scc *Controller) updatePodDisruptionBudget(old, cur interface{}) {
 			utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", oldPDB, err))
 			return
 		}
-		scc.deletePodDisruptionBudget(cache.DeletedFinalStateUnknown{
+		sdc.deletePodDisruptionBudget(cache.DeletedFinalStateUnknown{
 			Key: key,
 			Obj: oldPDB,
 		})
 	}
 
 	klog.V(4).InfoS("Observed update of PodDisruptionBudget", "PodDisruptionBudget", klog.KObj(oldPDB))
-	scc.enqueueOwner(currentPDB)
+	sdc.enqueueOwner(currentPDB)
 }
 
-func (scc *Controller) deletePodDisruptionBudget(obj interface{}) {
+func (sdc *Controller) deletePodDisruptionBudget(obj interface{}) {
 	pdb, ok := obj.(*policyv1beta1.PodDisruptionBudget)
 	if !ok {
 		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
@@ -666,49 +666,49 @@ func (scc *Controller) deletePodDisruptionBudget(obj interface{}) {
 		}
 	}
 	klog.V(4).InfoS("Observed deletion of PodDisruptionBudget", "PodDisruptionBudget", klog.KObj(pdb))
-	scc.enqueueOwner(pdb)
+	sdc.enqueueOwner(pdb)
 }
 
-func (scc *Controller) addScyllaCluster(obj interface{}) {
-	sc := obj.(*scyllav1.ScyllaCluster)
-	klog.V(4).InfoS("Observed addition of ScyllaCluster", "ScyllaCluster", klog.KObj(sc))
-	scc.enqueue(sc)
+func (sdc *Controller) addScyllaDatacenter(obj interface{}) {
+	sd := obj.(*scyllav1alpha1.ScyllaDatacenter)
+	klog.V(4).InfoS("Observed addition of ScyllaDatacenter", "ScyllaDatacenter", klog.KObj(sd))
+	sdc.enqueue(sd)
 }
 
-func (scc *Controller) updateScyllaCluster(old, cur interface{}) {
-	oldSC := old.(*scyllav1.ScyllaCluster)
-	currentSC := cur.(*scyllav1.ScyllaCluster)
+func (sdc *Controller) updateScyllaDatacenter(old, cur interface{}) {
+	oldSD := old.(*scyllav1alpha1.ScyllaDatacenter)
+	currentSD := cur.(*scyllav1alpha1.ScyllaDatacenter)
 
-	if currentSC.UID != oldSC.UID {
-		key, err := keyFunc(oldSC)
+	if currentSD.UID != oldSD.UID {
+		key, err := keyFunc(oldSD)
 		if err != nil {
-			utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", oldSC, err))
+			utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", oldSD, err))
 			return
 		}
-		scc.deleteScyllaCluster(cache.DeletedFinalStateUnknown{
+		sdc.deleteScyllaDatacenter(cache.DeletedFinalStateUnknown{
 			Key: key,
-			Obj: oldSC,
+			Obj: oldSD,
 		})
 	}
 
-	klog.V(4).InfoS("Observed update of ScyllaCluster", "ScyllaCluster", klog.KObj(oldSC))
-	scc.enqueue(currentSC)
+	klog.V(4).InfoS("Observed update of ScyllaDatacenter", "ScyllaDatacenter", klog.KObj(oldSD))
+	sdc.enqueue(currentSD)
 }
 
-func (scc *Controller) deleteScyllaCluster(obj interface{}) {
-	sc, ok := obj.(*scyllav1.ScyllaCluster)
+func (sdc *Controller) deleteScyllaDatacenter(obj interface{}) {
+	sd, ok := obj.(*scyllav1alpha1.ScyllaDatacenter)
 	if !ok {
 		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
 			return
 		}
-		sc, ok = tombstone.Obj.(*scyllav1.ScyllaCluster)
+		sd, ok = tombstone.Obj.(*scyllav1alpha1.ScyllaDatacenter)
 		if !ok {
-			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a ScyllaCluster %#v", obj))
+			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a ScyllaDatacenter %#v", obj))
 			return
 		}
 	}
-	klog.V(4).InfoS("Observed deletion of ScyllaCluster", "ScyllaCluster", klog.KObj(sc))
-	scc.enqueue(sc)
+	klog.V(4).InfoS("Observed deletion of ScyllaDatacenter", "ScyllaDatacenter", klog.KObj(sd))
+	sdc.enqueue(sd)
 }

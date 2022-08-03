@@ -202,7 +202,7 @@ func (s *ScyllaConfig) setupEntrypoint(ctx context.Context) (*exec.Cmd, error) {
 
 	// Check if we need to run in developer mode
 	devMode := "0"
-	cluster, err := s.scyllaClient.ScyllaV1().ScyllaClusters(s.member.Namespace).Get(ctx, s.member.Cluster, metav1.GetOptions{})
+	sd, err := s.scyllaClient.ScyllaV1alpha1().ScyllaDatacenters(s.member.Namespace).Get(ctx, s.member.Cluster, metav1.GetOptions{})
 	if err != nil {
 		return nil, errors.Wrap(err, "error getting cluster")
 	}
@@ -228,10 +228,10 @@ func (s *ScyllaConfig) setupEntrypoint(ctx context.Context) (*exec.Cmd, error) {
 		"smp":                   pointer.StringPtr(strconv.Itoa(s.cpuCount)),
 		"prometheus-address":    &prometheusAddress,
 	}
-	if cluster.Spec.Alternator.Enabled() {
-		args["alternator-port"] = pointer.StringPtr(strconv.Itoa(int(cluster.Spec.Alternator.Port)))
-		if cluster.Spec.Alternator.WriteIsolation != "" {
-			args["alternator-write-isolation"] = pointer.StringPtr(cluster.Spec.Alternator.WriteIsolation)
+	if sd.Spec.Alternator.Enabled() {
+		args["alternator-port"] = pointer.StringPtr(strconv.Itoa(int(sd.Spec.Alternator.Port)))
+		if sd.Spec.Alternator.WriteIsolation != "" {
+			args["alternator-write-isolation"] = pointer.StringPtr(sd.Spec.Alternator.WriteIsolation)
 		}
 	}
 	// If node is being replaced
@@ -243,7 +243,7 @@ func (s *ScyllaConfig) setupEntrypoint(ctx context.Context) (*exec.Cmd, error) {
 	// eg. parse the cpuset and check the number of cpus is the same as cpu limits
 	// Now we rely completely on the user to have the cpu policy correctly
 	// configured in the kubelet, otherwise scylla will crash.
-	if cluster.Spec.CpuSet {
+	if sd.Spec.CpuSet {
 		cpusAllowed, err := getCPUsAllowedList("/proc/1/status")
 		if err != nil {
 			return nil, errors.WithStack(err)
@@ -254,15 +254,15 @@ func (s *ScyllaConfig) setupEntrypoint(ctx context.Context) (*exec.Cmd, error) {
 		args["cpuset"] = &cpusAllowed
 	}
 
-	version := semver.NewScyllaVersion(cluster.Spec.Version)
+	version := semver.NewScyllaVersion(sd.Spec.Version)
 
 	klog.InfoS("Scylla version detected", "version", version)
 
-	if len(cluster.Spec.ScyllaArgs) > 0 {
+	if len(sd.Spec.ScyllaArgs) > 0 {
 		if !version.SupportFeatureUnsafe(semver.ScyllaVersionThatSupportsArgs) {
-			klog.InfoS("This scylla version does not support ScyllaArgs. ScyllaArgs is ignored", "version", cluster.Spec.Version)
+			klog.InfoS("This scylla version does not support ScyllaArgs. ScyllaArgs is ignored", "version", sd.Spec.Version)
 		} else {
-			appendScyllaArguments(ctx, s, cluster.Spec.ScyllaArgs, args)
+			appendScyllaArguments(ctx, s, sd.Spec.ScyllaArgs, args)
 		}
 	}
 

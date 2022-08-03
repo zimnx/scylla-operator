@@ -8,6 +8,7 @@ import (
 
 	"github.com/blang/semver"
 	scyllav1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1"
+	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
 	"github.com/scylladb/scylla-operator/pkg/helpers"
 	"github.com/scylladb/scylla-operator/pkg/naming"
@@ -43,11 +44,11 @@ func snapshotTag(prefix string, t time.Time) string {
 	return fmt.Sprintf("so_%s_%sUTC", prefix, t.UTC().Format(time.RFC3339))
 }
 
-func (scc *Controller) makeRacks(sc *scyllav1.ScyllaCluster, statefulSets map[string]*appsv1.StatefulSet) ([]*appsv1.StatefulSet, error) {
-	sets := make([]*appsv1.StatefulSet, 0, len(sc.Spec.Datacenter.Racks))
-	for _, rack := range sc.Spec.Datacenter.Racks {
-		oldSts := statefulSets[naming.StatefulSetNameForRack(rack, sc)]
-		sts, err := StatefulSetForRack(rack, sc, oldSts, scc.operatorImage)
+func (sdc *Controller) makeRacks(sd *scyllav1alpha1.ScyllaDatacenter, statefulSets map[string]*appsv1.StatefulSet) ([]*appsv1.StatefulSet, error) {
+	sets := make([]*appsv1.StatefulSet, 0, len(sd.Spec.Datacenter.Racks))
+	for _, rack := range sd.Spec.Datacenter.Racks {
+		oldSts := statefulSets[naming.StatefulSetNameForRack(rack, sd)]
+		sts, err := StatefulSetForRack(rack, sd, oldSts, sdc.operatorImage)
 		if err != nil {
 			return nil, err
 		}
@@ -57,11 +58,11 @@ func (scc *Controller) makeRacks(sc *scyllav1.ScyllaCluster, statefulSets map[st
 	return sets, nil
 }
 
-func (scc *Controller) getScyllaManagerAgentToken(ctx context.Context, sc *scyllav1.ScyllaCluster) (string, error) {
-	secretName := naming.AgentAuthTokenSecretName(sc.Name)
-	secret, err := scc.secretLister.Secrets(sc.Namespace).Get(secretName)
+func (sdc *Controller) getScyllaManagerAgentToken(ctx context.Context, sd *scyllav1alpha1.ScyllaDatacenter) (string, error) {
+	secretName := naming.AgentAuthTokenSecretName(sd.Name)
+	secret, err := sdc.secretLister.Secrets(sd.Namespace).Get(secretName)
 	if err != nil {
-		return "", fmt.Errorf("can't get manager agent auth secret %s/%s: %w", sc.Namespace, secretName, err)
+		return "", fmt.Errorf("can't get manager agent auth secret %s/%s: %w", sd.Namespace, secretName, err)
 	}
 
 	token, err := helpers.GetAgentAuthTokenFromSecret(secret)
@@ -72,8 +73,8 @@ func (scc *Controller) getScyllaManagerAgentToken(ctx context.Context, sc *scyll
 	return token, nil
 }
 
-func (scc *Controller) getScyllaClient(ctx context.Context, sc *scyllav1.ScyllaCluster, hosts []string) (*scyllaclient.Client, error) {
-	managerAgentAuthToken, err := scc.getScyllaManagerAgentToken(ctx, sc)
+func (sdc *Controller) getScyllaClient(ctx context.Context, sd *scyllav1alpha1.ScyllaDatacenter, hosts []string) (*scyllaclient.Client, error) {
+	managerAgentAuthToken, err := sdc.getScyllaManagerAgentToken(ctx, sd)
 	if err != nil {
 		return nil, fmt.Errorf("can't get manager agent auth token: %w", err)
 	}
@@ -86,7 +87,7 @@ func (scc *Controller) getScyllaClient(ctx context.Context, sc *scyllav1.ScyllaC
 	return client, nil
 }
 
-func (scc *Controller) backupKeyspaces(ctx context.Context, scyllaClient *scyllaclient.Client, hosts, keyspaces []string, snapshotTag string) error {
+func (sdc *Controller) backupKeyspaces(ctx context.Context, scyllaClient *scyllaclient.Client, hosts, keyspaces []string, snapshotTag string) error {
 	return parallel.ForEach(len(hosts), func(i int) error {
 		host := hosts[i]
 
@@ -110,7 +111,7 @@ func (scc *Controller) backupKeyspaces(ctx context.Context, scyllaClient *scylla
 	})
 }
 
-func (scc *Controller) removeSnapshot(ctx context.Context, scyllaClient *scyllaclient.Client, hosts, snapshotTags []string) error {
+func (sdc *Controller) removeSnapshot(ctx context.Context, scyllaClient *scyllaclient.Client, hosts, snapshotTags []string) error {
 	return parallel.ForEach(len(hosts), func(i int) error {
 		host := hosts[i]
 
@@ -137,60 +138,60 @@ func (scc *Controller) removeSnapshot(ctx context.Context, scyllaClient *scyllac
 
 // beforeUpgrade runs hooks before a cluster upgrade starts.
 // It returns true if the action is done, false if the caller should repeat later.
-func (scc *Controller) beforeUpgrade(ctx context.Context, sc *scyllav1.ScyllaCluster, services map[string]*corev1.Service) (bool, error) {
-	klog.V(2).InfoS("Running pre-upgrade hook", "ScyllaCluster", klog.KObj(sc))
-	defer klog.V(2).InfoS("Finished running pre-upgrade hook", "ScyllaCluster", klog.KObj(sc))
+func (sdc *Controller) beforeUpgrade(ctx context.Context, sd *scyllav1alpha1.ScyllaDatacenter, services map[string]*corev1.Service) (bool, error) {
+	klog.V(2).InfoS("Running pre-upgrade hook", "ScyllaDatacenter", klog.KObj(sd))
+	defer klog.V(2).InfoS("Finished running pre-upgrade hook", "ScyllaDatacenter", klog.KObj(sd))
 
-	hosts, err := controllerhelpers.GetRequiredScyllaHosts(sc, services)
+	hosts, err := controllerhelpers.GetRequiredScyllaHosts(sd, services)
 	if err != nil {
 		return true, err
 	}
 
-	scyllaClient, err := scc.getScyllaClient(ctx, sc, hosts)
+	scyllaClient, err := sdc.getScyllaClient(ctx, sd, hosts)
 	if err != nil {
 		return true, err
 	}
 
-	klog.V(4).InfoS("Checking schema agreement", "ScyllaCluster", klog.KObj(sc))
+	klog.V(4).InfoS("Checking schema agreement", "ScyllaDatacenter", klog.KObj(sd))
 	hasSchemaAgreement, err := scyllaClient.HasSchemaAgreement(ctx)
 	if err != nil {
 		return true, fmt.Errorf("awaiting schema agreement: %w", err)
 	}
 
 	if !hasSchemaAgreement {
-		klog.V(4).InfoS("Schema is not agreed yet, will retry.", "ScyllaCluster", klog.KObj(sc))
+		klog.V(4).InfoS("Schema is not agreed yet, will retry.", "ScyllaDatacenter", klog.KObj(sd))
 		return false, nil
 	}
-	klog.V(4).InfoS("Schema agreed", "ScyllaCluster", klog.KObj(sc))
+	klog.V(4).InfoS("Schema agreed", "ScyllaDatacenter", klog.KObj(sd))
 
 	// Snapshot system tables.
 
-	klog.V(4).InfoS("Backing up system keyspaces", "ScyllaCluster", klog.KObj(sc))
-	err = scc.backupKeyspaces(ctx, scyllaClient, hosts, systemKeyspaces, sc.Status.Upgrade.SystemSnapshotTag)
+	klog.V(4).InfoS("Backing up system keyspaces", "ScyllaDatacenter", klog.KObj(sd))
+	err = sdc.backupKeyspaces(ctx, scyllaClient, hosts, systemKeyspaces, sd.Status.Upgrade.SystemSnapshotTag)
 	if err != nil {
 		return true, err
 	}
-	klog.V(4).InfoS("Backed up system keyspaces", "ScyllaCluster", klog.KObj(sc))
+	klog.V(4).InfoS("Backed up system keyspaces", "ScyllaDatacenter", klog.KObj(sd))
 
 	return true, nil
 }
 
-func (scc *Controller) afterUpgrade(ctx context.Context, sc *scyllav1.ScyllaCluster, services map[string]*corev1.Service) error {
-	klog.V(2).InfoS("Running post-upgrade hook", "ScyllaCluster", klog.KObj(sc))
-	defer klog.V(2).InfoS("Finished running post-upgrade hook", "ScyllaCluster", klog.KObj(sc))
+func (sdc *Controller) afterUpgrade(ctx context.Context, sd *scyllav1alpha1.ScyllaDatacenter, services map[string]*corev1.Service) error {
+	klog.V(2).InfoS("Running post-upgrade hook", "ScyllaDatacenter", klog.KObj(sd))
+	defer klog.V(2).InfoS("Finished running post-upgrade hook", "ScyllaDatacenter", klog.KObj(sd))
 
-	hosts, err := controllerhelpers.GetRequiredScyllaHosts(sc, services)
+	hosts, err := controllerhelpers.GetRequiredScyllaHosts(sd, services)
 	if err != nil {
 		return err
 	}
 
-	scyllaClient, err := scc.getScyllaClient(ctx, sc, hosts)
+	scyllaClient, err := sdc.getScyllaClient(ctx, sd, hosts)
 	if err != nil {
 		return err
 	}
 
 	// Clear system backup.
-	err = scc.removeSnapshot(ctx, scyllaClient, hosts, []string{sc.Status.Upgrade.SystemSnapshotTag})
+	err = sdc.removeSnapshot(ctx, scyllaClient, hosts, []string{sd.Status.Upgrade.SystemSnapshotTag})
 	if err != nil {
 		return err
 	}
@@ -200,19 +201,19 @@ func (scc *Controller) afterUpgrade(ctx context.Context, sc *scyllav1.ScyllaClus
 
 // beforeNodeUpgrade runs hooks before a node upgrade.
 // It returns true if the action is done, false if the caller should repeat later.
-func (scc *Controller) beforeNodeUpgrade(ctx context.Context, sc *scyllav1.ScyllaCluster, sts *appsv1.StatefulSet, ordinal int32, services map[string]*corev1.Service) (bool, error) {
-	klog.V(2).InfoS("Running node pre-upgrade hook", "ScyllaCluster", klog.KObj(sc))
-	defer klog.V(2).InfoS("Finished running node pre-upgrade hook", "ScyllaCluster", klog.KObj(sc))
+func (sdc *Controller) beforeNodeUpgrade(ctx context.Context, sd *scyllav1alpha1.ScyllaDatacenter, sts *appsv1.StatefulSet, ordinal int32, services map[string]*corev1.Service) (bool, error) {
+	klog.V(2).InfoS("Running node pre-upgrade hook", "ScyllaDatacenter", klog.KObj(sd))
+	defer klog.V(2).InfoS("Finished running node pre-upgrade hook", "ScyllaDatacenter", klog.KObj(sd))
 
 	// Make sure node is marked as under maintenance so liveness checks won't fail during drain.
 	svcName := fmt.Sprintf("%s-%d", sts.Name, ordinal)
 	svc, ok := services[svcName]
 	if !ok {
-		return true, fmt.Errorf("missing service %s/%s", sc.Namespace, svcName)
+		return true, fmt.Errorf("missing service %s/%s", sd.Namespace, svcName)
 	}
 
 	// Enable maintenance mode to make sure liveness checks won't fail.
-	_, err := scc.kubeClient.CoreV1().Services(svc.Namespace).Patch(
+	_, err := sdc.kubeClient.CoreV1().Services(svc.Namespace).Patch(
 		ctx,
 		svc.Name,
 		types.StrategicMergePatchType,
@@ -230,7 +231,7 @@ func (scc *Controller) beforeNodeUpgrade(ctx context.Context, sc *scyllav1.Scyll
 		return true, err
 	}
 
-	scyllaClient, err := scc.getScyllaClient(ctx, sc, []string{host})
+	scyllaClient, err := sdc.getScyllaClient(ctx, sd, []string{host})
 	if err != nil {
 		return true, err
 	}
@@ -241,17 +242,17 @@ func (scc *Controller) beforeNodeUpgrade(ctx context.Context, sc *scyllav1.Scyll
 	}
 
 	if om.IsDraining() {
-		klog.V(4).InfoS("Waiting for scylla node to finish draining", "ScyllaCluster", klog.KObj(sc), "Host", host)
+		klog.V(4).InfoS("Waiting for scylla node to finish draining", "ScyllaDatacenter", klog.KObj(sd), "Host", host)
 		return false, nil
 	}
 
 	if !om.IsDrained() {
-		klog.V(4).InfoS("Draining scylla node", "ScyllaCluster", klog.KObj(sc), "Host", host)
+		klog.V(4).InfoS("Draining scylla node", "ScyllaDatacenter", klog.KObj(sd), "Host", host)
 		err = scyllaClient.Drain(ctx, host)
 		if err != nil {
 			return true, err
 		}
-		klog.V(4).InfoS("Drained scylla node", "ScyllaCluster", klog.KObj(sc), "Host", host)
+		klog.V(4).InfoS("Drained scylla node", "ScyllaDatacenter", klog.KObj(sd), "Host", host)
 	}
 
 	// Create data backup.
@@ -263,15 +264,15 @@ func (scc *Controller) beforeNodeUpgrade(ctx context.Context, sc *scyllav1.Scyll
 
 	keyspaceSet := setsutil.NewString(allKeyspaces...)
 	keyspaceSet.Delete(systemKeyspaces...)
-	klog.V(4).InfoS("Backing up data keyspaces", "ScyllaCluster", klog.KObj(sc), "Host", host)
-	err = scc.backupKeyspaces(ctx, scyllaClient, []string{host}, keyspaceSet.List(), sc.Status.Upgrade.DataSnapshotTag)
+	klog.V(4).InfoS("Backing up data keyspaces", "ScyllaDatacenter", klog.KObj(sd), "Host", host)
+	err = sdc.backupKeyspaces(ctx, scyllaClient, []string{host}, keyspaceSet.List(), sd.Status.Upgrade.DataSnapshotTag)
 	if err != nil {
 		return true, err
 	}
-	klog.V(4).InfoS("Backed up data keyspaces", "ScyllaCluster", klog.KObj(sc), "Host", host)
+	klog.V(4).InfoS("Backed up data keyspaces", "ScyllaDatacenter", klog.KObj(sd), "Host", host)
 
 	// Disable maintenance mode.
-	_, err = scc.kubeClient.CoreV1().Services(svc.Namespace).Patch(
+	_, err = sdc.kubeClient.CoreV1().Services(svc.Namespace).Patch(
 		ctx,
 		svc.Name,
 		types.StrategicMergePatchType,
@@ -288,34 +289,34 @@ func (scc *Controller) beforeNodeUpgrade(ctx context.Context, sc *scyllav1.Scyll
 	// Kubernetes can't evict pods when DesiredHealthy == 0 and it's already down, so we need to use DELETE
 	// to succeed even when having just one replica.
 	podName := svcName
-	klog.V(2).InfoS("Deleting Pod", "ScyllaCluster", klog.KObj(sc), "Pod", naming.ManualRef(sc.Namespace, podName))
-	err = scc.kubeClient.CoreV1().Pods(sc.Namespace).Delete(ctx, podName, metav1.DeleteOptions{})
+	klog.V(2).InfoS("Deleting Pod", "ScyllaDatacenter", klog.KObj(sd), "Pod", naming.ManualRef(sd.Namespace, podName))
+	err = sdc.kubeClient.CoreV1().Pods(sd.Namespace).Delete(ctx, podName, metav1.DeleteOptions{})
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
-			return true, fmt.Errorf("can't delete pod %q: %w", naming.ManualRef(sc.Namespace, podName), err)
+			return true, fmt.Errorf("can't delete pod %q: %w", naming.ManualRef(sd.Namespace, podName), err)
 		}
 
-		klog.V(3).InfoS("Pod already deleted", "ScyllaCluster", klog.KObj(sc), "Pod", naming.ManualRef(sc.Namespace, podName))
+		klog.V(3).InfoS("Pod already deleted", "ScyllaDatacenter", klog.KObj(sd), "Pod", naming.ManualRef(sd.Namespace, podName))
 	} else {
-		klog.V(2).InfoS("Pod deleted", "ScyllaCluster", klog.KObj(sc), "Pod", naming.ManualRef(sc.Namespace, podName))
+		klog.V(2).InfoS("Pod deleted", "ScyllaDatacenter", klog.KObj(sd), "Pod", naming.ManualRef(sd.Namespace, podName))
 	}
 
 	return true, nil
 }
 
-func (scc *Controller) afterNodeUpgrade(ctx context.Context, sc *scyllav1.ScyllaCluster, sts *appsv1.StatefulSet, ordinal int32, services map[string]*corev1.Service) error {
+func (sdc *Controller) afterNodeUpgrade(ctx context.Context, sd *scyllav1alpha1.ScyllaDatacenter, sts *appsv1.StatefulSet, ordinal int32, services map[string]*corev1.Service) error {
 	host, err := controllerhelpers.GetScyllaHost(sts.Name, ordinal, services)
 	if err != nil {
 		return err
 	}
 
-	scyllaClient, err := scc.getScyllaClient(ctx, sc, []string{host})
+	scyllaClient, err := sdc.getScyllaClient(ctx, sd, []string{host})
 	if err != nil {
 		return err
 	}
 
 	// Clear data backup.
-	err = scc.removeSnapshot(ctx, scyllaClient, []string{host}, []string{sc.Status.Upgrade.DataSnapshotTag})
+	err = sdc.removeSnapshot(ctx, scyllaClient, []string{host}, []string{sd.Status.Upgrade.DataSnapshotTag})
 	if err != nil {
 		return err
 	}
@@ -323,12 +324,12 @@ func (scc *Controller) afterNodeUpgrade(ctx context.Context, sc *scyllav1.Scylla
 	return nil
 }
 
-func (scc *Controller) pruneStatefulSets(
+func (sdc *Controller) pruneStatefulSets(
 	ctx context.Context,
-	status *scyllav1.ScyllaClusterStatus,
+	status *scyllav1alpha1.ScyllaDatacenterStatus,
 	requiredStatefulSets []*appsv1.StatefulSet,
 	statefulSets map[string]*appsv1.StatefulSet,
-) (*scyllav1.ScyllaClusterStatus, error) {
+) (*scyllav1alpha1.ScyllaDatacenterStatus, error) {
 	var errs []error
 	for _, sts := range statefulSets {
 		if sts.DeletionTimestamp != nil {
@@ -348,7 +349,7 @@ func (scc *Controller) pruneStatefulSets(
 		// TODO: Decommission the rack before removal.
 
 		propagationPolicy := metav1.DeletePropagationBackground
-		err := scc.kubeClient.AppsV1().StatefulSets(sts.Namespace).Delete(ctx, sts.Name, metav1.DeleteOptions{
+		err := sdc.kubeClient.AppsV1().StatefulSets(sts.Namespace).Delete(ctx, sts.Name, metav1.DeleteOptions{
 			Preconditions: &metav1.Preconditions{
 				UID: &sts.UID,
 			},
@@ -374,10 +375,10 @@ func (scc *Controller) pruneStatefulSets(
 
 // createMissingStatefulSets creates missing StatefulSets.
 // It return true if done and an error.
-func (scc *Controller) createMissingStatefulSets(
+func (sdc *Controller) createMissingStatefulSets(
 	ctx context.Context,
-	sc *scyllav1.ScyllaCluster,
-	status *scyllav1.ScyllaClusterStatus,
+	sd *scyllav1alpha1.ScyllaDatacenter,
+	status *scyllav1alpha1.ScyllaDatacenterStatus,
 	requiredStatefulSets []*appsv1.StatefulSet,
 	statefulSets map[string]*appsv1.StatefulSet,
 	services map[string]*corev1.Service,
@@ -392,7 +393,7 @@ func (scc *Controller) createMissingStatefulSets(
 			klog.V(2).InfoS("Creating missing StatefulSet", "StatefulSet", klog.KObj(req))
 			var changed bool
 			var err error
-			sts, changed, err = resourceapply.ApplyStatefulSet(ctx, scc.kubeClient.AppsV1(), scc.statefulSetLister, scc.eventRecorder, req, false)
+			sts, changed, err = resourceapply.ApplyStatefulSet(ctx, sdc.kubeClient.AppsV1(), sdc.statefulSetLister, sdc.eventRecorder, req, false)
 			if err != nil {
 				errs = append(errs, fmt.Errorf("can't create missing statefulset: %w", err))
 				continue
@@ -409,8 +410,8 @@ func (scc *Controller) createMissingStatefulSets(
 					)
 					continue
 				}
-				oldRackStatus := sc.Status.Racks[rackName]
-				status.Racks[rackName] = *scc.calculateRackStatus(sc, rackName, sts, &oldRackStatus, services)
+				oldRackStatus := sd.Status.Racks[rackName]
+				status.Racks[rackName] = *sdc.calculateRackStatus(sd, rackName, sts, &oldRackStatus, services)
 			}
 		} else {
 			// When we decommission a member there is a pod left that's not ready until we scale.
@@ -427,7 +428,7 @@ func (scc *Controller) createMissingStatefulSets(
 		}
 
 		if !rolledOut {
-			klog.V(4).InfoS("Waiting for StatefulSet rollout", "ScyllaCluster", klog.KObj(sc), "StatefulSet", klog.KObj(sts))
+			klog.V(4).InfoS("Waiting for StatefulSet rollout", "ScyllaDatacenter", klog.KObj(sd), "StatefulSet", klog.KObj(sts))
 			return false, nil
 		}
 	}
@@ -435,20 +436,20 @@ func (scc *Controller) createMissingStatefulSets(
 	return !anyChanged, utilerrors.NewAggregate(errs)
 }
 
-func (scc *Controller) syncStatefulSets(
+func (sdc *Controller) syncStatefulSets(
 	ctx context.Context,
 	key string,
-	sc *scyllav1.ScyllaCluster,
-	status *scyllav1.ScyllaClusterStatus,
+	sd *scyllav1alpha1.ScyllaDatacenter,
+	status *scyllav1alpha1.ScyllaDatacenterStatus,
 	statefulSets map[string]*appsv1.StatefulSet,
 	services map[string]*corev1.Service,
-) (*scyllav1.ScyllaClusterStatus, error) {
+) (*scyllav1alpha1.ScyllaDatacenterStatus, error) {
 	var err error
 
-	requiredStatefulSets, err := scc.makeRacks(sc, statefulSets)
+	requiredStatefulSets, err := sdc.makeRacks(sd, statefulSets)
 	if err != nil {
-		scc.eventRecorder.Eventf(
-			sc,
+		sdc.eventRecorder.Eventf(
+			sd,
 			corev1.EventTypeWarning,
 			"InvalidRack",
 			fmt.Sprintf("Failed to make rack: %v", err),
@@ -458,14 +459,14 @@ func (scc *Controller) syncStatefulSets(
 
 	// Delete any excessive StatefulSets.
 	// Delete has to be the first action to avoid getting stuck on quota.
-	status, err = scc.pruneStatefulSets(ctx, status, requiredStatefulSets, statefulSets)
+	status, err = sdc.pruneStatefulSets(ctx, status, requiredStatefulSets, statefulSets)
 	if err != nil {
 		return status, fmt.Errorf("can't delete StatefulSet(s): %w", err)
 	}
 
 	// Before any update, make sure all StatefulSets are present.
 	// Create any that are missing.
-	done, err := scc.createMissingStatefulSets(ctx, sc, status, requiredStatefulSets, statefulSets, services)
+	done, err := sdc.createMissingStatefulSets(ctx, sd, status, requiredStatefulSets, statefulSets, services)
 	if err != nil {
 		return status, fmt.Errorf("can't create StatefulSet(s): %w", err)
 	}
@@ -528,7 +529,7 @@ func (scc *Controller) syncStatefulSets(
 			lastSvcName := fmt.Sprintf("%s-%d", sts.Name, *sts.Spec.Replicas-1)
 			lastSvc, ok := rackServices[lastSvcName]
 			if !ok {
-				klog.V(4).InfoS("Missing service", "ScyllaCluster", klog.KObj(sc), "ServiceName", lastSvcName)
+				klog.V(4).InfoS("Missing service", "ScyllaDatacenter", klog.KObj(sd), "ServiceName", lastSvcName)
 				// Services are managed in the other loop.
 				// When informers see the new service, will get re-queued.
 				return status, nil
@@ -540,7 +541,7 @@ func (scc *Controller) syncStatefulSets(
 				// TODO: Move this into syncServices so it reconciles properly. This is edge triggered
 				//  and nothing will reconcile the label if something goes wrong or the flow changes.
 				lastSvcCopy.Labels[naming.DecommissionedLabel] = naming.LabelValueFalse
-				_, err := scc.kubeClient.CoreV1().Services(lastSvcCopy.Namespace).Update(ctx, lastSvcCopy, metav1.UpdateOptions{})
+				_, err := sdc.kubeClient.CoreV1().Services(lastSvcCopy.Namespace).Update(ctx, lastSvcCopy, metav1.UpdateOptions{})
 				if err != nil {
 					return status, err
 				}
@@ -548,8 +549,8 @@ func (scc *Controller) syncStatefulSets(
 			}
 		}
 
-		klog.V(2).InfoS("Scaling StatefulSet", "ScyllaCluster", klog.KObj(sc), "StatefulSet", klog.KObj(sts), "CurrentReplicas", *sts.Spec.Replicas, "UpdatedReplicas", scale.Spec.Replicas)
-		_, err = scc.kubeClient.AppsV1().StatefulSets(sts.Namespace).UpdateScale(ctx, sts.Name, scale, metav1.UpdateOptions{})
+		klog.V(2).InfoS("Scaling StatefulSet", "ScyllaDatacenter", klog.KObj(sd), "StatefulSet", klog.KObj(sts), "CurrentReplicas", *sts.Spec.Replicas, "UpdatedReplicas", scale.Spec.Replicas)
+		_, err = sdc.kubeClient.AppsV1().StatefulSets(sts.Namespace).UpdateScale(ctx, sts.Name, scale, metav1.UpdateOptions{})
 		if err != nil {
 			return status, fmt.Errorf("can't update scale: %w", err)
 		}
@@ -568,7 +569,7 @@ func (scc *Controller) syncStatefulSets(
 		}
 
 		if !rolledOut {
-			klog.V(4).InfoS("Waiting for StatefulSet rollout", "ScyllaCluster", klog.KObj(sc), "StatefulSet", klog.KObj(sts))
+			klog.V(4).InfoS("Waiting for StatefulSet rollout", "ScyllaDatacenter", klog.KObj(sd), "StatefulSet", klog.KObj(sts))
 			return status, nil
 		}
 	}
@@ -580,7 +581,7 @@ func (scc *Controller) syncStatefulSets(
 			// We could still see an old status. Although hooks are mandated to be reentrant,
 			// they are pretty expensive to run so it's cheaper to recheck the partition with a live call.
 			// TODO: Remove the live call when the hooks are migrated to run as Jobs.
-			freshSC, err := scc.scyllaClient.ScyllaClusters(sc.Namespace).Get(ctx, sc.Name, metav1.GetOptions{})
+			freshSC, err := sdc.scyllaClient.ScyllaDatacenters(sd.Namespace).Get(ctx, sd.Name, metav1.GetOptions{})
 			if err != nil {
 				return status, err
 			}
@@ -588,7 +589,7 @@ func (scc *Controller) syncStatefulSets(
 			if freshSC.Status.Upgrade == nil ||
 				freshSC.Status.Upgrade.State != status.Upgrade.State {
 				// Wait for requeue.
-				klog.V(2).InfoS("Stale upgrade status, waiting for requeue", "ScyllaCluster", sc)
+				klog.V(2).InfoS("Stale upgrade status, waiting for requeue", "ScyllaDatacenter", sd)
 				return status, err
 			}
 		}
@@ -597,12 +598,12 @@ func (scc *Controller) syncStatefulSets(
 		switch status.Upgrade.State {
 		case string(PreHooksUpgradePhase):
 			// TODO: Move the pre-upgrade hook into a Job.
-			done, err := scc.beforeUpgrade(ctx, sc, services)
+			done, err := sdc.beforeUpgrade(ctx, sd, services)
 			if err != nil {
 				return status, err
 			}
 			if !done {
-				scc.queue.AddAfter(key, 5*time.Second)
+				sdc.queue.AddAfter(key, 5*time.Second)
 				return status, nil
 			}
 
@@ -627,7 +628,7 @@ func (scc *Controller) syncStatefulSets(
 				required.Spec.Replicas = pointer.Int32Ptr(*existing.Spec.Replicas)
 				required.Spec.UpdateStrategy.RollingUpdate.Partition = pointer.Int32Ptr(*existing.Spec.Replicas)
 				// Use apply to also update the spec.template
-				updatedSts, changed, err := resourceapply.ApplyStatefulSet(ctx, scc.kubeClient.AppsV1(), scc.statefulSetLister, scc.eventRecorder, required, false)
+				updatedSts, changed, err := resourceapply.ApplyStatefulSet(ctx, sdc.kubeClient.AppsV1(), sdc.statefulSetLister, sdc.eventRecorder, required, false)
 				if err != nil {
 					errs = append(errs, fmt.Errorf("can't apply statefulset to set partition: %w", err))
 				}
@@ -644,8 +645,8 @@ func (scc *Controller) syncStatefulSets(
 						)
 						continue
 					}
-					oldRackStatus := sc.Status.Racks[rackName]
-					status.Racks[rackName] = *scc.calculateRackStatus(sc, rackName, updatedSts, &oldRackStatus, services)
+					oldRackStatus := sd.Status.Racks[rackName]
+					status.Racks[rackName] = *sdc.calculateRackStatus(sd, rackName, updatedSts, &oldRackStatus, services)
 				}
 			}
 			if anyStsChanged {
@@ -669,7 +670,7 @@ func (scc *Controller) syncStatefulSets(
 					// TODO: Remove the live call when hooks are migrated into Jobs.
 					// We could still see an old partition. Although hooks are mandated to be reentrant,
 					// they are pretty expensive to run so it's cheaper to recheck the partition with a live call.
-					freshSts, err := scc.kubeClient.AppsV1().StatefulSets(sts.Namespace).Get(ctx, sts.Name, metav1.GetOptions{})
+					freshSts, err := sdc.kubeClient.AppsV1().StatefulSets(sts.Namespace).Get(ctx, sts.Name, metav1.GetOptions{})
 					if err != nil {
 						return status, err
 					}
@@ -677,7 +678,7 @@ func (scc *Controller) syncStatefulSets(
 					if freshSts.Spec.UpdateStrategy.RollingUpdate == nil ||
 						*freshSts.Spec.UpdateStrategy.RollingUpdate.Partition != partition {
 						// Wait for requeue.
-						klog.V(2).InfoS("Stale StatefulSet partition, waiting for requeue", "ScyllaCluster", klog.KObj(sc), "StatefulSet", klog.KObj(sts))
+						klog.V(2).InfoS("Stale StatefulSet partition, waiting for requeue", "ScyllaDatacenter", klog.KObj(sd), "StatefulSet", klog.KObj(sts))
 						return status, nil
 					}
 				}
@@ -692,30 +693,30 @@ func (scc *Controller) syncStatefulSets(
 
 				if partition < *sts.Spec.Replicas {
 					// TODO: Move the post-node-upgrade hook into a Job.
-					err = scc.afterNodeUpgrade(ctx, sc, sts, partition, services)
+					err = sdc.afterNodeUpgrade(ctx, sd, sts, partition, services)
 					if err != nil {
 						return status, err
 					}
-					klog.V(2).InfoS("AfterNodeUpgrade hook finished", "ScyllaCluster", klog.KObj(sc), "StatefulSet", klog.KObj(sts))
+					klog.V(2).InfoS("AfterNodeUpgrade hook finished", "ScyllaDatacenter", klog.KObj(sd), "StatefulSet", klog.KObj(sts))
 				}
 
 				// TODO: Move the pre-node-upgrade hook into a Job.
-				done, err := scc.beforeNodeUpgrade(ctx, sc, sts, nextPartition, services)
+				done, err := sdc.beforeNodeUpgrade(ctx, sd, sts, nextPartition, services)
 				if err != nil {
 					return status, err
 				}
 
 				if !done {
-					klog.V(4).InfoS("PreNodeUpgrade hook in progress. Waiting a bit.", "ScyllaCluster", klog.KObj(sc), "StatefulSet", klog.KObj(sts))
-					scc.queue.AddAfter(key, 5*time.Second)
+					klog.V(4).InfoS("PreNodeUpgrade hook in progress. Waiting a bit.", "ScyllaDatacenter", klog.KObj(sd), "StatefulSet", klog.KObj(sts))
+					sdc.queue.AddAfter(key, 5*time.Second)
 					return status, nil
 				}
-				klog.V(2).InfoS("PreNodeUpgrade hook finished", "ScyllaCluster", klog.KObj(sc), "StatefulSet", klog.KObj(sts))
+				klog.V(2).InfoS("PreNodeUpgrade hook finished", "ScyllaDatacenter", klog.KObj(sd), "StatefulSet", klog.KObj(sts))
 
 				// TODO: Use bare update when hooks are extracted into Jobs.
 				//       But at this point rerunning them is expensive so we retry with condition check.
 				err = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
-					freshSts, err := scc.kubeClient.AppsV1().StatefulSets(sts.Namespace).Get(ctx, sts.Name, metav1.GetOptions{})
+					freshSts, err := sdc.kubeClient.AppsV1().StatefulSets(sts.Namespace).Get(ctx, sts.Name, metav1.GetOptions{})
 					if err != nil {
 						return err
 					}
@@ -732,7 +733,7 @@ func (scc *Controller) syncStatefulSets(
 					}
 
 					freshSts.Spec.UpdateStrategy.RollingUpdate.Partition = pointer.Int32Ptr(nextPartition)
-					_, err = scc.kubeClient.AppsV1().StatefulSets(freshSts.Namespace).Update(ctx, freshSts, metav1.UpdateOptions{})
+					_, err = sdc.kubeClient.AppsV1().StatefulSets(freshSts.Namespace).Update(ctx, freshSts, metav1.UpdateOptions{})
 					if err != nil {
 						return err
 					}
@@ -751,7 +752,7 @@ func (scc *Controller) syncStatefulSets(
 			return status, nil
 
 		case string(PostHooksUpgradePhase):
-			err = scc.afterUpgrade(ctx, sc, services)
+			err = sdc.afterUpgrade(ctx, sd, services)
 			if err != nil {
 				return status, err
 			}
@@ -762,7 +763,7 @@ func (scc *Controller) syncStatefulSets(
 		default:
 			// An old cluster with an old state machine can still be going through an update, or stuck.
 			// Given have to be reentrant we'll just start again to be sure no step is missed, even a new one.
-			klog.Warning("ScyllaCluster %q has an unknown upgrade phase %q. Resetting the phase.", klog.KObj(sc), status.Upgrade.State)
+			klog.Warning("ScyllaDatacenter %q has an unknown upgrade phase %q. Resetting the phase.", klog.KObj(sd), status.Upgrade.State)
 			status.Upgrade.State = string(PreHooksUpgradePhase)
 			return status, nil
 		}
@@ -796,11 +797,11 @@ func (scc *Controller) syncStatefulSets(
 				if requiredVersion.Major != existingVersion.Major ||
 					requiredVersion.Minor != existingVersion.Minor {
 					// We need to run hooks for version upgrades.
-					scc.eventRecorder.Eventf(sc, corev1.EventTypeNormal, "UpgradeStarted", "Version changed from %q to %q", existingVersionString, requiredVersionString)
+					sdc.eventRecorder.Eventf(sd, corev1.EventTypeNormal, "UpgradeStarted", "Version changed from %q to %q", existingVersionString, requiredVersionString)
 
 					// Initiate the upgrade. This triggers a state machine to run hooks first.
 					now := time.Now()
-					status.Upgrade = &scyllav1.UpgradeStatus{
+					status.Upgrade = &scyllav1alpha1.UpgradeStatus{
 						State:             string(PreHooksUpgradePhase),
 						FromVersion:       existingVersionString,
 						ToVersion:         requiredVersionString,
@@ -812,7 +813,7 @@ func (scc *Controller) syncStatefulSets(
 			}
 		}
 
-		updatedSts, changed, err := resourceapply.ApplyStatefulSet(ctx, scc.kubeClient.AppsV1(), scc.statefulSetLister, scc.eventRecorder, required, false)
+		updatedSts, changed, err := resourceapply.ApplyStatefulSet(ctx, sdc.kubeClient.AppsV1(), sdc.statefulSetLister, sdc.eventRecorder, required, false)
 		if err != nil {
 			return status, fmt.Errorf("can't apply statefulset update: %w", err)
 		}
@@ -828,8 +829,8 @@ func (scc *Controller) syncStatefulSets(
 					naming.RackNameLabel,
 				)
 			}
-			oldRackStatus := sc.Status.Racks[rackName]
-			status.Racks[rackName] = *scc.calculateRackStatus(sc, rackName, updatedSts, &oldRackStatus, services)
+			oldRackStatus := sd.Status.Racks[rackName]
+			status.Racks[rackName] = *sdc.calculateRackStatus(sd, rackName, updatedSts, &oldRackStatus, services)
 		}
 
 		// Wait for the StatefulSet to rollout.
@@ -839,7 +840,7 @@ func (scc *Controller) syncStatefulSets(
 		}
 
 		if !rolledOut {
-			klog.V(4).InfoS("Waiting for StatefulSet rollout", "ScyllaCluster", klog.KObj(sc), "StatefulSet", klog.KObj(updatedSts))
+			klog.V(4).InfoS("Waiting for StatefulSet rollout", "ScyllaDatacenter", klog.KObj(sd), "StatefulSet", klog.KObj(updatedSts))
 			return status, nil
 		}
 	}

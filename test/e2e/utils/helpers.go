@@ -11,9 +11,7 @@ import (
 
 	o "github.com/onsi/gomega"
 	"github.com/scylladb/go-log"
-	scyllav1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1"
 	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
-	scyllav1client "github.com/scylladb/scylla-operator/pkg/client/scylla/clientset/versioned/typed/scylla/v1"
 	scyllav1alpha1client "github.com/scylladb/scylla-operator/pkg/client/scylla/clientset/versioned/typed/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
 	"github.com/scylladb/scylla-operator/pkg/helpers"
@@ -76,43 +74,43 @@ func IsNodeConfigDoneWithNodeTuningFunc(nodes []*corev1.Node) func(nc *scyllav1a
 	}
 }
 
-func RolloutTimeoutForScyllaCluster(sc *scyllav1.ScyllaCluster) time.Duration {
+func RolloutTimeoutForScyllaDatacenter(sc *scyllav1alpha1.ScyllaDatacenter) time.Duration {
 	return baseRolloutTimout + time.Duration(GetMemberCount(sc))*memberRolloutTimeout
 }
 
-func GetMemberCount(sc *scyllav1.ScyllaCluster) int32 {
+func GetMemberCount(sd *scyllav1alpha1.ScyllaDatacenter) int32 {
 	members := int32(0)
-	for _, r := range sc.Spec.Datacenter.Racks {
-		members += r.Members
+	for _, r := range sd.Spec.Datacenter.Racks {
+		members += *r.Members
 	}
 
 	return members
 }
 
-func ContextForRollout(parent context.Context, sc *scyllav1.ScyllaCluster) (context.Context, context.CancelFunc) {
-	return context.WithTimeout(parent, RolloutTimeoutForScyllaCluster(sc))
+func ContextForRollout(parent context.Context, sd *scyllav1alpha1.ScyllaDatacenter) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(parent, RolloutTimeoutForScyllaDatacenter(sd))
 }
 
-func SyncTimeoutForScyllaCluster(sc *scyllav1.ScyllaCluster) time.Duration {
-	tasks := int64(len(sc.Spec.Repairs) + len(sc.Spec.Backups))
+func SyncTimeoutForScyllaDatacenter(sd *scyllav1alpha1.ScyllaDatacenter) time.Duration {
+	tasks := int64(len(sd.Spec.Repairs) + len(sd.Spec.Backups))
 	return baseManagerSyncTimeout + time.Duration(tasks)*managerTaskSyncTimeout
 }
 
-func ContextForManagerSync(parent context.Context, sc *scyllav1.ScyllaCluster) (context.Context, context.CancelFunc) {
-	return context.WithTimeout(parent, SyncTimeoutForScyllaCluster(sc))
+func ContextForManagerSync(parent context.Context, sd *scyllav1alpha1.ScyllaDatacenter) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(parent, SyncTimeoutForScyllaDatacenter(sd))
 }
 
-func IsScyllaClusterRolledOut(sc *scyllav1.ScyllaCluster) (bool, error) {
+func IsScyllaDatacenterRolledOut(sd *scyllav1alpha1.ScyllaDatacenter) (bool, error) {
 	// ObservedGeneration == nil will filter out the case when the object is initially created
 	// so no other optional (but required) field should be nil after this point and we should error out.
-	if sc.Status.ObservedGeneration == nil || *sc.Status.ObservedGeneration < sc.Generation {
+	if sd.Status.ObservedGeneration == nil || *sd.Status.ObservedGeneration < sd.Generation {
 		return false, nil
 	}
 
 	// TODO: this should be more straight forward - we need better status (conditions, aggregated state, ...)
 
-	for _, r := range sc.Spec.Datacenter.Racks {
-		rackStatus, found := sc.Status.Racks[r.Name]
+	for _, r := range sd.Spec.Datacenter.Racks {
+		rackStatus, found := sd.Status.Racks[r.Name]
 		if !found {
 			return false, nil
 		}
@@ -125,8 +123,16 @@ func IsScyllaClusterRolledOut(sc *scyllav1.ScyllaCluster) (bool, error) {
 			return false, nil
 		}
 
+		if rackStatus.Members == nil {
+			return true, fmt.Errorf("members shouldn't be nil")
+		}
+
 		if rackStatus.Members != r.Members {
 			return false, nil
+		}
+
+		if rackStatus.ReadyMembers == nil {
+			return true, fmt.Errorf("readyMembers shouldn't be nil")
 		}
 
 		if rackStatus.ReadyMembers != r.Members {
@@ -137,20 +143,20 @@ func IsScyllaClusterRolledOut(sc *scyllav1.ScyllaCluster) (bool, error) {
 			return true, fmt.Errorf("updatedMembers shouldn't be nil")
 		}
 
-		if *rackStatus.UpdatedMembers != r.Members {
+		if *rackStatus.UpdatedMembers != *r.Members {
 			return false, nil
 		}
 
-		if rackStatus.Version != sc.Spec.Version {
+		if rackStatus.Image != sd.Spec.Image {
 			return false, nil
 		}
 	}
 
-	if sc.Status.Upgrade != nil && sc.Status.Upgrade.FromVersion != sc.Status.Upgrade.ToVersion {
+	if sd.Status.Upgrade != nil && sd.Status.Upgrade.FromVersion != sd.Status.Upgrade.ToVersion {
 		return false, nil
 	}
 
-	framework.Infof("ScyllaCluster %s (RV=%s) is rolled out", klog.KObj(sc), sc.ResourceVersion)
+	framework.Infof("ScyllaDatacenter %s (RV=%s) is rolled out", klog.KObj(sd), sd.ResourceVersion)
 
 	// Allow CI to remove stale conntrack entries.
 	// https://github.com/scylladb/scylla-operator/issues/975
@@ -160,24 +166,24 @@ func IsScyllaClusterRolledOut(sc *scyllav1.ScyllaCluster) (bool, error) {
 	return true, nil
 }
 
-func WaitForScyllaClusterState(ctx context.Context, client scyllav1client.ScyllaV1Interface, namespace string, name string, conditions ...func(sc *scyllav1.ScyllaCluster) (bool, error)) (*scyllav1.ScyllaCluster, error) {
+func WaitForScyllaDatacenterState(ctx context.Context, client scyllav1alpha1client.ScyllaV1alpha1Interface, namespace string, name string, conditions ...func(sd *scyllav1alpha1.ScyllaDatacenter) (bool, error)) (*scyllav1alpha1.ScyllaDatacenter, error) {
 	fieldSelector := fields.OneTermEqualSelector("metadata.name", name).String()
 	lw := &cache.ListWatch{
 		ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
 			options.FieldSelector = fieldSelector
-			return client.ScyllaClusters(namespace).List(ctx, options)
+			return client.ScyllaDatacenters(namespace).List(ctx, options)
 		},
 		WatchFunc: func(options metav1.ListOptions) (i watch.Interface, e error) {
 			options.FieldSelector = fieldSelector
-			return client.ScyllaClusters(namespace).Watch(ctx, options)
+			return client.ScyllaDatacenters(namespace).Watch(ctx, options)
 		},
 	}
 
-	event, err := watchtools.UntilWithSync(ctx, lw, &scyllav1.ScyllaCluster{}, nil, func(event watch.Event) (bool, error) {
+	event, err := watchtools.UntilWithSync(ctx, lw, &scyllav1alpha1.ScyllaDatacenter{}, nil, func(event watch.Event) (bool, error) {
 		switch event.Type {
 		case watch.Added, watch.Modified:
 			for _, condition := range conditions {
-				done, err := condition(event.Object.(*scyllav1.ScyllaCluster))
+				done, err := condition(event.Object.(*scyllav1alpha1.ScyllaDatacenter))
 				if err != nil {
 					return false, err
 				}
@@ -194,7 +200,7 @@ func WaitForScyllaClusterState(ctx context.Context, client scyllav1client.Scylla
 		return nil, err
 	}
 
-	return event.Object.(*scyllav1.ScyllaCluster), nil
+	return event.Object.(*scyllav1alpha1.ScyllaDatacenter), nil
 }
 
 type WaitForStateOptions struct {
@@ -483,10 +489,10 @@ func RunEphemeralContainerAndWaitForCompletion(ctx context.Context, client corev
 	)
 }
 
-func GetStatefulSetsForScyllaCluster(ctx context.Context, client appv1client.AppsV1Interface, sc *scyllav1.ScyllaCluster) (map[string]*appsv1.StatefulSet, error) {
-	statefulsetList, err := client.StatefulSets(sc.Namespace).List(ctx, metav1.ListOptions{
+func GetStatefulSetsForScyllaDatacenter(ctx context.Context, client appv1client.AppsV1Interface, sd *scyllav1alpha1.ScyllaDatacenter) (map[string]*appsv1.StatefulSet, error) {
+	statefulsetList, err := client.StatefulSets(sd.Namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: labels.Set{
-			naming.ClusterNameLabel: sc.Name,
+			naming.ClusterNameLabel: sd.Name,
 		}.AsSelector().String(),
 	})
 	if err != nil {
@@ -500,7 +506,7 @@ func GetStatefulSetsForScyllaCluster(ctx context.Context, client appv1client.App
 			continue
 		}
 
-		if controllerRef.UID != sc.UID {
+		if controllerRef.UID != sd.UID {
 			continue
 		}
 
@@ -538,8 +544,8 @@ func GetDaemonSetsForNodeConfig(ctx context.Context, client appv1client.AppsV1In
 	return res, nil
 }
 
-func GetScyllaClient(ctx context.Context, client corev1client.CoreV1Interface, sc *scyllav1.ScyllaCluster) (*scyllaclient.Client, []string, error) {
-	hosts, err := GetHosts(ctx, client, sc)
+func GetScyllaClient(ctx context.Context, client corev1client.CoreV1Interface, sd *scyllav1alpha1.ScyllaDatacenter) (*scyllaclient.Client, []string, error) {
+	hosts, err := GetHosts(ctx, client, sd)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -548,7 +554,7 @@ func GetScyllaClient(ctx context.Context, client corev1client.CoreV1Interface, s
 		return nil, nil, fmt.Errorf("no services found")
 	}
 
-	tokenSecret, err := client.Secrets(sc.Namespace).Get(ctx, naming.AgentAuthTokenSecretName(sc.Name), metav1.GetOptions{})
+	tokenSecret, err := client.Secrets(sd.Namespace).Get(ctx, naming.AgentAuthTokenSecretName(sd.Name), metav1.GetOptions{})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -572,9 +578,9 @@ func GetScyllaClient(ctx context.Context, client corev1client.CoreV1Interface, s
 	return scyllaClient, hosts, nil
 }
 
-func GetHosts(ctx context.Context, client corev1client.CoreV1Interface, sc *scyllav1.ScyllaCluster) ([]string, error) {
-	serviceList, err := client.Services(sc.Namespace).List(ctx, metav1.ListOptions{
-		LabelSelector: GetMemberServiceSelector(sc.Name).String(),
+func GetHosts(ctx context.Context, client corev1client.CoreV1Interface, sd *scyllav1alpha1.ScyllaDatacenter) ([]string, error) {
+	serviceList, err := client.Services(sd.Namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: GetMemberServiceSelector(sd.Name).String(),
 	})
 	if err != nil {
 		return nil, err
@@ -620,19 +626,19 @@ func GetManagerClient(ctx context.Context, client corev1client.CoreV1Interface) 
 	return &manager, nil
 }
 
-func GetNodeName(sc *scyllav1.ScyllaCluster, idx int) string {
+func GetNodeName(sd *scyllav1alpha1.ScyllaDatacenter, idx int) string {
 	return fmt.Sprintf(
 		"%s-%s-%s-%d",
-		sc.Name,
-		sc.Spec.Datacenter.Name,
-		sc.Spec.Datacenter.Racks[0].Name,
+		sd.Name,
+		sd.Spec.Datacenter.Name,
+		sd.Spec.Datacenter.Racks[0].Name,
 		idx,
 	)
 }
 
-func GetMemberServiceSelector(scyllaClusterName string) labels.Selector {
+func GetMemberServiceSelector(scyllaDatacenterName string) labels.Selector {
 	return labels.Set{
-		naming.ClusterNameLabel:       scyllaClusterName,
+		naming.ClusterNameLabel:       scyllaDatacenterName,
 		naming.ScyllaServiceTypeLabel: string(naming.ScyllaServiceTypeMember),
 	}.AsSelector()
 }

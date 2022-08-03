@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
-	scyllav1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1"
+	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -28,8 +28,8 @@ func ObjRefWithUID(obj metav1.Object) string {
 	return fmt.Sprintf("%s(UID=%s)", ObjRef(obj), obj.GetUID())
 }
 
-func StatefulSetNameForRack(r scyllav1.RackSpec, c *scyllav1.ScyllaCluster) string {
-	return fmt.Sprintf("%s-%s-%s", c.Name, c.Spec.Datacenter.Name, r.Name)
+func StatefulSetNameForRack(r scyllav1alpha1.RackSpec, sd *scyllav1alpha1.ScyllaDatacenter) string {
+	return fmt.Sprintf("%s-%s-%s", sd.Name, sd.Spec.Datacenter.Name, r.Name)
 }
 
 func ServiceNameFromPod(pod *corev1.Pod) string {
@@ -41,28 +41,28 @@ func AgentAuthTokenSecretName(clusterName string) string {
 	return fmt.Sprintf("%s-auth-token", clusterName)
 }
 
-func MemberServiceName(r scyllav1.RackSpec, c *scyllav1.ScyllaCluster, idx int) string {
-	return fmt.Sprintf("%s-%d", StatefulSetNameForRack(r, c), idx)
+func MemberServiceName(r scyllav1alpha1.RackSpec, sd *scyllav1alpha1.ScyllaDatacenter, idx int) string {
+	return fmt.Sprintf("%s-%d", StatefulSetNameForRack(r, sd), idx)
 }
 
-func ServiceDNSName(service string, c *scyllav1.ScyllaCluster) string {
-	return fmt.Sprintf("%s.%s", service, CrossNamespaceServiceNameForCluster(c))
+func ServiceDNSName(service string, sd *scyllav1alpha1.ScyllaDatacenter) string {
+	return fmt.Sprintf("%s.%s", service, CrossNamespaceServiceNameForCluster(sd))
 }
 
-func HeadlessServiceNameForCluster(c *scyllav1.ScyllaCluster) string {
-	return fmt.Sprintf("%s-client", c.Name)
+func HeadlessServiceNameForCluster(sd *scyllav1alpha1.ScyllaDatacenter) string {
+	return fmt.Sprintf("%s-client", sd.Name)
 }
 
-func PodDisruptionBudgetName(c *scyllav1.ScyllaCluster) string {
-	return c.Name
+func PodDisruptionBudgetName(sd *scyllav1alpha1.ScyllaDatacenter) string {
+	return sd.Name
 }
 
-func CrossNamespaceServiceNameForCluster(c *scyllav1.ScyllaCluster) string {
-	return fmt.Sprintf("%s.%s.svc", HeadlessServiceNameForCluster(c), c.Namespace)
+func CrossNamespaceServiceNameForCluster(sd *scyllav1alpha1.ScyllaDatacenter) string {
+	return fmt.Sprintf("%s.%s.svc", HeadlessServiceNameForCluster(sd), sd.Namespace)
 }
 
-func ManagerClusterName(c *scyllav1.ScyllaCluster) string {
-	return c.Namespace + "/" + c.Name
+func ManagerClusterName(sd *scyllav1alpha1.ScyllaDatacenter) string {
+	return sd.Namespace + "/" + sd.Name
 }
 
 func PVCNameForPod(podName string) string {
