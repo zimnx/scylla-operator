@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	scyllav1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1"
+	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -19,24 +19,24 @@ import (
 )
 
 func TestMemberService(t *testing.T) {
-	basicSC := &scyllav1.ScyllaCluster{
+	basicSC := &scyllav1alpha1.ScyllaDatacenter{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "basic",
 			UID:  "the-uid",
 		},
-		Spec: scyllav1.ScyllaClusterSpec{
-			Datacenter: scyllav1.DatacenterSpec{
+		Spec: scyllav1alpha1.ScyllaDatacenterSpec{
+			Datacenter: scyllav1alpha1.DatacenterSpec{
 				Name: "dc",
 			},
 		},
-		Status: scyllav1.ScyllaClusterStatus{
-			Racks: map[string]scyllav1.RackStatus{},
+		Status: scyllav1alpha1.ScyllaDatacenterStatus{
+			Racks: map[string]scyllav1alpha1.RackStatus{},
 		},
 	}
 	basicSCOwnerRefs := []metav1.OwnerReference{
 		{
-			APIVersion:         "scylla.scylladb.com/v1",
-			Kind:               "ScyllaCluster",
+			APIVersion:         "scylla.scylladb.com/v1alpha1",
+			Kind:               "ScyllaDatacenter",
 			Name:               "basic",
 			UID:                "the-uid",
 			Controller:         pointer.Bool(true),
@@ -111,19 +111,19 @@ func TestMemberService(t *testing.T) {
 	}
 
 	tt := []struct {
-		name            string
-		scyllaCluster   *scyllav1.ScyllaCluster
-		rackName        string
-		svcName         string
-		oldService      *corev1.Service
-		expectedService *corev1.Service
+		name             string
+		scyllaDatacenter *scyllav1alpha1.ScyllaDatacenter
+		rackName         string
+		svcName          string
+		oldService       *corev1.Service
+		expectedService  *corev1.Service
 	}{
 		{
-			name:          "new service",
-			scyllaCluster: basicSC,
-			rackName:      basicRackName,
-			svcName:       basicSVCName,
-			oldService:    nil,
+			name:             "new service",
+			scyllaDatacenter: basicSC,
+			rackName:         basicRackName,
+			svcName:          basicSVCName,
+			oldService:       nil,
 			expectedService: &corev1.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:            basicSVCName,
@@ -140,9 +140,9 @@ func TestMemberService(t *testing.T) {
 		},
 		{
 			name: "new service with saved IP",
-			scyllaCluster: func() *scyllav1.ScyllaCluster {
+			scyllaDatacenter: func() *scyllav1alpha1.ScyllaDatacenter {
 				sc := basicSC.DeepCopy()
-				sc.Status.Racks[basicRackName] = scyllav1.RackStatus{
+				sc.Status.Racks[basicRackName] = scyllav1alpha1.RackStatus{
 					ReplaceAddressFirstBoot: map[string]string{
 						basicSVCName: "10.0.0.1",
 					},
@@ -172,9 +172,9 @@ func TestMemberService(t *testing.T) {
 		},
 		{
 			name: "new service with saved IP and existing replace address",
-			scyllaCluster: func() *scyllav1.ScyllaCluster {
+			scyllaDatacenter: func() *scyllav1alpha1.ScyllaDatacenter {
 				sc := basicSC.DeepCopy()
-				sc.Status.Racks[basicRackName] = scyllav1.RackStatus{
+				sc.Status.Racks[basicRackName] = scyllav1alpha1.RackStatus{
 					ReplaceAddressFirstBoot: map[string]string{
 						basicSVCName: "10.0.0.1",
 					},
@@ -209,10 +209,10 @@ func TestMemberService(t *testing.T) {
 			},
 		},
 		{
-			name:          "new service with unsaved IP and existing replace address",
-			scyllaCluster: basicSC,
-			rackName:      basicRackName,
-			svcName:       basicSVCName,
+			name:             "new service with unsaved IP and existing replace address",
+			scyllaDatacenter: basicSC,
+			rackName:         basicRackName,
+			svcName:          basicSVCName,
 			oldService: &corev1.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: map[string]string{
@@ -239,10 +239,10 @@ func TestMemberService(t *testing.T) {
 			},
 		},
 		{
-			name:          "existing initial service",
-			scyllaCluster: basicSC,
-			rackName:      basicRackName,
-			svcName:       basicSVCName,
+			name:             "existing initial service",
+			scyllaDatacenter: basicSC,
+			rackName:         basicRackName,
+			svcName:          basicSVCName,
 			oldService: &corev1.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: map[string]string{
@@ -270,9 +270,9 @@ func TestMemberService(t *testing.T) {
 		},
 		{
 			name: "existing initial service with IP",
-			scyllaCluster: func() *scyllav1.ScyllaCluster {
+			scyllaDatacenter: func() *scyllav1alpha1.ScyllaDatacenter {
 				sc := basicSC.DeepCopy()
-				sc.Status.Racks[basicRackName] = scyllav1.RackStatus{
+				sc.Status.Racks[basicRackName] = scyllav1alpha1.RackStatus{
 					ReplaceAddressFirstBoot: map[string]string{
 						basicSVCName: "10.0.0.1",
 					},
@@ -307,10 +307,10 @@ func TestMemberService(t *testing.T) {
 			},
 		},
 		{
-			name:          "existing service",
-			scyllaCluster: basicSC,
-			rackName:      basicRackName,
-			svcName:       basicSVCName,
+			name:             "existing service",
+			scyllaDatacenter: basicSC,
+			rackName:         basicRackName,
+			svcName:          basicSVCName,
 			oldService: &corev1.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: nil,
@@ -334,7 +334,7 @@ func TestMemberService(t *testing.T) {
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			got := MemberService(tc.scyllaCluster, tc.rackName, tc.svcName, tc.oldService)
+			got := MemberService(tc.scyllaDatacenter, tc.rackName, tc.svcName, tc.oldService)
 
 			if !apiequality.Semantic.DeepEqual(got, tc.expectedService) {
 				t.Errorf("expected and actual services differ: %s", cmp.Diff(tc.expectedService, got))
@@ -344,31 +344,31 @@ func TestMemberService(t *testing.T) {
 }
 
 func TestStatefulSetForRack(t *testing.T) {
-	newBasicRack := func() scyllav1.RackSpec {
-		return scyllav1.RackSpec{
+	newBasicRack := func() scyllav1alpha1.RackSpec {
+		return scyllav1alpha1.RackSpec{
 			Name: "rack",
-			Storage: scyllav1.StorageSpec{
+			Storage: scyllav1alpha1.StorageSpec{
 				Capacity: "1Gi",
 			},
 		}
 	}
 
-	newBasicScyllaCluster := func() *scyllav1.ScyllaCluster {
-		return &scyllav1.ScyllaCluster{
+	newBasicScyllaDatacenter := func() *scyllav1alpha1.ScyllaDatacenter {
+		return &scyllav1alpha1.ScyllaDatacenter{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: "basic",
 				UID:  "the-uid",
 			},
-			Spec: scyllav1.ScyllaClusterSpec{
-				Datacenter: scyllav1.DatacenterSpec{
+			Spec: scyllav1alpha1.ScyllaDatacenterSpec{
+				Datacenter: scyllav1alpha1.DatacenterSpec{
 					Name: "dc",
-					Racks: []scyllav1.RackSpec{
+					Racks: []scyllav1alpha1.RackSpec{
 						newBasicRack(),
 					},
 				},
 			},
-			Status: scyllav1.ScyllaClusterStatus{
-				Racks: map[string]scyllav1.RackStatus{},
+			Status: scyllav1alpha1.ScyllaDatacenterStatus{
+				Racks: map[string]scyllav1alpha1.RackStatus{},
 			},
 		}
 	}
@@ -398,8 +398,8 @@ func TestStatefulSetForRack(t *testing.T) {
 				Annotations: nil,
 				OwnerReferences: []metav1.OwnerReference{
 					{
-						APIVersion:         "scylla.scylladb.com/v1",
-						Kind:               "ScyllaCluster",
+						APIVersion:         "scylla.scylladb.com/v1alpha1",
+						Kind:               "ScyllaDatacenter",
 						Name:               "basic",
 						UID:                "the-uid",
 						Controller:         pointer.Bool(true),
@@ -565,7 +565,7 @@ func TestStatefulSetForRack(t *testing.T) {
 										},
 									},
 								},
-								Resources: newBasicRack().Resources,
+								Resources: newBasicRack().ScyllaContainer.Resources,
 								VolumeMounts: []corev1.VolumeMount{
 									{
 										Name:      "data",
@@ -673,7 +673,7 @@ func TestStatefulSetForRack(t *testing.T) {
 										ReadOnly:  true,
 									},
 								},
-								Resources: newBasicRack().Resources,
+								Resources: newBasicRack().AgentContainer.Resources,
 							},
 						},
 						DNSPolicy:                     "ClusterFirstWithHostNet",
@@ -759,8 +759,8 @@ func TestStatefulSetForRack(t *testing.T) {
 
 	tt := []struct {
 		name                string
-		rack                scyllav1.RackSpec
-		scyllaCluster       *scyllav1.ScyllaCluster
+		rack                scyllav1alpha1.RackSpec
+		scyllaDatacenter    *scyllav1alpha1.ScyllaDatacenter
 		existingStatefulSet *appsv1.StatefulSet
 		expectedStatefulSet *appsv1.StatefulSet
 		expectedError       error
@@ -768,30 +768,30 @@ func TestStatefulSetForRack(t *testing.T) {
 		{
 			name:                "new StatefulSet",
 			rack:                newBasicRack(),
-			scyllaCluster:       newBasicScyllaCluster(),
+			scyllaDatacenter:    newBasicScyllaDatacenter(),
 			existingStatefulSet: nil,
 			expectedStatefulSet: newBasicStatefulSet(),
 			expectedError:       nil,
 		},
 		{
 			name: "error for invalid Rack storage",
-			rack: func() scyllav1.RackSpec {
+			rack: func() scyllav1alpha1.RackSpec {
 				r := newBasicRack()
-				r.Storage = scyllav1.StorageSpec{
+				r.Storage = scyllav1alpha1.StorageSpec{
 					Capacity: "",
 				}
 				return r
 			}(),
-			scyllaCluster:       newBasicScyllaCluster(),
+			scyllaDatacenter:    newBasicScyllaDatacenter(),
 			existingStatefulSet: nil,
 			expectedStatefulSet: nil,
 			expectedError:       fmt.Errorf(`cannot parse "": %v`, resource.ErrFormatWrong),
 		},
 		{
 			name: "new StatefulSet with non-nil Tolerations",
-			rack: func() scyllav1.RackSpec {
+			rack: func() scyllav1alpha1.RackSpec {
 				r := newBasicRack()
-				r.Placement = &scyllav1.PlacementSpec{
+				r.Placement = &scyllav1alpha1.PlacementSpec{
 					Tolerations: []corev1.Toleration{
 						{
 							Key:      "key",
@@ -803,7 +803,7 @@ func TestStatefulSetForRack(t *testing.T) {
 				}
 				return r
 			}(),
-			scyllaCluster:       newBasicScyllaCluster(),
+			scyllaDatacenter:    newBasicScyllaDatacenter(),
 			existingStatefulSet: nil,
 			expectedStatefulSet: func() *appsv1.StatefulSet {
 				s := newBasicStatefulSet()
@@ -821,14 +821,14 @@ func TestStatefulSetForRack(t *testing.T) {
 		},
 		{
 			name: "new StatefulSet with non-nil NodeAffinity",
-			rack: func() scyllav1.RackSpec {
+			rack: func() scyllav1alpha1.RackSpec {
 				r := newBasicRack()
-				r.Placement = &scyllav1.PlacementSpec{
+				r.Placement = &scyllav1alpha1.PlacementSpec{
 					NodeAffinity: newNodeAffinity(),
 				}
 				return r
 			}(),
-			scyllaCluster:       newBasicScyllaCluster(),
+			scyllaDatacenter:    newBasicScyllaDatacenter(),
 			existingStatefulSet: nil,
 			expectedStatefulSet: func() *appsv1.StatefulSet {
 				s := newBasicStatefulSet()
@@ -839,14 +839,14 @@ func TestStatefulSetForRack(t *testing.T) {
 		},
 		{
 			name: "new StatefulSet with non-nil PodAffinity",
-			rack: func() scyllav1.RackSpec {
+			rack: func() scyllav1alpha1.RackSpec {
 				r := newBasicRack()
-				r.Placement = &scyllav1.PlacementSpec{
+				r.Placement = &scyllav1alpha1.PlacementSpec{
 					PodAffinity: newPodAffinity(),
 				}
 				return r
 			}(),
-			scyllaCluster:       newBasicScyllaCluster(),
+			scyllaDatacenter:    newBasicScyllaDatacenter(),
 			existingStatefulSet: nil,
 			expectedStatefulSet: func() *appsv1.StatefulSet {
 				s := newBasicStatefulSet()
@@ -857,14 +857,14 @@ func TestStatefulSetForRack(t *testing.T) {
 		},
 		{
 			name: "new StatefulSet with non-nil PodAntiAffinity",
-			rack: func() scyllav1.RackSpec {
+			rack: func() scyllav1alpha1.RackSpec {
 				r := newBasicRack()
-				r.Placement = &scyllav1.PlacementSpec{
+				r.Placement = &scyllav1alpha1.PlacementSpec{
 					PodAntiAffinity: newPodAntiAffinity(),
 				}
 				return r
 			}(),
-			scyllaCluster:       newBasicScyllaCluster(),
+			scyllaDatacenter:    newBasicScyllaDatacenter(),
 			existingStatefulSet: nil,
 			expectedStatefulSet: func() *appsv1.StatefulSet {
 				s := newBasicStatefulSet()
@@ -876,8 +876,8 @@ func TestStatefulSetForRack(t *testing.T) {
 		{
 			name: "new StatefulSet with non-nil ImagePullSecrets",
 			rack: newBasicRack(),
-			scyllaCluster: func() *scyllav1.ScyllaCluster {
-				sc := newBasicScyllaCluster()
+			scyllaDatacenter: func() *scyllav1alpha1.ScyllaDatacenter {
+				sc := newBasicScyllaDatacenter()
 				sc.Spec.ImagePullSecrets = []corev1.LocalObjectReference{
 					{
 						Name: "basic-secrets",
@@ -900,8 +900,8 @@ func TestStatefulSetForRack(t *testing.T) {
 		{
 			name: "new StatefulSet with non-nil ForceRedeploymentReason",
 			rack: newBasicRack(),
-			scyllaCluster: func() *scyllav1.ScyllaCluster {
-				sc := newBasicScyllaCluster()
+			scyllaDatacenter: func() *scyllav1alpha1.ScyllaDatacenter {
+				sc := newBasicScyllaDatacenter()
 				sc.Spec.ForceRedeploymentReason = "reason"
 				return sc
 			}(),
@@ -920,7 +920,7 @@ func TestStatefulSetForRack(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := StatefulSetForRack(tc.rack, tc.scyllaCluster, tc.existingStatefulSet, "scylladb/scylla-operator:latest")
+			got, err := StatefulSetForRack(tc.rack, tc.scyllaDatacenter, tc.existingStatefulSet, "scylladb/scylla-operator:latest")
 
 			if !reflect.DeepEqual(err, tc.expectedError) {
 				t.Fatalf("expected and actual errors differ: %s",
@@ -936,18 +936,18 @@ func TestStatefulSetForRack(t *testing.T) {
 }
 
 func TestMakeIngresses(t *testing.T) {
-	basicScyllaCluster := &scyllav1.ScyllaCluster{
+	basicScyllaDatacenter := &scyllav1alpha1.ScyllaDatacenter{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "basic",
 			UID:  "the-uid",
 		},
-		Spec: scyllav1.ScyllaClusterSpec{
-			Datacenter: scyllav1.DatacenterSpec{
+		Spec: scyllav1alpha1.ScyllaDatacenterSpec{
+			Datacenter: scyllav1alpha1.DatacenterSpec{
 				Name: "dc",
-				Racks: []scyllav1.RackSpec{
+				Racks: []scyllav1alpha1.RackSpec{
 					{
 						Name: "rack",
-						Storage: scyllav1.StorageSpec{
+						Storage: scyllav1alpha1.StorageSpec{
 							Capacity: "1Gi",
 						},
 					},
@@ -985,20 +985,20 @@ func TestMakeIngresses(t *testing.T) {
 
 	tt := []struct {
 		name              string
-		cluster           *scyllav1.ScyllaCluster
+		datacenter        *scyllav1alpha1.ScyllaDatacenter
 		services          map[string]*corev1.Service
 		expectedIngresses []*networkingv1.Ingress
 	}{
 		{
 			name:              "no ingresses when cluster isn't exposed",
-			cluster:           basicScyllaCluster,
+			datacenter:        basicScyllaDatacenter,
 			services:          map[string]*corev1.Service{},
 			expectedIngresses: nil,
 		},
 		{
 			name: "no ingresses when ingresses are explicitly disabled",
-			cluster: func() *scyllav1.ScyllaCluster {
-				cluster := basicScyllaCluster.DeepCopy()
+			datacenter: func() *scyllav1alpha1.ScyllaDatacenter {
+				cluster := basicScyllaDatacenter.DeepCopy()
 				cluster.Spec.DNSDomains = []string{"public.scylladb.com", "private.scylladb.com"}
 				cluster.Spec.ExposeOptions = &scyllav1.ExposeOptions{
 					CQL: &scyllav1.CQLExposeOptions{
@@ -1025,8 +1025,8 @@ func TestMakeIngresses(t *testing.T) {
 				"node-2": newMemberService("node-2", "host-id-2"),
 				"node-3": newMemberService("node-3", "host-id-3"),
 			},
-			cluster: func() *scyllav1.ScyllaCluster {
-				cluster := basicScyllaCluster.DeepCopy()
+			datacenter: func() *scyllav1alpha1.ScyllaDatacenter {
+				cluster := basicScyllaDatacenter.DeepCopy()
 				cluster.Spec.DNSDomains = []string{"public.scylladb.com", "private.scylladb.com"}
 				cluster.Spec.ExposeOptions = &scyllav1.ExposeOptions{
 					CQL: &scyllav1.CQLExposeOptions{
@@ -1339,7 +1339,7 @@ func TestMakeIngresses(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := MakeIngresses(tc.cluster, tc.services)
+			got := MakeIngresses(tc.datacenter, tc.services)
 			if !apiequality.Semantic.DeepEqual(got, tc.expectedIngresses) {
 				t.Errorf("expected and actual Ingresses differ: %s", cmp.Diff(tc.expectedIngresses, got))
 			}

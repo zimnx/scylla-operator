@@ -1,6 +1,6 @@
 // Copyright (c) 2021 ScyllaDB
 
-package scyllacluster
+package scylladatacenter
 
 import (
 	"context"
@@ -17,10 +17,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-var _ = g.Describe("ScyllaCluster", func() {
+var _ = g.Describe("ScyllaDatacenter", func() {
 	defer g.GinkgoRecover()
 
-	f := framework.NewFramework("scyllacluster")
+	f := framework.NewFramework("scylladatacenter")
 
 	g.It("should re-bootstrap from old PVCs", func() {
 		const membersCount = 3
@@ -28,35 +28,35 @@ var _ = g.Describe("ScyllaCluster", func() {
 		ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 		defer cancel()
 
-		sc := scyllafixture.BasicScyllaCluster.ReadOrFail()
-		sc.Spec.Datacenter.Racks[0].Members = membersCount
+		sd := scyllafixture.BasicScyllaDatacenter.ReadOrFail()
+		sd.Spec.Datacenter.Racks[0].Members = membersCount
 
-		framework.By("Creating a ScyllaCluster")
-		sc, err := f.ScyllaClient().ScyllaV1().ScyllaClusters(f.Namespace()).Create(ctx, sc, metav1.CreateOptions{})
+		framework.By("Creating a ScyllaDatacenter")
+		sd, err := f.ScyllaClient().ScyllaV1alpha1().ScyllaDatacenters(f.Namespace()).Create(ctx, sd, metav1.CreateOptions{})
 		o.Expect(err).NotTo(o.HaveOccurred())
-		originalSC := sc.DeepCopy()
+		originalSC := sd.DeepCopy()
 		originalSC.ResourceVersion = ""
 
-		framework.By("Waiting for the ScyllaCluster to rollout (RV=%s)", sc.ResourceVersion)
-		waitCtx1, waitCtx1Cancel := utils.ContextForRollout(ctx, sc)
+		framework.By("Waiting for the ScyllaDatacenter to rollout (RV=%s)", sd.ResourceVersion)
+		waitCtx1, waitCtx1Cancel := utils.ContextForRollout(ctx, sd)
 		defer waitCtx1Cancel()
-		sc, err = utils.WaitForScyllaClusterState(waitCtx1, f.ScyllaClient().ScyllaV1(), sc.Namespace, sc.Name, utils.WaitForStateOptions{}, utils.IsScyllaClusterRolledOut)
+		sd, err = utils.WaitForScyllaDatacenterState(waitCtx1, f.ScyllaClient().ScyllaV1alpha1(), sd.Namespace, sd.Name, utils.WaitForStateOptions{}, utils.IsScyllaDatacenterRolledOut)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
-		di, err := NewDataInserter(ctx, f.KubeClient().CoreV1(), sc, utils.GetMemberCount(sc))
+		di, err := NewDataInserter(ctx, f.KubeClient().CoreV1(), sd, utils.GetMemberCount(sd))
 		o.Expect(err).NotTo(o.HaveOccurred())
 		defer di.Close()
 
 		err = di.Insert()
 		o.Expect(err).NotTo(o.HaveOccurred())
 
-		verifyScyllaCluster(ctx, f.KubeClient(), sc, di)
+		verifyScyllaDatacenter(ctx, f.KubeClient(), sd, di)
 
-		framework.By("Deleting the ScyllaCluster")
+		framework.By("Deleting the ScyllaDatacenter")
 		var propagationPolicy = metav1.DeletePropagationForeground
-		err = f.ScyllaClient().ScyllaV1().ScyllaClusters(sc.Namespace).Delete(ctx, sc.Name, metav1.DeleteOptions{
+		err = f.ScyllaClient().ScyllaV1alpha1().ScyllaDatacenters(sd.Namespace).Delete(ctx, sd.Name, metav1.DeleteOptions{
 			Preconditions: &metav1.Preconditions{
-				UID: &sc.UID,
+				UID: &sd.UID,
 			},
 			PropagationPolicy: &propagationPolicy,
 		})
@@ -68,14 +68,14 @@ var _ = g.Describe("ScyllaCluster", func() {
 			waitCtx2,
 			f.DynamicClient(),
 			scyllav1.GroupVersion.WithResource("scyllaclusters"),
-			sc.Namespace,
-			sc.Name,
-			&sc.UID,
+			sd.Namespace,
+			sd.Name,
+			&sd.UID,
 		)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
 		framework.By("Verifying PVCs' presence")
-		pvcs, err := f.KubeClient().CoreV1().PersistentVolumeClaims(sc.Namespace).List(ctx, metav1.ListOptions{})
+		pvcs, err := f.KubeClient().CoreV1().PersistentVolumeClaims(sd.Namespace).List(ctx, metav1.ListOptions{})
 		o.Expect(pvcs.Items).To(o.HaveLen(membersCount))
 		o.Expect(err).NotTo(o.HaveOccurred())
 
@@ -85,27 +85,28 @@ var _ = g.Describe("ScyllaCluster", func() {
 			pvcMap[pvc.Name] = pvc
 		}
 
-		stsName := naming.StatefulSetNameForRack(sc.Spec.Datacenter.Racks[0], sc)
-		for i := int32(0); i < sc.Spec.Datacenter.Racks[0].Members; i++ {
+		stsName := naming.StatefulSetNameForRack(sd.Spec.Datacenter.Racks[0], sd)
+		for i := int32(0); i < sd.Spec.Datacenter.Racks[0].Members; i++ {
 			podName := fmt.Sprintf("%s-%d", stsName, i)
 			pvcName := naming.PVCNameForPod(podName)
 			o.Expect(pvcMap).To(o.HaveKey(pvcName))
 			o.Expect(pvcMap[pvcName].ObjectMeta.DeletionTimestamp).To(o.BeNil())
 		}
 
-		framework.By("Redeploying the ScyllaCluster")
-		sc = originalSC.DeepCopy()
-		sc, err = f.ScyllaClient().ScyllaV1().ScyllaClusters(f.Namespace()).Create(ctx, sc, metav1.CreateOptions{})
+		framework.By("Redeploying the ScyllaDatacenter")
+		sd = originalSC.DeepCopy()
+		sd, err = f.ScyllaClient().ScyllaV1alpha1().ScyllaDatacenters(f.Namespace()).Create(ctx, sd, metav1.CreateOptions{})
 		o.Expect(err).NotTo(o.HaveOccurred())
 
-		framework.By("Waiting for the ScyllaCluster to redeploy")
-		waitCtx3, waitCtx3Cancel := utils.ContextForRollout(ctx, sc)
+		framework.By("Waiting for the ScyllaDatacenter to redeploy")
+		waitCtx3, waitCtx3Cancel := utils.ContextForRollout(ctx, sd)
 		defer waitCtx3Cancel()
-		sc, err = utils.WaitForScyllaClusterState(waitCtx3, f.ScyllaClient().ScyllaV1(), sc.Namespace, sc.Name, utils.WaitForStateOptions{}, utils.IsScyllaClusterRolledOut)
+
+		sd, err = utils.WaitForScyllaDatacenterState(waitCtx3, f.ScyllaClient().ScyllaV1alpha1(), sd.Namespace, sd.Name, utils.WaitForStateOptions{}, utils.IsScyllaDatacenterRolledOut)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
-		err = di.UpdateClientEndpoints(ctx, sc)
+		err = di.UpdateClientEndpoints(ctx, sd)
 		o.Expect(err).NotTo(o.HaveOccurred())
-		verifyScyllaCluster(ctx, f.KubeClient(), sc, di)
+		verifyScyllaDatacenter(ctx, f.KubeClient(), sd, di)
 	})
 })

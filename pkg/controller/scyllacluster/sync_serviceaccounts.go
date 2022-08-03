@@ -4,21 +4,21 @@ import (
 	"context"
 	"fmt"
 
-	scyllav1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1"
+	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/resourceapply"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 )
 
-func (scc *Controller) syncServiceAccounts(
+func (sdc *Controller) syncServiceAccounts(
 	ctx context.Context,
-	sc *scyllav1.ScyllaCluster,
+	sd *scyllav1alpha1.ScyllaDatacenter,
 	serviceAccounts map[string]*corev1.ServiceAccount,
 ) error {
 	var err error
 
-	requiredServiceAccount := MakeServiceAccount(sc)
+	requiredServiceAccount := MakeServiceAccount(sd)
 
 	// Delete any excessive ServiceAccounts.
 	// Delete has to be the fist action to avoid getting stuck on quota.
@@ -33,7 +33,7 @@ func (scc *Controller) syncServiceAccounts(
 		}
 
 		propagationPolicy := metav1.DeletePropagationBackground
-		err = scc.kubeClient.CoreV1().ServiceAccounts(sa.Namespace).Delete(ctx, sa.Name, metav1.DeleteOptions{
+		err = sdc.kubeClient.CoreV1().ServiceAccounts(sa.Namespace).Delete(ctx, sa.Name, metav1.DeleteOptions{
 			Preconditions: &metav1.Preconditions{
 				UID: &sa.UID,
 			},
@@ -46,7 +46,7 @@ func (scc *Controller) syncServiceAccounts(
 		return fmt.Errorf("can't delete service account(s): %w", err)
 	}
 
-	_, _, err = resourceapply.ApplyServiceAccount(ctx, scc.kubeClient.CoreV1(), scc.serviceAccountLister, scc.eventRecorder, requiredServiceAccount, true, false)
+	_, _, err = resourceapply.ApplyServiceAccount(ctx, sdc.kubeClient.CoreV1(), sdc.serviceAccountLister, sdc.eventRecorder, requiredServiceAccount, true, false)
 	if err != nil {
 		return fmt.Errorf("can't apply service account: %w", err)
 	}

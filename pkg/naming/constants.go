@@ -116,7 +116,7 @@ const (
 
 	ScyllaOperatorNodeTuningNamespace = "scylla-operator-node-tuning"
 
-	ScyllaClusterMemberClusterRoleName = "scyllacluster-member"
+	ScyllaDatacenterMemberClusterRoleName = "scyllacluster-member"
 
 	SingletonName = "cluster"
 

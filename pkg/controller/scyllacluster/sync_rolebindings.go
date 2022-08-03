@@ -4,21 +4,21 @@ import (
 	"context"
 	"fmt"
 
-	scyllav1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1"
+	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/resourceapply"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 )
 
-func (scc *Controller) syncRoleBindings(
+func (sdc *Controller) syncRoleBindings(
 	ctx context.Context,
-	sc *scyllav1.ScyllaCluster,
+	sd *scyllav1alpha1.ScyllaDatacenter,
 	roleBindings map[string]*rbacv1.RoleBinding,
 ) error {
 	var err error
 
-	requiredRoleBinding := MakeRoleBinding(sc)
+	requiredRoleBinding := MakeRoleBinding(sd)
 
 	// Delete any excessive RoleBindings.
 	// Delete has to be the fist action to avoid getting stuck on quota.
@@ -33,7 +33,7 @@ func (scc *Controller) syncRoleBindings(
 		}
 
 		propagationPolicy := metav1.DeletePropagationBackground
-		err = scc.kubeClient.RbacV1().RoleBindings(rb.Namespace).Delete(ctx, rb.Name, metav1.DeleteOptions{
+		err = sdc.kubeClient.RbacV1().RoleBindings(rb.Namespace).Delete(ctx, rb.Name, metav1.DeleteOptions{
 			Preconditions: &metav1.Preconditions{
 				UID: &rb.UID,
 			},
@@ -46,7 +46,7 @@ func (scc *Controller) syncRoleBindings(
 		return fmt.Errorf("can't delete role binding(s): %w", err)
 	}
 
-	_, _, err = resourceapply.ApplyRoleBinding(ctx, scc.kubeClient.RbacV1(), scc.roleBindingLister, scc.eventRecorder, requiredRoleBinding, true, false)
+	_, _, err = resourceapply.ApplyRoleBinding(ctx, sdc.kubeClient.RbacV1(), sdc.roleBindingLister, sdc.eventRecorder, requiredRoleBinding, true, false)
 	if err != nil {
 		return fmt.Errorf("can't apply role binding: %w", err)
 	}

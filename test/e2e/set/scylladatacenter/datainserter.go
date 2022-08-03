@@ -1,6 +1,6 @@
 // Copyright (c) 2021 ScyllaDB
 
-package scyllacluster
+package scylladatacenter
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	"github.com/gocql/gocql"
 	"github.com/scylladb/gocqlx/v2"
 	"github.com/scylladb/gocqlx/v2/table"
-	scyllav1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1"
+	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/test/e2e/framework"
 	"github.com/scylladb/scylla-operator/test/e2e/utils"
 	"k8s.io/apimachinery/pkg/util/rand"
@@ -36,7 +36,7 @@ type TestData struct {
 	Data string `db:"data"`
 }
 
-func NewDataInserter(ctx context.Context, client corev1client.CoreV1Interface, sc *scyllav1.ScyllaCluster, replicationFactor int32) (*DataInserter, error) {
+func NewDataInserter(ctx context.Context, client corev1client.CoreV1Interface, sd *scyllav1alpha1.ScyllaDatacenter, replicationFactor int32) (*DataInserter, error) {
 	if replicationFactor < 1 {
 		return nil, fmt.Errorf("replication factor can't be set to less than 1")
 	}
@@ -61,7 +61,7 @@ func NewDataInserter(ctx context.Context, client corev1client.CoreV1Interface, s
 	}
 
 	var err error
-	di.session, err = di.createSession(ctx, sc)
+	di.session, err = di.createSession(ctx, sd)
 	if err != nil {
 		return nil, fmt.Errorf("can't create session: %w", err)
 	}
@@ -75,11 +75,11 @@ func (di *DataInserter) Close() {
 
 // UpdateClientEndpoints closes an existing session and opens a new one.
 // In case an error was returned, DataInserter can no Longer be used.
-func (di *DataInserter) UpdateClientEndpoints(ctx context.Context, sc *scyllav1.ScyllaCluster) error {
+func (di *DataInserter) UpdateClientEndpoints(ctx context.Context, sd *scyllav1alpha1.ScyllaDatacenter) error {
 	di.session.Close()
 
 	var err error
-	di.session, err = di.createSession(ctx, sc)
+	di.session, err = di.createSession(ctx, sd)
 	if err != nil {
 		return fmt.Errorf("can't create session: %w", err)
 	}
@@ -134,8 +134,8 @@ func (di *DataInserter) GetExpected() []*TestData {
 	return di.data
 }
 
-func (di *DataInserter) createSession(ctx context.Context, sc *scyllav1.ScyllaCluster) (*gocqlx.Session, error) {
-	hosts, err := utils.GetHosts(ctx, di.client, sc)
+func (di *DataInserter) createSession(ctx context.Context, sd *scyllav1alpha1.ScyllaDatacenter) (*gocqlx.Session, error) {
+	hosts, err := utils.GetHosts(ctx, di.client, sd)
 	if err != nil {
 		return nil, fmt.Errorf("can't get hosts: %w", err)
 	}

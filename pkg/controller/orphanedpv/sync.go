@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	scyllav1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1"
+	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	corev1 "k8s.io/api/core/v1"
@@ -23,19 +23,19 @@ type PVItem struct {
 	ServiceName string
 }
 
-func (opc *Controller) getPVsForScyllaCluster(ctx context.Context, sc *scyllav1.ScyllaCluster) ([]*PVItem, []string, error) {
+func (opc *Controller) getPVsForScyllaDatacenter(ctx context.Context, sd *scyllav1alpha1.ScyllaDatacenter) ([]*PVItem, []string, error) {
 	var errs []error
 	var requeueReasons []string
 	var pis []*PVItem
-	for _, rack := range sc.Spec.Datacenter.Racks {
-		stsName := naming.StatefulSetNameForRack(rack, sc)
+	for _, rack := range sd.Spec.Datacenter.Racks {
+		stsName := naming.StatefulSetNameForRack(rack, sd)
 		for i := int32(0); i < rack.Members; i++ {
 			svcName := fmt.Sprintf("%s-%d", stsName, i)
 			pvcName := fmt.Sprintf("%s-%s", naming.PVCTemplateName, svcName)
-			pvc, err := opc.pvcLister.PersistentVolumeClaims(sc.Namespace).Get(pvcName)
+			pvc, err := opc.pvcLister.PersistentVolumeClaims(sd.Namespace).Get(pvcName)
 			if err != nil {
 				if apierrors.IsNotFound(err) {
-					klog.V(2).InfoS("PVC not found", "PVC", fmt.Sprintf("%s/%s", sc.Namespace, pvcName))
+					klog.V(2).InfoS("PVC not found", "PVC", fmt.Sprintf("%s/%s", sd.Namespace, pvcName))
 					// We aren't watching PVCs so we need to requeue manually
 					requeueReasons = append(requeueReasons, "PVC not found")
 					continue
@@ -74,14 +74,14 @@ func (opc *Controller) sync(ctx context.Context, key string) error {
 	}
 
 	startTime := time.Now()
-	klog.V(4).InfoS("Started syncing ScyllaCluster", "ScyllaCluster", klog.KRef(namespace, name), "startTime", startTime)
+	klog.V(4).InfoS("Started syncing ScyllaDatacenter", "ScyllaDatacenter", klog.KRef(namespace, name), "startTime", startTime)
 	defer func() {
-		klog.V(4).InfoS("Finished syncing ScyllaCluster", "ScyllaCluster", klog.KRef(namespace, name), "duration", time.Since(startTime))
+		klog.V(4).InfoS("Finished syncing ScyllaDatacenter", "ScyllaDatacenter", klog.KRef(namespace, name), "duration", time.Since(startTime))
 	}()
 
-	sc, err := opc.scyllaLister.ScyllaClusters(namespace).Get(name)
+	sc, err := opc.scyllaLister.ScyllaDatacenters(namespace).Get(name)
 	if apierrors.IsNotFound(err) {
-		klog.V(2).InfoS("ScyllaCluster has been deleted", "ScyllaCluster", klog.KObj(sc))
+		klog.V(2).InfoS("ScyllaDatacenter has been deleted", "ScyllaDatacenter", klog.KObj(sc))
 		return nil
 	}
 	if err != nil {
@@ -92,8 +92,8 @@ func (opc *Controller) sync(ctx context.Context, key string) error {
 		return nil
 	}
 
-	if !sc.Spec.AutomaticOrphanedNodeCleanup {
-		klog.V(4).InfoS("ScyllaCluster doesn't have AutomaticOrphanedNodeCleanup enabled", "ScyllaCluster", klog.KRef(namespace, name))
+	if sc.Spec.c.Spec.AutomaticOrphanedNodeCleanup {
+		klog.V(4).InfoS("ScyllaDatacenter doesn't have RemoveOrphanedPVs enabled", "ScyllaDatacenter", klog.KRef(namespace, name))
 		return nil
 	}
 
@@ -104,7 +104,7 @@ func (opc *Controller) sync(ctx context.Context, key string) error {
 
 	var errs []error
 
-	pis, requeueReasons, err := opc.getPVsForScyllaCluster(ctx, sc)
+	pis, requeueReasons, err := opc.getPVsForScyllaDatacenter(ctx, sc)
 	// Process at least some PVs even if there were errors retrieving the rest
 	if err != nil {
 		errs = append(errs, err)
@@ -121,7 +121,7 @@ func (opc *Controller) sync(ctx context.Context, key string) error {
 			continue
 		}
 
-		klog.V(2).InfoS("PV is orphaned", "ScyllaCluster", sc, "PV", klog.KObj(pi.PV))
+		klog.V(2).InfoS("PV is orphaned", "ScyllaDatacenter", sc, "PV", klog.KObj(pi.PV))
 
 		// Verify that the node doesn't exist with a live call.
 		freshNodes, err := opc.kubeClient.CoreV1().Nodes().List(ctx, metav1.ListOptions{
@@ -142,7 +142,7 @@ func (opc *Controller) sync(ctx context.Context, key string) error {
 			continue
 		}
 
-		klog.V(2).InfoS("PV is verified as orphaned.", "ScyllaCluster", sc, "PV", klog.KObj(pi.PV))
+		klog.V(2).InfoS("PV is verified as orphaned.", "ScyllaDatacenter", sc, "PV", klog.KObj(pi.PV))
 
 		_, err = opc.kubeClient.CoreV1().Services(sc.Namespace).Patch(
 			ctx,
@@ -156,7 +156,7 @@ func (opc *Controller) sync(ctx context.Context, key string) error {
 			continue
 		}
 
-		klog.V(2).InfoS("Marked service for replacement", "ScyllaCluster", sc, "Service", pi.ServiceName)
+		klog.V(2).InfoS("Marked service for replacement", "ScyllaDatacenter", sc, "Service", pi.ServiceName)
 	}
 
 	err = utilerrors.NewAggregate(errs)

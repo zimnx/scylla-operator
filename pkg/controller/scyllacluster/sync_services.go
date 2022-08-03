@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	scyllav1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1"
+	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	"github.com/scylladb/scylla-operator/pkg/resourceapply"
@@ -21,27 +21,27 @@ import (
 
 var serviceOrdinalRegex = regexp.MustCompile("^.*-([0-9]+)$")
 
-func (scc *Controller) makeServices(sc *scyllav1.ScyllaCluster, oldServices map[string]*corev1.Service) []*corev1.Service {
+func (sdc *Controller) makeServices(sd *scyllav1alpha1.ScyllaDatacenter, oldServices map[string]*corev1.Service) []*corev1.Service {
 	services := []*corev1.Service{
-		IdentityService(sc),
+		IdentityService(sd),
 	}
 
-	for _, rack := range sc.Spec.Datacenter.Racks {
-		stsName := naming.StatefulSetNameForRack(rack, sc)
+	for _, rack := range sd.Spec.Datacenter.Racks {
+		stsName := naming.StatefulSetNameForRack(rack, sd)
 
 		for ord := int32(0); ord < rack.Members; ord++ {
 			svcName := fmt.Sprintf("%s-%d", stsName, ord)
 			oldSvc := oldServices[svcName]
-			services = append(services, MemberService(sc, rack.Name, svcName, oldSvc))
+			services = append(services, MemberService(sd, rack.Name, svcName, oldSvc))
 		}
 	}
 
 	return services
 }
 
-func (scc *Controller) pruneServices(
+func (sdc *Controller) pruneServices(
 	ctx context.Context,
-	sc *scyllav1.ScyllaCluster,
+	sd *scyllav1alpha1.ScyllaDatacenter,
 	requiredServices []*corev1.Service,
 	services map[string]*corev1.Service,
 	statefulSets map[string]*appsv1.StatefulSet,
@@ -68,10 +68,10 @@ func (scc *Controller) pruneServices(
 			errs = append(errs, fmt.Errorf("service %s/%s is missing %q label", svc.Namespace, svc.Name, naming.RackNameLabel))
 			continue
 		}
-		stsName := fmt.Sprintf("%s-%s-%s", sc.Name, sc.Spec.Datacenter.Name, rackName)
+		stsName := fmt.Sprintf("%s-%s-%s", sd.Name, sd.Spec.Datacenter.Name, rackName)
 		sts, ok := statefulSets[stsName]
 		if !ok {
-			errs = append(errs, fmt.Errorf("statefulset %s/%s is missing", sc.Namespace, stsName))
+			errs = append(errs, fmt.Errorf("statefulset %s/%s is missing", sd.Namespace, stsName))
 			continue
 		}
 		// TODO: Label services with the ordinal instead of parsing.
@@ -99,7 +99,7 @@ func (scc *Controller) pruneServices(
 		// Because we also delete the PVC, we need to recheck the service state with a live call.
 		// We can't delete the PVC after the service because the deletion wouldn't be retried.
 		{
-			freshSvc, err := scc.kubeClient.CoreV1().Services(svc.Namespace).Get(ctx, svc.Name, metav1.GetOptions{})
+			freshSvc, err := sdc.kubeClient.CoreV1().Services(svc.Namespace).Get(ctx, svc.Name, metav1.GetOptions{})
 			if err != nil {
 				errs = append(errs, err)
 				continue
@@ -119,7 +119,7 @@ func (scc *Controller) pruneServices(
 		backgroundPropagationPolicy := metav1.DeletePropagationBackground
 
 		pvcName := naming.PVCNameForService(svc.Name)
-		err = scc.kubeClient.CoreV1().PersistentVolumeClaims(svc.Namespace).Delete(ctx, pvcName, metav1.DeleteOptions{
+		err = sdc.kubeClient.CoreV1().PersistentVolumeClaims(svc.Namespace).Delete(ctx, pvcName, metav1.DeleteOptions{
 			PropagationPolicy: &backgroundPropagationPolicy,
 		})
 		if err != nil && !apierrors.IsNotFound(err) {
@@ -127,7 +127,7 @@ func (scc *Controller) pruneServices(
 			continue
 		}
 
-		err = scc.kubeClient.CoreV1().Services(svc.Namespace).Delete(ctx, svc.Name, metav1.DeleteOptions{
+		err = sdc.kubeClient.CoreV1().Services(svc.Namespace).Delete(ctx, svc.Name, metav1.DeleteOptions{
 			Preconditions: &metav1.Preconditions{
 				UID:             &svc.UID,
 				ResourceVersion: &svc.ResourceVersion,
@@ -142,27 +142,27 @@ func (scc *Controller) pruneServices(
 	return utilerrors.NewAggregate(errs)
 }
 
-func (scc *Controller) syncServices(
+func (sdc *Controller) syncServices(
 	ctx context.Context,
-	sc *scyllav1.ScyllaCluster,
-	status *scyllav1.ScyllaClusterStatus,
+	sd *scyllav1alpha1.ScyllaDatacenter,
+	status *scyllav1alpha1.ScyllaDatacenterStatus,
 	services map[string]*corev1.Service,
 	statefulSets map[string]*appsv1.StatefulSet,
-) (*scyllav1.ScyllaClusterStatus, error) {
+) (*scyllav1alpha1.ScyllaDatacenterStatus, error) {
 	var err error
 
-	requiredServices := scc.makeServices(sc, services)
+	requiredServices := sdc.makeServices(sd, services)
 
 	// Delete any excessive Services.
 	// Delete has to be the fist action to avoid getting stuck on quota.
-	err = scc.pruneServices(ctx, sc, requiredServices, services, statefulSets)
+	err = sdc.pruneServices(ctx, sd, requiredServices, services, statefulSets)
 	if err != nil {
 		return status, fmt.Errorf("can't delete Service(s): %w", err)
 	}
 
 	// We need to first propagate ReplaceAddressFirstBoot from status for the new service.
 	for _, svc := range requiredServices {
-		_, _, err = resourceapply.ApplyService(ctx, scc.kubeClient.CoreV1(), scc.serviceLister, scc.eventRecorder, svc, false)
+		_, _, err = resourceapply.ApplyService(ctx, sdc.kubeClient.CoreV1(), sdc.serviceLister, sdc.eventRecorder, svc, false)
 		if err != nil {
 			return status, err
 		}
@@ -181,7 +181,7 @@ func (scc *Controller) syncServices(
 		}
 
 		rackStatus := status.Racks[rackName]
-		controllerhelpers.SetRackCondition(&rackStatus, scyllav1.RackConditionTypeMemberReplacing)
+		controllerhelpers.SetRackCondition(&rackStatus, scyllav1alpha1.RackConditionTypeMemberReplacing)
 		status.Racks[rackName] = rackStatus
 
 		if len(replaceAddr) == 0 {
@@ -211,22 +211,22 @@ func (scc *Controller) syncServices(
 				},
 			}
 			klog.V(2).InfoS("Deleting the PVC to replace member",
-				"ScyllaCluster", klog.KObj(sc),
+				"ScyllaCluster", klog.KObj(sd),
 				"Service", klog.KObj(svc),
 				"PVC", klog.KObj(pvcMeta),
 			)
-			err = scc.kubeClient.CoreV1().PersistentVolumeClaims(pvcMeta.Namespace).Delete(ctx, pvcMeta.Name, metav1.DeleteOptions{
+			err = sdc.kubeClient.CoreV1().PersistentVolumeClaims(pvcMeta.Namespace).Delete(ctx, pvcMeta.Name, metav1.DeleteOptions{
 				PropagationPolicy: &backgroundPropagationPolicy,
 			})
 			if err != nil {
 				if apierrors.IsNotFound(err) {
 					klog.V(4).InfoS("PVC not found", "PVC", klog.KObj(pvcMeta))
 				} else {
-					resourceapply.ReportDeleteEvent(scc.eventRecorder, pvcMeta, err)
+					resourceapply.ReportDeleteEvent(sdc.eventRecorder, pvcMeta, err)
 					return status, err
 				}
 			}
-			resourceapply.ReportDeleteEvent(scc.eventRecorder, pvcMeta, nil)
+			resourceapply.ReportDeleteEvent(sdc.eventRecorder, pvcMeta, nil)
 
 			// Hack: Sleeps are terrible thing to in sync logic but this compensates for a broken
 			// StatefulSet controller in Kubernetes. StatefulSet doesn't reconcile PVCs and decides
@@ -243,31 +243,31 @@ func (scc *Controller) syncServices(
 				},
 			}
 			klog.V(2).InfoS("Deleting the Pod to replace member",
-				"ScyllaCluster", klog.KObj(sc),
+				"ScyllaCluster", klog.KObj(sd),
 				"Service", klog.KObj(svc),
 				"Pod", klog.KObj(podMeta),
 			)
 			// TODO: Revert back to eviction when it's fixed in kubernetes 1.19.z (#732)
 			//       (https://github.com/kubernetes/kubernetes/issues/103970)
-			err = scc.kubeClient.CoreV1().Pods(podMeta.Namespace).Delete(ctx, podMeta.Name, metav1.DeleteOptions{
+			err = sdc.kubeClient.CoreV1().Pods(podMeta.Namespace).Delete(ctx, podMeta.Name, metav1.DeleteOptions{
 				PropagationPolicy: &backgroundPropagationPolicy,
 			})
 			if err != nil {
 				if apierrors.IsNotFound(err) {
 					klog.V(4).InfoS("Pod not found", "Pod", klog.ObjectRef{Namespace: svc.Namespace, Name: svc.Name})
 				} else {
-					resourceapply.ReportDeleteEvent(scc.eventRecorder, podMeta, err)
+					resourceapply.ReportDeleteEvent(sdc.eventRecorder, podMeta, err)
 					return status, err
 				}
 			}
-			resourceapply.ReportDeleteEvent(scc.eventRecorder, podMeta, nil)
+			resourceapply.ReportDeleteEvent(sdc.eventRecorder, podMeta, nil)
 
 			// Delete the member Service.
 			klog.V(2).InfoS("Deleting the member service to replace member",
-				"ScyllaCluster", klog.KObj(sc),
+				"ScyllaCluster", klog.KObj(sd),
 				"Service", klog.KObj(svc),
 			)
-			err = scc.kubeClient.CoreV1().Services(svc.Namespace).Delete(ctx, svc.Name, metav1.DeleteOptions{
+			err = sdc.kubeClient.CoreV1().Services(svc.Namespace).Delete(ctx, svc.Name, metav1.DeleteOptions{
 				PropagationPolicy: &backgroundPropagationPolicy,
 				Preconditions: &metav1.Preconditions{
 					UID: &svc.UID,
@@ -279,11 +279,11 @@ func (scc *Controller) syncServices(
 				if apierrors.IsNotFound(err) {
 					klog.V(4).InfoS("Pod not found", "Pod", klog.ObjectRef{Namespace: svc.Namespace, Name: svc.Name})
 				} else {
-					resourceapply.ReportDeleteEvent(scc.eventRecorder, svc, err)
+					resourceapply.ReportDeleteEvent(sdc.eventRecorder, svc, err)
 					return status, err
 				}
 			} else {
-				resourceapply.ReportDeleteEvent(scc.eventRecorder, svc, nil)
+				resourceapply.ReportDeleteEvent(sdc.eventRecorder, svc, nil)
 
 				// FIXME: The pod could have been already up and read the old ClusterIP - make sure it will restart.
 				//        We can't delete the pod here as it wouldn't retry failures.
@@ -294,18 +294,18 @@ func (scc *Controller) syncServices(
 		} else {
 			// Member is being replaced. Wait for readiness and clear the replace label.
 
-			pod, err := scc.podLister.Pods(svc.Namespace).Get(svc.Name)
+			pod, err := sdc.podLister.Pods(svc.Namespace).Get(svc.Name)
 			if err != nil {
 				if !apierrors.IsNotFound(err) {
 					return status, err
 				}
 
 				klog.V(2).InfoS("Pod has not been recreated by the StatefulSet controller yet",
-					"ScyllaCluster", klog.KObj(sc),
+					"ScyllaCluster", klog.KObj(sd),
 					"Pod", klog.KObj(pod),
 				)
 			} else {
-				sc := scc.resolveScyllaClusterControllerThroughStatefulSet(pod)
+				sc := sdc.resolveScyllaDatacenterControllerThroughStatefulSet(pod)
 				if sc == nil {
 					klog.ErrorS(nil, "Pod matching our selector is not owned by us.",
 						"ScyllaCluster", klog.KObj(sc),
@@ -317,16 +317,16 @@ func (scc *Controller) syncServices(
 				}
 
 				// We could still see an old pod in the caches - verify with a live call.
-				podReady, pod, err := controllerhelpers.IsPodReadyWithPositiveLiveCheck(ctx, scc.kubeClient.CoreV1(), pod)
+				podReady, pod, err := controllerhelpers.IsPodReadyWithPositiveLiveCheck(ctx, sdc.kubeClient.CoreV1(), pod)
 				if err != nil {
 					return status, err
 				}
 				if podReady {
-					scc.eventRecorder.Eventf(svc, corev1.EventTypeNormal, "FinishedReplacingNode", "New pod %s/%s is ready.", pod.Namespace, pod.Name)
+					sdc.eventRecorder.Eventf(svc, corev1.EventTypeNormal, "FinishedReplacingNode", "New pod %s/%s is ready.", pod.Namespace, pod.Name)
 					svcCopy := svc.DeepCopy()
 					delete(svcCopy.Labels, naming.ReplaceLabel)
-					_, err := scc.kubeClient.CoreV1().Services(svcCopy.Namespace).Update(ctx, svcCopy, metav1.UpdateOptions{})
-					resourceapply.ReportUpdateEvent(scc.eventRecorder, svc, err)
+					_, err := sdc.kubeClient.CoreV1().Services(svcCopy.Namespace).Update(ctx, svcCopy, metav1.UpdateOptions{})
+					resourceapply.ReportUpdateEvent(sdc.eventRecorder, svc, err)
 					if err != nil {
 						return status, err
 					}

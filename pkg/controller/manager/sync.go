@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	scyllav1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1"
-	helpers "github.com/scylladb/scylla-operator/pkg/helpers"
+	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
+	"github.com/scylladb/scylla-operator/pkg/helpers"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -16,11 +16,11 @@ import (
 	"k8s.io/klog/v2"
 )
 
-func (c *Controller) getAuthToken(sc *scyllav1.ScyllaCluster) (string, error) {
-	secretName := naming.AgentAuthTokenSecretName(sc.Name)
-	secret, err := c.secretLister.Secrets(sc.Namespace).Get(secretName)
+func (c *Controller) getAuthToken(sd *scyllav1alpha1.ScyllaDatacenter) (string, error) {
+	secretName := naming.AgentAuthTokenSecretName(sd.Name)
+	secret, err := c.secretLister.Secrets(sd.Namespace).Get(secretName)
 	if err != nil {
-		return "", fmt.Errorf("can't get manager agent auth secret %s/%s: %w", sc.Namespace, secretName, err)
+		return "", fmt.Errorf("can't get manager agent auth secret %s/%s: %w", sd.Namespace, secretName, err)
 	}
 
 	return helpers.GetAgentAuthTokenFromSecret(secret)
@@ -90,44 +90,44 @@ func (c *Controller) sync(ctx context.Context, key string) error {
 	}
 
 	startTime := time.Now()
-	klog.V(4).InfoS("Started syncing ScyllaCluster", "ScyllaCluster", klog.KRef(namespace, name), "startTime", startTime)
+	klog.V(4).InfoS("Started syncing ScyllaDatacenter", "ScyllaDatacenter", klog.KRef(namespace, name), "startTime", startTime)
 	defer func() {
-		klog.V(4).InfoS("Finished syncing ScyllaCluster", "ScyllaCluster", klog.KRef(namespace, name), "duration", time.Since(startTime))
+		klog.V(4).InfoS("Finished syncing ScyllaDatacenter", "ScyllaDatacenter", klog.KRef(namespace, name), "duration", time.Since(startTime))
 	}()
 
-	sc, err := c.scyllaLister.ScyllaClusters(namespace).Get(name)
+	sd, err := c.scyllaLister.ScyllaDatacenters(namespace).Get(name)
 	if apierrors.IsNotFound(err) {
-		klog.V(2).InfoS("ScyllaCluster has been deleted", "ScyllaCluster", klog.KObj(sc))
+		klog.V(2).InfoS("ScyllaDatacenter has been deleted", "ScyllaDatacenter", klog.KObj(sd))
 		return nil
 	}
 	if err != nil {
 		return err
 	}
 
-	if sc.DeletionTimestamp != nil {
+	if sd.DeletionTimestamp != nil {
 		return nil
 	}
 
-	authToken, err := c.getAuthToken(sc)
+	authToken, err := c.getAuthToken(sd)
 	if err != nil {
 		return err
 	}
 
 	clusterID := ""
-	if sc.Status.ManagerID != nil {
-		clusterID = *sc.Status.ManagerID
+	if sd.Status.ManagerID != nil {
+		clusterID = *sd.Status.ManagerID
 	}
 	managerState, err := c.getManagerState(ctx, clusterID)
 	if err != nil {
 		return err
 	}
 
-	actions, requeue, err := runSync(ctx, sc, authToken, managerState)
+	actions, requeue, err := runSync(ctx, sd, authToken, managerState)
 	if err != nil {
 		return err
 	}
 
-	scCopy := sc.DeepCopy()
+	scCopy := sd.DeepCopy()
 
 	var actionErrs []error
 	for _, a := range actions {
@@ -140,9 +140,9 @@ func (c *Controller) sync(ctx context.Context, key string) error {
 	}
 
 	// Update status if needed
-	if !apiequality.Semantic.DeepEqual(scCopy.Status, sc.Status) {
-		klog.V(4).InfoS("Updating cluster status", "new", scCopy.Status, "old", sc.Status)
-		_, err := c.scyllaClient.ScyllaClusters(sc.Namespace).UpdateStatus(ctx, scCopy, metav1.UpdateOptions{})
+	if !apiequality.Semantic.DeepEqual(scCopy.Status, sd.Status) {
+		klog.V(4).InfoS("Updating cluster status", "new", scCopy.Status, "old", sd.Status)
+		_, err := c.scyllaClient.ScyllaDatacenters(sd.Namespace).UpdateStatus(ctx, scCopy, metav1.UpdateOptions{})
 		if err != nil {
 			return err
 		}

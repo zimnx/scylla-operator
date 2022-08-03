@@ -1,6 +1,6 @@
 // Copyright (C) 2021 ScyllaDB
 
-package scyllacluster
+package scylladatacenter
 
 import (
 	"context"
@@ -22,10 +22,10 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 )
 
-var _ = g.Describe("ScyllaCluster", func() {
+var _ = g.Describe("ScyllaDatacenter", func() {
 	defer g.GinkgoRecover()
 
-	f := framework.NewFramework("scyllacluster")
+	f := framework.NewFramework("scylladatacenter")
 
 	g.It("should allow to build connection pool using shard aware ports", func() {
 		g.Skip("Shardawareness doesn't work on setups NATting traffic, and our CI does it when traffic is going through ClusterIPs." +
@@ -41,23 +41,23 @@ var _ = g.Describe("ScyllaCluster", func() {
 		ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 		defer cancel()
 
-		sc := scyllaclusterfixture.BasicScyllaCluster.ReadOrFail()
-		sc.Spec.Datacenter.Racks[0].Members = 1
+		sd := scyllaclusterfixture.BasicScyllaDatacenter.ReadOrFail()
+		sd.Spec.Datacenter.Racks[0].Members = 1
 
 		// Ensure 2 shards.
-		sc.Spec.Datacenter.Racks[0].Resources.Limits[corev1.ResourceCPU] = resource.MustParse(fmt.Sprintf("%d", nrShards))
+		sd.Spec.Datacenter.Racks[0].Resources.Limits[corev1.ResourceCPU] = resource.MustParse(fmt.Sprintf("%d", nrShards))
 
-		framework.By("Creating a ScyllaCluster")
-		sc, err := f.ScyllaClient().ScyllaV1().ScyllaClusters(f.Namespace()).Create(ctx, sc, metav1.CreateOptions{})
+		framework.By("Creating a ScyllaDatacenter")
+		sd, err := f.ScyllaClient().ScyllaV1alpha1().ScyllaDatacenters(f.Namespace()).Create(ctx, sd, metav1.CreateOptions{})
 		o.Expect(err).NotTo(o.HaveOccurred())
 
-		framework.By("Waiting for the ScyllaCluster to rollout (RV=%s)", sc.ResourceVersion)
-		waitCtx1, waitCtx1Cancel := utils.ContextForRollout(ctx, sc)
+		framework.By("Waiting for the ScyllaDatacenter to rollout (RV=%s)", sd.ResourceVersion)
+		waitCtx1, waitCtx1Cancel := utils.ContextForRollout(ctx, sd)
 		defer waitCtx1Cancel()
-		sc, err = utils.WaitForScyllaClusterState(waitCtx1, f.ScyllaClient().ScyllaV1(), sc.Namespace, sc.Name, utils.WaitForStateOptions{}, utils.IsScyllaClusterRolledOut)
+		sd, err = utils.WaitForScyllaDatacenterState(waitCtx1, f.ScyllaClient().ScyllaV1alpha1(), sd.Namespace, sd.Name, utils.WaitForStateOptions{}, utils.IsScyllaDatacenterRolledOut)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
-		hosts, err := utils.GetHosts(ctx, f.KubeClient().CoreV1(), sc)
+		hosts, err := utils.GetHosts(ctx, f.KubeClient().CoreV1(), sd)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
 		connections := make(map[uint16]string)

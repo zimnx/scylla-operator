@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	scyllav1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1"
+	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/resourceapply"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -14,14 +14,14 @@ import (
 
 func (scc *Controller) syncIngresses(
 	ctx context.Context,
-	sc *scyllav1.ScyllaCluster,
-	status *scyllav1.ScyllaClusterStatus,
+	sd *scyllav1alpha1.ScyllaDatacenter,
+	status *scyllav1alpha1.ScyllaDatacenterStatus,
 	ingresses map[string]*networkingv1.Ingress,
 	services map[string]*corev1.Service,
-) (*scyllav1.ScyllaClusterStatus, error) {
+) (*scyllav1alpha1.ScyllaDatacenterStatus, error) {
 	var err error
 
-	requiredIngresses := MakeIngresses(sc, services)
+	requiredIngresses := MakeIngresses(sd, services)
 
 	// Delete any excessive Ingresses.
 	// Delete has to be the fist action to avoid getting stuck on quota.

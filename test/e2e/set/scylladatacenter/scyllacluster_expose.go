@@ -1,6 +1,6 @@
 // Copyright (c) 2022 ScyllaDB
 
-package scyllacluster
+package scylladatacenter
 
 import (
 	"context"
@@ -19,16 +19,16 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 )
 
-var _ = g.Describe("ScyllaCluster Ingress", func() {
+var _ = g.Describe("ScyllaDatacenter Ingress", func() {
 	defer g.GinkgoRecover()
 
-	f := framework.NewFramework("scyllacluster")
+	f := framework.NewFramework("scylladatacenter")
 
 	g.It("should create ingress objects when ingress exposeOptions are provided", func() {
 		ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 		defer cancel()
 
-		sc := scyllafixture.BasicScyllaCluster.ReadOrFail()
+		sc := scyllafixture.BasicScyllaDatacenter.ReadOrFail()
 		sc.Spec.Datacenter.Racks[0].Members = 1
 		sc.Spec.DNSDomains = []string{"private.nodes.scylladb.com", "public.nodes.scylladb.com"}
 		sc.Spec.ExposeOptions = &scyllav1.ExposeOptions{
@@ -52,10 +52,10 @@ var _ = g.Describe("ScyllaCluster Ingress", func() {
 		waitCtx, waitCtxCancel := utils.ContextForRollout(ctx, sc)
 		defer waitCtxCancel()
 
-		sc, err = utils.WaitForScyllaClusterState(waitCtx, f.ScyllaClient().ScyllaV1(), sc.Namespace, sc.Name, utils.WaitForStateOptions{}, utils.IsScyllaClusterRolledOut)
+		sc, err = utils.WaitForScyllaDatacenterState(waitCtx, f.ScyllaClient().ScyllaV1(), sc.Namespace, sc.Name, utils.WaitForStateOptions{}, utils.IsScyllaDatacenterRolledOut)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
-		verifyScyllaCluster(ctx, f.KubeClient(), sc, nil)
+		verifyScyllaDatacenter(ctx, f.KubeClient(), sc, nil)
 
 		framework.By("Verifying AnyNode Ingresses")
 		services, err := f.KubeClient().CoreV1().Services(sc.Namespace).List(ctx, metav1.ListOptions{

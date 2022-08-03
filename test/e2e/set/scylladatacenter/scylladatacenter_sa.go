@@ -1,6 +1,6 @@
 // Copyright (C) 2021 ScyllaDB
 
-package scyllacluster
+package scylladatacenter
 
 import (
 	"context"
@@ -18,23 +18,23 @@ import (
 	"k8s.io/klog/v2"
 )
 
-var _ = g.Describe("ScyllaCluster", func() {
+var _ = g.Describe("ScyllaDatacenter", func() {
 	defer g.GinkgoRecover()
 
-	f := framework.NewFramework("scyllacluster")
+	f := framework.NewFramework("scylladatacenter")
 
 	g.It("should claim preexisting member ServiceAccount and RoleBinding", func() {
 		ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 		defer cancel()
 
-		sc := scyllafixture.BasicScyllaCluster.ReadOrFail()
-		sc.Name = names.SimpleNameGenerator.GenerateName(sc.GenerateName)
-		sc.GenerateName = ""
+		sd := scyllafixture.BasicScyllaDatacenter.ReadOrFail()
+		sd.Name = names.SimpleNameGenerator.GenerateName(sd.GenerateName)
+		sd.GenerateName = ""
 
 		framework.By("Creating a ServiceAccount and a RoleBinding")
 		sa, err := f.KubeClient().CoreV1().ServiceAccounts(f.Namespace()).Create(ctx, &corev1.ServiceAccount{
 			ObjectMeta: metav1.ObjectMeta{
-				Name: fmt.Sprintf("%s-member", sc.Name),
+				Name: fmt.Sprintf("%s-member", sd.Name),
 				Annotations: map[string]string{
 					"user-annotation": "123",
 				},
@@ -64,12 +64,12 @@ var _ = g.Describe("ScyllaCluster", func() {
 		o.Expect(err).NotTo(o.HaveOccurred())
 		o.Expect(sa.OwnerReferences).To(o.HaveLen(0))
 
-		framework.By("Creating a ScyllaCluster")
-		sc, err = f.ScyllaClient().ScyllaV1().ScyllaClusters(f.Namespace()).Create(ctx, sc, metav1.CreateOptions{})
+		framework.By("Creating a ScyllaDatacenter")
+		sd, err = f.ScyllaClient().ScyllaV1alpha1().ScyllaDatacenters(f.Namespace()).Create(ctx, sd, metav1.CreateOptions{})
 		o.Expect(err).NotTo(o.HaveOccurred())
 
 		framework.By("Waiting for the ServiceAccount to be adopted")
-		waitCtx1, waitCtx1Cancel := utils.ContextForRollout(ctx, sc)
+		waitCtx1, waitCtx1Cancel := utils.ContextForRollout(ctx, sd)
 		defer waitCtx1Cancel()
 		sa, err = utils.WaitForServiceAccountState(waitCtx1, f.KubeClient().CoreV1(), sa.Namespace, sa.Name, utils.WaitForStateOptions{}, func(sa *corev1.ServiceAccount) (bool, error) {
 			ref := metav1.GetControllerOfNoCopy(sa)
@@ -78,7 +78,7 @@ var _ = g.Describe("ScyllaCluster", func() {
 				return false, nil
 			}
 
-			if ref.UID == sc.UID {
+			if ref.UID == sd.UID {
 				return true, nil
 			}
 
@@ -91,7 +91,7 @@ var _ = g.Describe("ScyllaCluster", func() {
 		o.Expect(sa.Annotations).To(o.HaveKeyWithValue("user-annotation", "123"))
 
 		framework.By("Waiting for the RoleBinding to be adopted")
-		waitCtx2, waitCtx2Cancel := utils.ContextForRollout(ctx, sc)
+		waitCtx2, waitCtx2Cancel := utils.ContextForRollout(ctx, sd)
 		defer waitCtx2Cancel()
 		rb, err = utils.WaitForRoleBindingState(waitCtx2, f.KubeClient().RbacV1(), rb.Namespace, rb.Name, utils.WaitForStateOptions{}, func(sa *rbacv1.RoleBinding) (bool, error) {
 			ref := metav1.GetControllerOfNoCopy(sa)
@@ -99,7 +99,7 @@ var _ = g.Describe("ScyllaCluster", func() {
 				return false, nil
 			}
 
-			if ref.UID == sc.UID {
+			if ref.UID == sd.UID {
 				return true, nil
 			}
 

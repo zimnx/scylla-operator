@@ -176,7 +176,7 @@ func (o *OperatorOptions) run(ctx context.Context, streams genericclioptions.IOS
 
 	scc, err := scyllacluster.NewController(
 		o.kubeClient,
-		o.scyllaClient.ScyllaV1(),
+		o.scyllaClient.ScyllaV1alpha1(),
 		kubeInformers.Core().V1().Pods(),
 		kubeInformers.Core().V1().Services(),
 		kubeInformers.Core().V1().Secrets(),
@@ -185,7 +185,7 @@ func (o *OperatorOptions) run(ctx context.Context, streams genericclioptions.IOS
 		kubeInformers.Apps().V1().StatefulSets(),
 		kubeInformers.Policy().V1().PodDisruptionBudgets(),
 		kubeInformers.Networking().V1().Ingresses(),
-		scyllaInformers.Scylla().V1().ScyllaClusters(),
+		scyllaInformers.Scylla().V1alpha1().ScyllaDatacenters(),
 		o.OperatorImage,
 	)
 	if err != nil {
@@ -197,7 +197,7 @@ func (o *OperatorOptions) run(ctx context.Context, streams genericclioptions.IOS
 		kubeInformers.Core().V1().PersistentVolumes(),
 		kubeInformers.Core().V1().PersistentVolumeClaims(),
 		kubeInformers.Core().V1().Nodes(),
-		scyllaInformers.Scylla().V1().ScyllaClusters(),
+		scyllaInformers.Scylla().V1alpha1().ScyllaDatacenters(),
 	)
 	if err != nil {
 		return err
