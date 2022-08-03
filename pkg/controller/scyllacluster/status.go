@@ -72,26 +72,26 @@ func (sdc *Controller) calculateRackStatus(sc *scyllav1alpha1.ScyllaDatacenter, 
 	}
 
 	status.Members = sts.Spec.Replicas
-	status.ReadyMembers = sts.Status.ReadyReplicas
+	status.ReadyMembers = pointer.Int32Ptr(sts.Status.ReadyReplicas)
 	status.UpdatedMembers = pointer.Int32Ptr(sts.Status.UpdatedReplicas)
 	status.Stale = pointer.BoolPtr(sts.Status.ObservedGeneration < sts.Generation)
 
 	// Update Rack Version
-	if status.Members == 0 {
-		status.Version = sc.Spec.Version
+	if status.Members == nil && *status.Members == 0 {
+		status.Image = sc.Spec.Image
 	} else {
-		version, err := sdc.getScyllaVersion(sts)
+		image, err := sdc.getScyllaImage(sts)
 		if err != nil {
-			status.Version = ""
+			status.Image = ""
 			klog.ErrorS(err, "Can't get scylla image", "ScyllaDatacenter", klog.KObj(sc))
 		} else {
-			status.Version = version
+			status.Image = image
 		}
 	}
 
 	// Update Upgrading condition
-	desiredRackVersion := sc.Spec.Version
-	actualRackVersion := status.Version
+	desiredRackVersion := sc.Spec.Image
+	actualRackVersion := status.Image
 	if desiredRackVersion != actualRackVersion {
 		controllerhelpers.SetRackCondition(status, scyllav1alpha1.RackConditionTypeUpgrading)
 	}
@@ -108,7 +108,7 @@ func (sdc *Controller) calculateRackStatus(sc *scyllav1alpha1.ScyllaDatacenter, 
 				klog.ErrorS(err, "Can't determine service index from its name", "Service", klog.KObj(svc))
 				continue
 			}
-			if index != status.Members-1 {
+			if index != *status.Members-1 {
 				klog.Errorf("only last member of each rack should be decommissioning, but %d-th member of %s found decommissioning while rack had %d members", index, rackName, status.Members)
 				continue
 			}

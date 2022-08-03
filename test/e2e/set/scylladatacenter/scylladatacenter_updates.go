@@ -60,7 +60,7 @@ var _ = g.Describe("ScyllaDatacenter", func() {
 		verifyScyllaDatacenter(ctx, f.KubeClient(), sd, di)
 
 		framework.By("Changing pod resources")
-		oldResources := *sd.Spec.Datacenter.Racks[0].Resources.DeepCopy()
+		oldResources := *sd.Spec.Datacenter.Racks[0].ScyllaContainer.Resources.DeepCopy()
 		newResources := *oldResources.DeepCopy()
 		o.Expect(oldResources.Requests).To(o.HaveKey(corev1.ResourceCPU))
 		o.Expect(oldResources.Requests).To(o.HaveKey(corev1.ResourceMemory))
@@ -85,13 +85,13 @@ var _ = g.Describe("ScyllaDatacenter", func() {
 			sd.Name,
 			types.JSONPatchType,
 			[]byte(fmt.Sprintf(
-				`[{"op": "replace", "path": "/spec/datacenter/racks/0/resources", "value": %s}]`,
+				`[{"op": "replace", "path": "/spec/datacenter/racks/0/scyllaContainer/resources", "value": %s}]`,
 				newResourcesJSON,
 			)),
 			metav1.PatchOptions{},
 		)
 		o.Expect(err).NotTo(o.HaveOccurred())
-		o.Expect(sd.Spec.Datacenter.Racks[0].Resources).To(o.BeEquivalentTo(newResources))
+		o.Expect(sd.Spec.Datacenter.Racks[0].ScyllaContainer.Resources).To(o.BeEquivalentTo(newResources))
 
 		framework.By("Waiting for the ScyllaDatacenter to redeploy")
 		waitCtx2, waitCtx2Cancel := utils.ContextForRollout(ctx, sd)
@@ -100,7 +100,7 @@ var _ = g.Describe("ScyllaDatacenter", func() {
 		o.Expect(err).NotTo(o.HaveOccurred())
 
 		framework.By("Scaling the ScyllaDatacenter up to create a new replica")
-		oldMembers := sd.Spec.Datacenter.Racks[0].Members
+		oldMembers := *sd.Spec.Datacenter.Racks[0].Members
 		newMebmers := oldMembers + 1
 		sd, err = f.ScyllaClient().ScyllaV1alpha1().ScyllaDatacenters(f.Namespace()).Patch(
 			ctx,

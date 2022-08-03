@@ -48,7 +48,10 @@ func GetRequiredScyllaHosts(sd *scyllav1alpha1.ScyllaDatacenter, services map[st
 	var hosts []string
 	var errs []error
 	for _, rack := range sd.Spec.Datacenter.Racks {
-		for ord := int32(0); ord < rack.Members; ord++ {
+		if rack.Members == nil {
+			continue
+		}
+		for ord := int32(0); ord < *rack.Members; ord++ {
 			stsName := naming.StatefulSetNameForRack(rack, sd)
 			host, err := GetScyllaHost(stsName, ord, services)
 			if err != nil {

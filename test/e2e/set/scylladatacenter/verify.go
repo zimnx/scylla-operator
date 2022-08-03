@@ -44,7 +44,7 @@ func verifyPersistentVolumeClaims(ctx context.Context, coreClient corev1client.C
 
 	var expectedPvcNames []string
 	for _, rack := range sd.Spec.Datacenter.Racks {
-		for ord := int32(0); ord < rack.Members; ord++ {
+		for ord := int32(0); ord < *rack.Members; ord++ {
 			stsName := naming.StatefulSetNameForRack(rack, sd)
 			expectedPvcNames = append(expectedPvcNames, naming.PVCNameForStatefulSet(stsName, ord))
 		}
@@ -92,7 +92,7 @@ func verifyScyllaDatacenter(ctx context.Context, kubeClient kubernetes.Interface
 
 	memberCount := 0
 	for _, r := range sd.Spec.Datacenter.Racks {
-		memberCount += int(r.Members)
+		memberCount += int(*r.Members)
 
 		s := statefulsets[r.Name]
 

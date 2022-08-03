@@ -73,7 +73,7 @@ func PVCNameForService(svcName string) string {
 	return PVCNameForPod(svcName)
 }
 
-func PVCNamePrefixForScyllaCluster(scName string) string {
+func PVCNamePrefixForScyllaDatacenter(scName string) string {
 	return fmt.Sprintf("%s-%s-", PVCTemplateName, scName)
 }
 
@@ -128,18 +128,14 @@ func FindContainerWithName(containers []corev1.Container, name string) (int, err
 	return 0, errors.Errorf(" '%s' container not found", name)
 }
 
-// ScyllaVersion returns version of Scylla container.
-func ScyllaVersion(containers []corev1.Container) (string, error) {
+// ScyllaImage returns image of Scylla container.
+func ScyllaImage(containers []corev1.Container) (string, error) {
 	idx, err := FindScyllaContainer(containers)
 	if err != nil {
 		return "", errors.Wrap(err, "find scylla container")
 	}
 
-	version, err := ImageToVersion(containers[idx].Image)
-	if err != nil {
-		return "", errors.Wrap(err, "parse scylla container version")
-	}
-	return version, nil
+	return containers[idx].Image, nil
 }
 
 // SidecarVersion returns version of sidecar container.
@@ -164,6 +160,6 @@ func GetTuningConfigMapNameForPod(pod *corev1.Pod) string {
 	return fmt.Sprintf("nodeconfig-podinfo-%s", pod.UID)
 }
 
-func MemberServiceAccountNameForScyllaCluster(scName string) string {
+func MemberServiceAccountNameForScyllaDatacenter(scName string) string {
 	return fmt.Sprintf("%s-member", scName)
 }

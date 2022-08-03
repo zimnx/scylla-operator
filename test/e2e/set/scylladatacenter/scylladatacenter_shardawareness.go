@@ -20,6 +20,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/utils/pointer"
 )
 
 var _ = g.Describe("ScyllaDatacenter", func() {
@@ -42,10 +43,10 @@ var _ = g.Describe("ScyllaDatacenter", func() {
 		defer cancel()
 
 		sd := scyllaclusterfixture.BasicScyllaDatacenter.ReadOrFail()
-		sd.Spec.Datacenter.Racks[0].Members = 1
+		sd.Spec.Datacenter.Racks[0].Members = pointer.Int32(1)
 
 		// Ensure 2 shards.
-		sd.Spec.Datacenter.Racks[0].Resources.Limits[corev1.ResourceCPU] = resource.MustParse(fmt.Sprintf("%d", nrShards))
+		sd.Spec.Datacenter.Racks[0].ScyllaContainer.Resources.Limits[corev1.ResourceCPU] = resource.MustParse(fmt.Sprintf("%d", nrShards))
 
 		framework.By("Creating a ScyllaDatacenter")
 		sd, err := f.ScyllaClient().ScyllaV1alpha1().ScyllaDatacenters(f.Namespace()).Create(ctx, sd, metav1.CreateOptions{})

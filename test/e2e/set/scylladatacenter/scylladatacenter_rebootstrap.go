@@ -15,6 +15,7 @@ import (
 	"github.com/scylladb/scylla-operator/test/e2e/utils"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/pointer"
 )
 
 var _ = g.Describe("ScyllaDatacenter", func() {
@@ -29,7 +30,7 @@ var _ = g.Describe("ScyllaDatacenter", func() {
 		defer cancel()
 
 		sd := scyllafixture.BasicScyllaDatacenter.ReadOrFail()
-		sd.Spec.Datacenter.Racks[0].Members = membersCount
+		sd.Spec.Datacenter.Racks[0].Members = pointer.Int32(membersCount)
 
 		framework.By("Creating a ScyllaDatacenter")
 		sd, err := f.ScyllaClient().ScyllaV1alpha1().ScyllaDatacenters(f.Namespace()).Create(ctx, sd, metav1.CreateOptions{})
@@ -86,7 +87,7 @@ var _ = g.Describe("ScyllaDatacenter", func() {
 		}
 
 		stsName := naming.StatefulSetNameForRack(sd.Spec.Datacenter.Racks[0], sd)
-		for i := int32(0); i < sd.Spec.Datacenter.Racks[0].Members; i++ {
+		for i := int32(0); i < *sd.Spec.Datacenter.Racks[0].Members; i++ {
 			podName := fmt.Sprintf("%s-%d", stsName, i)
 			pvcName := naming.PVCNameForPod(podName)
 			o.Expect(pvcMap).To(o.HaveKey(pvcName))

@@ -13,6 +13,7 @@ import (
 	"github.com/scylladb/scylla-operator/test/e2e/framework"
 	"github.com/scylladb/scylla-operator/test/e2e/utils"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/pointer"
 )
 
 var _ = g.Describe("Scylla Manager integration", func() {
@@ -25,7 +26,7 @@ var _ = g.Describe("Scylla Manager integration", func() {
 		defer cancel()
 
 		sd := scyllafixture.BasicScyllaDatacenter.ReadOrFail()
-		sd.Spec.Datacenter.Racks[0].Members = 1
+		sd.Spec.Datacenter.Racks[0].Members = pointer.Int32(1)
 		sd.Spec.Repairs = append(sd.Spec.Repairs, scyllav1alpha1.RepairTaskSpec{
 			SchedulerTaskSpec: scyllav1alpha1.SchedulerTaskSpec{
 				Name:     "weekly repair",

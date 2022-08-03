@@ -29,7 +29,10 @@ func (sdc *Controller) makeServices(sd *scyllav1alpha1.ScyllaDatacenter, oldServ
 	for _, rack := range sd.Spec.Datacenter.Racks {
 		stsName := naming.StatefulSetNameForRack(rack, sd)
 
-		for ord := int32(0); ord < rack.Members; ord++ {
+		if rack.Members == nil {
+			continue
+		}
+		for ord := int32(0); ord < *rack.Members; ord++ {
 			svcName := fmt.Sprintf("%s-%d", stsName, ord)
 			oldSvc := oldServices[svcName]
 			services = append(services, MemberService(sd, rack.Name, svcName, oldSvc))
