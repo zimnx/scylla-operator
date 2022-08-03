@@ -29,7 +29,7 @@ func (opc *Controller) getPVsForScyllaDatacenter(ctx context.Context, sd *scylla
 	var pis []*PVItem
 	for _, rack := range sd.Spec.Datacenter.Racks {
 		stsName := naming.StatefulSetNameForRack(rack, sd)
-		for i := int32(0); i < rack.Members; i++ {
+		for i := int32(0); i < *rack.Members; i++ {
 			svcName := fmt.Sprintf("%s-%d", stsName, i)
 			pvcName := fmt.Sprintf("%s-%s", naming.PVCTemplateName, svcName)
 			pvc, err := opc.pvcLister.PersistentVolumeClaims(sd.Namespace).Get(pvcName)
@@ -92,7 +92,7 @@ func (opc *Controller) sync(ctx context.Context, key string) error {
 		return nil
 	}
 
-	if sc.Spec.c.Spec.AutomaticOrphanedNodeCleanup {
+	if sc.Spec.RemoveOrphanedPVs == nil || !*sc.Spec.RemoveOrphanedPVs {
 		klog.V(4).InfoS("ScyllaDatacenter doesn't have RemoveOrphanedPVs enabled", "ScyllaDatacenter", klog.KRef(namespace, name))
 		return nil
 	}

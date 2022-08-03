@@ -5,10 +5,10 @@ import (
 )
 
 const (
-	updateFromScyllaVersion  = "4.6.2"
-	updateToScyllaVersion    = "4.6.3"
-	upgradeFromScyllaVersion = "4.5.5"
-	upgradeToScyllaVersion   = "4.6.3"
+	updateFromScyllaImage  = "docker.io/scylladb/scylla:4.6.2"
+	updateToScyllaImage    = "docker.io/scylladb/scylla:4.6.3"
+	upgradeFromScyllaImage = "docker.io/scylladb/scylla:4.5.5"
+	upgradeToScyllaImage   = "docker.io/scylladb/scylla:4.6.3"
 
 	testTimeout = 45 * time.Minute
 )

@@ -5,7 +5,6 @@ import (
 	"path"
 	"strings"
 
-	scyllav1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1"
 	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/helpers"
 	"github.com/scylladb/scylla-operator/pkg/naming"
@@ -231,26 +230,6 @@ func StatefulSetForRack(r scyllav1alpha1.RackSpec, sd *scyllav1alpha1.ScyllaData
 							},
 						},
 						{
-							Name: "scylla-config-volume",
-							VolumeSource: corev1.VolumeSource{
-								ConfigMap: &corev1.ConfigMapVolumeSource{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: stringOrDefault(r.ScyllaConfig, "scylla-config"),
-									},
-									Optional: &opt,
-								},
-							},
-						},
-						{
-							Name: scyllaAgentConfigVolumeName,
-							VolumeSource: corev1.VolumeSource{
-								Secret: &corev1.SecretVolumeSource{
-									SecretName: stringOrDefault(r.ScyllaAgentConfig, "scylla-agent-config-secret"),
-									Optional:   &opt,
-								},
-							},
-						},
-						{
 							Name: "scylla-client-config-volume",
 							VolumeSource: corev1.VolumeSource{
 								Secret: &corev1.SecretVolumeSource{
@@ -333,7 +312,7 @@ func StatefulSetForRack(r scyllav1alpha1.RackSpec, sd *scyllav1alpha1.ScyllaData
 									},
 								},
 							},
-							Resources: r.Resources,
+							Resources: r.ScyllaContainer.Resources,
 							VolumeMounts: []corev1.VolumeMount{
 								{
 									Name:      naming.PVCTemplateName,
@@ -342,11 +321,6 @@ func StatefulSetForRack(r scyllav1alpha1.RackSpec, sd *scyllav1alpha1.ScyllaData
 								{
 									Name:      "shared",
 									MountPath: naming.SharedDirName,
-									ReadOnly:  true,
-								},
-								{
-									Name:      "scylla-config-volume",
-									MountPath: naming.ScyllaConfigDirName,
 									ReadOnly:  true,
 								},
 								{
@@ -421,7 +395,7 @@ func StatefulSetForRack(r scyllav1alpha1.RackSpec, sd *scyllav1alpha1.ScyllaData
 							},
 						},
 					},
-					ServiceAccountName: naming.MemberServiceAccountNameForScyllaCluster(sd.Name),
+					ServiceAccountName: naming.MemberServiceAccountNameForScyllaDatacenter(sd.Name),
 					Affinity: &corev1.Affinity{
 						NodeAffinity:    placement.NodeAffinity,
 						PodAffinity:     placement.PodAffinity,
@@ -474,15 +448,37 @@ func StatefulSetForRack(r scyllav1alpha1.RackSpec, sd *scyllav1alpha1.ScyllaData
 	if sysctlContainer != nil {
 		sts.Spec.Template.Spec.InitContainers = append(sts.Spec.Template.Spec.InitContainers, *sysctlContainer)
 	}
-	for _, VolumeMount := range r.VolumeMounts {
-		sts.Spec.Template.Spec.Containers[0].VolumeMounts = append(
-			sts.Spec.Template.Spec.Containers[0].VolumeMounts, *VolumeMount.DeepCopy())
+
+	if r.ScyllaContainer.CustomConfigMapRef != nil {
+		sts.Spec.Template.Spec.Volumes = append(sts.Spec.Template.Spec.Volumes, corev1.Volume{
+			Name: "scylla-config-volume",
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: *r.ScyllaContainer.CustomConfigMapRef,
+				},
+			},
+		})
+		sts.Spec.Template.Spec.Containers[0].VolumeMounts = append(sts.Spec.Template.Spec.Containers[0].VolumeMounts, corev1.VolumeMount{
+			Name:      "scylla-config-volume",
+			MountPath: naming.ScyllaConfigDirName,
+			ReadOnly:  true,
+		})
 	}
-	for _, Volume := range r.Volumes {
-		sts.Spec.Template.Spec.Volumes = append(
-			sts.Spec.Template.Spec.Volumes, *Volume.DeepCopy())
+
+	for _, volume := range r.ScyllaContainer.Volumes {
+		sts.Spec.Template.Spec.Volumes = append(sts.Spec.Template.Spec.Volumes, volume)
 	}
-	sts.Spec.Template.Spec.Containers = append(sts.Spec.Template.Spec.Containers, agentContainer(r, sd))
+
+	for _, vm := range r.ScyllaContainer.VolumeMounts {
+		sts.Spec.Template.Spec.Containers[0].VolumeMounts = append(sts.Spec.Template.Spec.Containers[0].VolumeMounts, vm)
+	}
+
+	container, volumes := agentContainer(r, sd)
+	sts.Spec.Template.Spec.Containers = append(sts.Spec.Template.Spec.Containers, container)
+	for _, volume := range volumes {
+		sts.Spec.Template.Spec.Volumes = append(sts.Spec.Template.Spec.Volumes, volume)
+	}
+
 	return sts, nil
 }
 
@@ -561,7 +557,8 @@ func sysctlInitContainer(sysctls []string, image string) *corev1.Container {
 	}
 }
 
-func agentContainer(r scyllav1.RackSpec, sd *scyllav1alpha1.ScyllaDatacenter) corev1.Container {
+func agentContainer(r scyllav1alpha1.RackSpec, sd *scyllav1alpha1.ScyllaDatacenter) (corev1.Container, []corev1.Volume) {
+	var volumes []corev1.Volume
 	cnt := corev1.Container{
 		Name:            "scylla-manager-agent",
 		Image:           sd.Spec.AgentImage,
@@ -570,10 +567,9 @@ func agentContainer(r scyllav1.RackSpec, sd *scyllav1alpha1.ScyllaDatacenter) co
 			"-c",
 			naming.ScyllaAgentConfigDefaultFile,
 			"-c",
-			path.Join(naming.ScyllaAgentConfigDirName, naming.ScyllaAgentConfigFileName),
-			"-c",
 			path.Join(naming.ScyllaAgentConfigDirName, naming.ScyllaAgentAuthTokenFileName),
 		},
+		Resources: r.AgentContainer.Resources,
 		Ports: []corev1.ContainerPort{
 			{
 				Name:          "agent-rest-api",
@@ -586,26 +582,43 @@ func agentContainer(r scyllav1.RackSpec, sd *scyllav1alpha1.ScyllaDatacenter) co
 				MountPath: naming.DataDir,
 			},
 			{
-				Name:      scyllaAgentConfigVolumeName,
-				MountPath: path.Join(naming.ScyllaAgentConfigDirName, naming.ScyllaAgentConfigFileName),
-				SubPath:   naming.ScyllaAgentConfigFileName,
-				ReadOnly:  true,
-			},
-			{
 				Name:      scyllaAgentAuthTokenVolumeName,
 				MountPath: path.Join(naming.ScyllaAgentConfigDirName, naming.ScyllaAgentAuthTokenFileName),
 				SubPath:   naming.ScyllaAgentAuthTokenFileName,
 				ReadOnly:  true,
 			},
 		},
-		Resources: r.AgentResources,
 	}
 
-	for _, vm := range r.AgentVolumeMounts {
-		cnt.VolumeMounts = append(cnt.VolumeMounts, *vm.DeepCopy())
+	if r.AgentContainer.CustomConfigSecretRef != nil {
+		volumes = append(volumes, corev1.Volume{
+			Name: scyllaAgentConfigVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: r.AgentContainer.CustomConfigSecretRef.Name,
+				},
+			},
+		})
+
+		cnt.VolumeMounts = append(cnt.VolumeMounts, corev1.VolumeMount{
+			Name:      scyllaAgentConfigVolumeName,
+			MountPath: path.Join(naming.ScyllaAgentConfigDirName, naming.ScyllaAgentConfigFileName),
+			SubPath:   naming.ScyllaAgentConfigFileName,
+			ReadOnly:  true,
+		})
+
+		cnt.Args = append(cnt.Args, "-c", path.Join(naming.ScyllaAgentConfigDirName, naming.ScyllaAgentConfigFileName))
 	}
 
-	return cnt
+	for _, vm := range r.AgentContainer.VolumeMounts {
+		cnt.VolumeMounts = append(cnt.VolumeMounts, vm)
+	}
+
+	for _, v := range r.AgentContainer.Volumes {
+		volumes = append(volumes, v)
+	}
+
+	return cnt, volumes
 }
 
 func MakePodDisruptionBudget(sd *scyllav1alpha1.ScyllaDatacenter) *v1beta1.PodDisruptionBudget {
@@ -657,7 +670,7 @@ func stringOrDefault(str, def string) string {
 
 func MakeServiceAccount(sd *scyllav1alpha1.ScyllaDatacenter, serviceAccounts map[string]*corev1.ServiceAccount, serviceAccountLister corev1listers.ServiceAccountLister) (*corev1.ServiceAccount, error) {
 	annotations := map[string]string{}
-	name := naming.MemberServiceAccountNameForScyllaCluster(sd.Name)
+	name := naming.MemberServiceAccountNameForScyllaDatacenter(sd.Name)
 
 	existing, found := serviceAccounts[name]
 	if !found {
@@ -697,7 +710,7 @@ func MakeServiceAccount(sd *scyllav1alpha1.ScyllaDatacenter, serviceAccounts map
 }
 
 func MakeRoleBinding(sd *scyllav1alpha1.ScyllaDatacenter) *rbacv1.RoleBinding {
-	saName := naming.MemberServiceAccountNameForScyllaCluster(sd.Name)
+	saName := naming.MemberServiceAccountNameForScyllaDatacenter(sd.Name)
 	return &rbacv1.RoleBinding{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      saName,

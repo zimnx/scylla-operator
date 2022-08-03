@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/blang/semver"
-	scyllav1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1"
 	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
 	"github.com/scylladb/scylla-operator/pkg/helpers"
@@ -508,7 +507,7 @@ func (sdc *Controller) syncStatefulSets(
 				rackName, ok := sts.Labels[naming.RackNameLabel]
 				if ok && len(rackName) != 0 {
 					rackStatus := status.Racks[rackName]
-					controllerhelpers.SetRackCondition(&rackStatus, scyllav1.RackConditionTypeMemberDecommissioning)
+					controllerhelpers.SetRackCondition(&rackStatus, scyllav1alpha1.RackConditionTypeMemberDecommissioning)
 					status.Racks[rackName] = rackStatus
 				} else {
 					klog.Warningf("Can't set decommissioning condition sts %s/%s because it's missing rack label.", sts.Namespace, sts.Name)

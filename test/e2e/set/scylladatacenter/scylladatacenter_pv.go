@@ -8,7 +8,7 @@ import (
 
 	g "github.com/onsi/ginkgo/v2"
 	o "github.com/onsi/gomega"
-	scyllav1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1"
+	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	scyllafixture "github.com/scylladb/scylla-operator/test/e2e/fixture/scylla"
@@ -17,6 +17,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/pointer"
 )
 
 var _ = g.Describe("ScyllaDatacenter Orphaned PV", func() {
@@ -29,8 +30,8 @@ var _ = g.Describe("ScyllaDatacenter Orphaned PV", func() {
 		defer cancel()
 
 		sd := scyllafixture.BasicScyllaDatacenter.ReadOrFail()
-		sd.Spec.Datacenter.Racks[0].Members = 3
-		sd.Spec.AutomaticOrphanedNodeCleanup = true
+		sd.Spec.Datacenter.Racks[0].Members = pointer.Int32(3)
+		sd.Spec.RemoveOrphanedPVs = pointer.Bool(true)
 
 		framework.By("Creating a ScyllaDatacenter")
 		sd, err := f.ScyllaClient().ScyllaV1alpha1().ScyllaDatacenters(f.Namespace()).Create(ctx, sd, metav1.CreateOptions{})
@@ -53,7 +54,7 @@ var _ = g.Describe("ScyllaDatacenter Orphaned PV", func() {
 
 		framework.By("Simulating a PV on node that's gone")
 		stsName := naming.StatefulSetNameForRack(sd.Spec.Datacenter.Racks[0], sd)
-		podName := fmt.Sprintf("%s-%d", stsName, sd.Spec.Datacenter.Racks[0].Members-1)
+		podName := fmt.Sprintf("%s-%d", stsName, *sd.Spec.Datacenter.Racks[0].Members-1)
 		pvcName := naming.PVCNameForPod(podName)
 
 		pvc, err := f.KubeClient().CoreV1().PersistentVolumeClaims(f.Namespace()).Get(ctx, pvcName, metav1.GetOptions{})
@@ -110,8 +111,8 @@ var _ = g.Describe("ScyllaDatacenter Orphaned PV", func() {
 		framework.By("Waiting for the ScyllaDatacenter to observe the degradation")
 		waitCtx3, waitCtx3Cancel := utils.ContextForRollout(ctx, sd)
 		defer waitCtx3Cancel()
-		sd, err = utils.WaitForScyllaDatacenterState(waitCtx3, f.ScyllaClient().ScyllaV1alpha1(), sd.Namespace, sd.Name, func(sc *scyllav1.ScyllaDatacenter) (bool, error) {
-			rolledOut, err := utils.IsScyllaDatacenterRolledOut(sc)
+		sd, err = utils.WaitForScyllaDatacenterState(waitCtx3, f.ScyllaClient().ScyllaV1alpha1(), sd.Namespace, sd.Name, func(sd *scyllav1alpha1.ScyllaDatacenter) (bool, error) {
+			rolledOut, err := utils.IsScyllaDatacenterRolledOut(sd)
 			return !rolledOut, err
 		})
 		o.Expect(err).NotTo(o.HaveOccurred())

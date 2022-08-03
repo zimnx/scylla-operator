@@ -7,7 +7,6 @@ import (
 
 	g "github.com/onsi/ginkgo/v2"
 	o "github.com/onsi/gomega"
-	"github.com/scylladb/scylla-operator/pkg/controller/scyllacluster"
 	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
 	"github.com/scylladb/scylla-operator/pkg/helpers"
 	"github.com/scylladb/scylla-operator/pkg/naming"
@@ -17,6 +16,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/pointer"
 )
 
 var _ = g.Describe("ScyllaDatacenter", func() {
@@ -29,7 +29,7 @@ var _ = g.Describe("ScyllaDatacenter", func() {
 		defer cancel()
 
 		sd := scyllafixture.BasicScyllaDatacenter.ReadOrFail()
-		sd.Spec.Datacenter.Racks[0].Members = 1
+		sd.Spec.Datacenter.Racks[0].Members = pointer.Int32(1)
 
 		framework.By("Creating a ScyllaDatacenter with 1 member")
 		sd, err := f.ScyllaClient().ScyllaV1alpha1().ScyllaDatacenters(f.Namespace()).Create(ctx, sd, metav1.CreateOptions{})
@@ -122,7 +122,7 @@ var _ = g.Describe("ScyllaDatacenter", func() {
 			TargetContainerName: naming.ScyllaContainerName,
 			EphemeralContainerCommon: corev1.EphemeralContainerCommon{
 				Name:            "e2e-drain-scylla",
-				Image:           scyllacluster.ImageForCluster(sd),
+				Image:           sd.Spec.Image,
 				ImagePullPolicy: corev1.PullIfNotPresent,
 				Command:         []string{"/usr/bin/nodetool", "drain"},
 				Args:            []string{},

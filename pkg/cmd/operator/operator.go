@@ -176,7 +176,7 @@ func (o *OperatorOptions) run(ctx context.Context, streams genericclioptions.IOS
 
 	scc, err := scyllacluster.NewController(
 		o.kubeClient,
-		o.scyllaClient.ScyllaV1(),
+		o.scyllaClient.ScyllaV1alpha1(),
 		kubeInformers.Core().V1().Pods(),
 		kubeInformers.Core().V1().Services(),
 		kubeInformers.Core().V1().Secrets(),

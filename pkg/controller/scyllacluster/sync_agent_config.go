@@ -13,12 +13,11 @@ import (
 )
 
 func (sdc *Controller) getAgentTokenFromAgentConfig(sd *scyllav1alpha1.ScyllaDatacenter) (string, error) {
-	if len(sd.Spec.Datacenter.Racks) == 0 ||
-		len(sd.Spec.Datacenter.Racks[0].ScyllaAgentConfig) == 0 {
+	if len(sd.Spec.Datacenter.Racks) == 0 || sd.Spec.Datacenter.Racks[0].AgentContainer.CustomConfigSecretRef == nil {
 		return "", nil
 	}
 
-	secretName := sd.Spec.Datacenter.Racks[0].ScyllaAgentConfig
+	secretName := sd.Spec.Datacenter.Racks[0].AgentContainer.CustomConfigSecretRef.Name
 	secret, err := sdc.secretLister.Secrets(sd.Namespace).Get(secretName)
 	if err != nil {
 		return "", fmt.Errorf("can't get secret %s/%s: %w", sd.Namespace, secretName, err)
