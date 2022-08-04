@@ -16,7 +16,9 @@ import (
 
 	"github.com/scylladb/scylla-operator/pkg/admissionreview"
 	scyllav1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1"
-	"github.com/scylladb/scylla-operator/pkg/api/validation"
+	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
+	validationv1 "github.com/scylladb/scylla-operator/pkg/api/validation/v1"
+	validationv1alpha1 "github.com/scylladb/scylla-operator/pkg/api/validation/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/genericclioptions"
 	"github.com/scylladb/scylla-operator/pkg/signals"
 	"github.com/scylladb/scylla-operator/pkg/version"
@@ -269,13 +271,26 @@ func validate(ar *admissionv1.AdmissionReview) error {
 	}
 
 	switch gvr {
+	case scyllav1alpha1.GroupVersion.WithResource("scylladatacenters"):
+		var errList field.ErrorList
+		switch ar.Request.Operation {
+		case admissionv1.Create:
+			errList = validationv1alpha1.ValidateScyllaDatacenter(obj.(*scyllav1alpha1.ScyllaDatacenter))
+		case admissionv1.Update:
+			errList = validationv1alpha1.ValidateScyllaDatacenterUpdate(obj.(*scyllav1alpha1.ScyllaDatacenter), oldObj.(*scyllav1alpha1.ScyllaDatacenter))
+		}
+
+		if len(errList) > 0 {
+			return apierrors.NewInvalid(obj.(*scyllav1.ScyllaCluster).GroupVersionKind().GroupKind(), obj.(*scyllav1.ScyllaCluster).Name, errList)
+		}
+		return nil
 	case scyllav1.GroupVersion.WithResource("scyllaclusters"):
 		var errList field.ErrorList
 		switch ar.Request.Operation {
 		case admissionv1.Create:
-			errList = validation.ValidateScyllaCluster(obj.(*scyllav1.ScyllaCluster))
+			errList = validationv1.ValidateScyllaCluster(obj.(*scyllav1.ScyllaCluster))
 		case admissionv1.Update:
-			errList = validation.ValidateScyllaClusterUpdate(obj.(*scyllav1.ScyllaCluster), oldObj.(*scyllav1.ScyllaCluster))
+			errList = validationv1.ValidateScyllaClusterUpdate(obj.(*scyllav1.ScyllaCluster), oldObj.(*scyllav1.ScyllaCluster))
 		}
 
 		if len(errList) > 0 {

@@ -1,4 +1,6 @@
-package validation
+// Copyright (c) 2022 ScyllaDB.
+
+package v1
 
 import (
 	"fmt"

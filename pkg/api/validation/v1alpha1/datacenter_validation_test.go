@@ -1,12 +1,14 @@
-package validation_test
+// Copyright (c) 2022 ScyllaDB.
+
+package v1alpha1_test
 
 import (
 	"reflect"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	v1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1"
-	"github.com/scylladb/scylla-operator/pkg/api/validation"
+	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
+	validationv1alpha1 "github.com/scylladb/scylla-operator/pkg/api/validation/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/test/unit"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -14,34 +16,50 @@ import (
 	"k8s.io/utils/pointer"
 )
 
-func TestValidateScyllaCluster(t *testing.T) {
-	validCluster := unit.NewSingleRackCluster(3)
-	validCluster.Spec.Datacenter.Racks[0].Resources = corev1.ResourceRequirements{
+func TestValidateScyllaDatacenter(t *testing.T) {
+	validCluster := unit.NewSingleRackDatacenter(3)
+	validCluster.Spec.Datacenter.Racks[0].ScyllaContainer.Resources = corev1.ResourceRequirements{
 		Limits: map[corev1.ResourceName]resource.Quantity{
 			corev1.ResourceCPU:    resource.MustParse("2"),
 			corev1.ResourceMemory: resource.MustParse("2Gi"),
 		},
 	}
 
+	sameName := validCluster.DeepCopy()
+	sameName.Spec.Datacenter.Racks = append(sameName.Spec.Datacenter.Racks, sameName.Spec.Datacenter.Racks[0])
+
+	invalidIntensity := validCluster.DeepCopy()
+	invalidIntensity.Spec.Repairs = append(invalidIntensity.Spec.Repairs, scyllav1alpha1.RepairTaskSpec{
+		Intensity: "100Mib",
+	})
+
+	nonUniqueManagerTaskNames := validCluster.DeepCopy()
+	nonUniqueManagerTaskNames.Spec.Backups = append(nonUniqueManagerTaskNames.Spec.Backups, scyllav1alpha1.BackupTaskSpec{
+		SchedulerTaskSpec: scyllav1alpha1.SchedulerTaskSpec{
+			Name: "task-name",
+		},
+	})
+	nonUniqueManagerTaskNames.Spec.Repairs = append(nonUniqueManagerTaskNames.Spec.Repairs, scyllav1alpha1.RepairTaskSpec{
+		SchedulerTaskSpec: scyllav1alpha1.SchedulerTaskSpec{
+			Name: "task-name",
+		},
+	})
+
 	tests := []struct {
 		name                string
-		cluster             *v1.ScyllaCluster
+		obj                 *scyllav1alpha1.ScyllaDatacenter
 		expectedErrorList   field.ErrorList
 		expectedErrorString string
 	}{
 		{
 			name:                "valid",
-			cluster:             validCluster.DeepCopy(),
+			obj:                 validCluster,
 			expectedErrorList:   field.ErrorList{},
 			expectedErrorString: "",
 		},
 		{
 			name: "two racks with same name",
-			cluster: func() *v1.ScyllaCluster {
-				cluster := validCluster.DeepCopy()
-				cluster.Spec.Datacenter.Racks = append(cluster.Spec.Datacenter.Racks, *cluster.Spec.Datacenter.Racks[0].DeepCopy())
-				return cluster
-			}(),
+			obj:  sameName,
 			expectedErrorList: field.ErrorList{
 				&field.Error{Type: field.ErrorTypeDuplicate, Field: "spec.datacenter.racks[1].name", BadValue: "test-rack"},
 			},
@@ -49,13 +67,7 @@ func TestValidateScyllaCluster(t *testing.T) {
 		},
 		{
 			name: "invalid intensity in repair task spec",
-			cluster: func() *v1.ScyllaCluster {
-				cluster := validCluster.DeepCopy()
-				cluster.Spec.Repairs = append(cluster.Spec.Repairs, v1.RepairTaskSpec{
-					Intensity: "100Mib",
-				})
-				return cluster
-			}(),
+			obj:  invalidIntensity,
 			expectedErrorList: field.ErrorList{
 				&field.Error{Type: field.ErrorTypeInvalid, Field: "spec.repairs[0].intensity", BadValue: "100Mib", Detail: "invalid intensity, it must be a float value"},
 			},
@@ -63,61 +75,18 @@ func TestValidateScyllaCluster(t *testing.T) {
 		},
 		{
 			name: "invalid intensity in repair task spec && non-unique names in manager tasks spec",
-			cluster: func() *v1.ScyllaCluster {
-				cluster := validCluster.DeepCopy()
-				cluster.Spec.Backups = append(cluster.Spec.Backups, v1.BackupTaskSpec{
-					SchedulerTaskSpec: v1.SchedulerTaskSpec{
-						Name: "task-name",
-					},
-				})
-				cluster.Spec.Repairs = append(cluster.Spec.Repairs, v1.RepairTaskSpec{
-					SchedulerTaskSpec: v1.SchedulerTaskSpec{
-						Name: "task-name",
-					},
-				})
-				return cluster
-			}(),
+			obj:  nonUniqueManagerTaskNames,
 			expectedErrorList: field.ErrorList{
 				&field.Error{Type: field.ErrorTypeInvalid, Field: "spec.repairs[0].intensity", BadValue: "", Detail: "invalid intensity, it must be a float value"},
 				&field.Error{Type: field.ErrorTypeDuplicate, Field: "spec.backups[0].name", BadValue: "task-name"},
 			},
 			expectedErrorString: `[spec.repairs[0].intensity: Invalid value: "": invalid intensity, it must be a float value, spec.backups[0].name: Duplicate value: "task-name"]`,
 		},
-		{
-			name: "when CQL ingress is provided, domains must not be empty",
-			cluster: func() *v1.ScyllaCluster {
-				cluster := validCluster.DeepCopy()
-				cluster.Spec.ExposeOptions = &v1.ExposeOptions{
-					CQL: &v1.CQLExposeOptions{
-						Ingress: &v1.IngressOptions{},
-					},
-				}
-
-				return cluster
-			}(),
-			expectedErrorList: field.ErrorList{
-				&field.Error{Type: field.ErrorTypeRequired, Field: "spec.dnsDomains", BadValue: "", Detail: "at least one domain needs to be provided when exposing CQL via ingresses"},
-			},
-			expectedErrorString: `spec.dnsDomains: Required value: at least one domain needs to be provided when exposing CQL via ingresses`,
-		},
-		{
-			name: "invalid domain",
-			cluster: func() *v1.ScyllaCluster {
-				cluster := validCluster.DeepCopy()
-				cluster.Spec.DNSDomains = []string{"-hello"}
-
-				return cluster
-			}(),
-			expectedErrorList: field.ErrorList{
-				&field.Error{Type: field.ErrorTypeInvalid, Field: "spec.dnsDomains[0]", BadValue: "-hello", Detail: `a lowercase RFC 1123 subdomain must consist of lower case alphanumeric characters, '-' or '.', and must start and end with an alphanumeric character (e.g. 'example.com', regex used for validation is '[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*')`},
-			},
-			expectedErrorString: `spec.dnsDomains[0]: Invalid value: "-hello": a lowercase RFC 1123 subdomain must consist of lower case alphanumeric characters, '-' or '.', and must start and end with an alphanumeric character (e.g. 'example.com', regex used for validation is '[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*')`,
-		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			errList := validation.ValidateScyllaCluster(test.cluster)
+			errList := validationv1alpha1.ValidateScyllaDatacenter(test.obj)
 			if !reflect.DeepEqual(errList, test.expectedErrorList) {
 				t.Errorf("expected and actual error lists differ: %s", cmp.Diff(test.expectedErrorList, errList))
 			}
@@ -133,53 +102,53 @@ func TestValidateScyllaCluster(t *testing.T) {
 	}
 }
 
-func TestValidateScyllaClusterUpdate(t *testing.T) {
+func TestValidateScyllaDatacenterUpdate(t *testing.T) {
 	tests := []struct {
 		name                string
-		old                 *v1.ScyllaCluster
-		new                 *v1.ScyllaCluster
+		old                 *scyllav1alpha1.ScyllaDatacenter
+		new                 *scyllav1alpha1.ScyllaDatacenter
 		expectedErrorList   field.ErrorList
 		expectedErrorString string
 	}{
 		{
 			name:                "same as old",
-			old:                 unit.NewSingleRackCluster(3),
-			new:                 unit.NewSingleRackCluster(3),
+			old:                 unit.NewSingleRackDatacenter(3),
+			new:                 unit.NewSingleRackDatacenter(3),
 			expectedErrorList:   field.ErrorList{},
 			expectedErrorString: "",
 		},
 		{
 			name:                "major version changed",
-			old:                 unit.NewSingleRackCluster(3),
-			new:                 unit.NewDetailedSingleRackCluster("test-cluster", "test-ns", "repo", "3.3.1", "test-dc", "test-rack", 3),
+			old:                 unit.NewSingleRackDatacenter(3),
+			new:                 unit.NewDetailedSingleRackDatacenter("test-cluster", "test-ns", "repo:3.3.1", "test-dc", "test-rack", 3),
 			expectedErrorList:   field.ErrorList{},
 			expectedErrorString: "",
 		},
 		{
 			name:                "minor version changed",
-			old:                 unit.NewSingleRackCluster(3),
-			new:                 unit.NewDetailedSingleRackCluster("test-cluster", "test-ns", "repo", "2.4.2", "test-dc", "test-rack", 3),
+			old:                 unit.NewSingleRackDatacenter(3),
+			new:                 unit.NewDetailedSingleRackDatacenter("test-cluster", "test-ns", "repo:2.4.2", "test-dc", "test-rack", 3),
 			expectedErrorList:   field.ErrorList{},
 			expectedErrorString: "",
 		},
 		{
 			name:                "patch version changed",
-			old:                 unit.NewSingleRackCluster(3),
-			new:                 unit.NewDetailedSingleRackCluster("test-cluster", "test-ns", "repo", "2.3.2", "test-dc", "test-rack", 3),
+			old:                 unit.NewSingleRackDatacenter(3),
+			new:                 unit.NewDetailedSingleRackDatacenter("test-cluster", "test-ns", "repo:2.3.2", "test-dc", "test-rack", 3),
 			expectedErrorList:   field.ErrorList{},
 			expectedErrorString: "",
 		},
 		{
 			name:                "repo changed",
-			old:                 unit.NewSingleRackCluster(3),
-			new:                 unit.NewDetailedSingleRackCluster("test-cluster", "test-ns", "new-repo", "2.3.2", "test-dc", "test-rack", 3),
+			old:                 unit.NewSingleRackDatacenter(3),
+			new:                 unit.NewDetailedSingleRackDatacenter("test-cluster", "test-ns", "new-repo:2.3.2", "test-dc", "test-rack", 3),
 			expectedErrorList:   field.ErrorList{},
 			expectedErrorString: "",
 		},
 		{
 			name: "dcName changed",
-			old:  unit.NewSingleRackCluster(3),
-			new:  unit.NewDetailedSingleRackCluster("test-cluster", "test-ns", "repo", "2.3.1", "new-dc", "test-rack", 3),
+			old:  unit.NewSingleRackDatacenter(3),
+			new:  unit.NewDetailedSingleRackDatacenter("test-cluster", "test-ns", "repo:2.3.1", "new-dc", "test-rack", 3),
 			expectedErrorList: field.ErrorList{
 				&field.Error{Type: field.ErrorTypeForbidden, Field: "spec.datacenter.name", BadValue: "", Detail: "change of datacenter name is currently not supported"},
 			},
@@ -187,15 +156,15 @@ func TestValidateScyllaClusterUpdate(t *testing.T) {
 		},
 		{
 			name:                "rackPlacement changed",
-			old:                 unit.NewSingleRackCluster(3),
-			new:                 placementChanged(unit.NewSingleRackCluster(3)),
+			old:                 unit.NewSingleRackDatacenter(3),
+			new:                 placementChanged(unit.NewSingleRackDatacenter(3)),
 			expectedErrorList:   field.ErrorList{},
 			expectedErrorString: "",
 		},
 		{
 			name: "rackStorage changed",
-			old:  unit.NewSingleRackCluster(3),
-			new:  storageChanged(unit.NewSingleRackCluster(3)),
+			old:  unit.NewSingleRackDatacenter(3),
+			new:  storageChanged(unit.NewSingleRackDatacenter(3)),
 			expectedErrorList: field.ErrorList{
 				&field.Error{Type: field.ErrorTypeForbidden, Field: "spec.datacenter.racks[0].storage", BadValue: "", Detail: "changes in storage are currently not supported"},
 			},
@@ -203,22 +172,22 @@ func TestValidateScyllaClusterUpdate(t *testing.T) {
 		},
 		{
 			name:                "rackResources changed",
-			old:                 unit.NewSingleRackCluster(3),
-			new:                 resourceChanged(unit.NewSingleRackCluster(3)),
+			old:                 unit.NewSingleRackDatacenter(3),
+			new:                 resourceChanged(unit.NewSingleRackDatacenter(3)),
 			expectedErrorList:   field.ErrorList{},
 			expectedErrorString: "",
 		},
 		{
 			name:                "empty rack removed",
-			old:                 unit.NewSingleRackCluster(0),
-			new:                 racksDeleted(unit.NewSingleRackCluster(0)),
+			old:                 unit.NewSingleRackDatacenter(0),
+			new:                 racksDeleted(unit.NewSingleRackDatacenter(0)),
 			expectedErrorList:   field.ErrorList{},
 			expectedErrorString: "",
 		},
 		{
 			name: "empty rack with members under decommission",
-			old:  withStatus(unit.NewSingleRackCluster(0), v1.ScyllaClusterStatus{Racks: map[string]v1.RackStatus{"test-rack": {Members: 3}}}),
-			new:  racksDeleted(unit.NewSingleRackCluster(0)),
+			old:  withStatus(unit.NewSingleRackDatacenter(0), scyllav1alpha1.ScyllaDatacenterStatus{Racks: map[string]scyllav1alpha1.RackStatus{"test-rack": {Members: pointer.Int32(3)}}}),
+			new:  racksDeleted(unit.NewSingleRackDatacenter(0)),
 			expectedErrorList: field.ErrorList{
 				&field.Error{Type: field.ErrorTypeForbidden, Field: "spec.datacenter.racks[0]", BadValue: "", Detail: `rack "test-rack" can't be removed because the members are being scaled down`},
 			},
@@ -226,8 +195,8 @@ func TestValidateScyllaClusterUpdate(t *testing.T) {
 		},
 		{
 			name: "empty rack with stale status",
-			old:  withStatus(unit.NewSingleRackCluster(0), v1.ScyllaClusterStatus{Racks: map[string]v1.RackStatus{"test-rack": {Stale: pointer.Bool(true), Members: 0}}}),
-			new:  racksDeleted(unit.NewSingleRackCluster(0)),
+			old:  withStatus(unit.NewSingleRackDatacenter(0), scyllav1alpha1.ScyllaDatacenterStatus{Racks: map[string]scyllav1alpha1.RackStatus{"test-rack": {Stale: pointer.Bool(true), Members: pointer.Int32(0)}}}),
+			new:  racksDeleted(unit.NewSingleRackDatacenter(0)),
 			expectedErrorList: field.ErrorList{
 				&field.Error{Type: field.ErrorTypeInternal, Field: "spec.datacenter.racks[0]", Detail: `rack "test-rack" can't be removed because its status, that's used to determine members count, is not yet up to date with the generation of this resource; please retry later`},
 			},
@@ -235,8 +204,8 @@ func TestValidateScyllaClusterUpdate(t *testing.T) {
 		},
 		{
 			name: "empty rack with not reconciled generation",
-			old:  withStatus(withGeneration(unit.NewSingleRackCluster(0), 123), v1.ScyllaClusterStatus{ObservedGeneration: pointer.Int64(321), Racks: map[string]v1.RackStatus{"test-rack": {Members: 0}}}),
-			new:  racksDeleted(unit.NewSingleRackCluster(0)),
+			old:  withStatus(withGeneration(unit.NewSingleRackDatacenter(0), 123), scyllav1alpha1.ScyllaDatacenterStatus{ObservedGeneration: pointer.Int64(321), Racks: map[string]scyllav1alpha1.RackStatus{"test-rack": {Members: pointer.Int32(3)}}}),
+			new:  racksDeleted(unit.NewSingleRackDatacenter(0)),
 			expectedErrorList: field.ErrorList{
 				&field.Error{Type: field.ErrorTypeInternal, Field: "spec.datacenter.racks[0]", Detail: `rack "test-rack" can't be removed because its status, that's used to determine members count, is not yet up to date with the generation of this resource; please retry later`},
 			},
@@ -244,8 +213,8 @@ func TestValidateScyllaClusterUpdate(t *testing.T) {
 		},
 		{
 			name: "non-empty racks deleted",
-			old:  unit.NewMultiRackCluster(3, 2, 1, 0),
-			new:  racksDeleted(unit.NewSingleRackCluster(3)),
+			old:  unit.NewMultiRackDatacenter(3, 2, 1, 0),
+			new:  racksDeleted(unit.NewSingleRackDatacenter(3)),
 			expectedErrorList: field.ErrorList{
 				&field.Error{Type: field.ErrorTypeForbidden, Field: "spec.datacenter.racks[0]", BadValue: "", Detail: `rack "rack-0" can't be removed because it still has members that have to be scaled down to zero first`},
 				&field.Error{Type: field.ErrorTypeForbidden, Field: "spec.datacenter.racks[1]", BadValue: "", Detail: `rack "rack-1" can't be removed because it still has members that have to be scaled down to zero first`},
@@ -257,7 +226,7 @@ func TestValidateScyllaClusterUpdate(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			errList := validation.ValidateScyllaClusterUpdate(test.new, test.old)
+			errList := validationv1alpha1.ValidateScyllaDatacenterUpdate(test.new, test.old)
 			if !reflect.DeepEqual(errList, test.expectedErrorList) {
 				t.Errorf("expected and actual error lists differ: %s", cmp.Diff(test.expectedErrorList, errList))
 			}
@@ -273,34 +242,34 @@ func TestValidateScyllaClusterUpdate(t *testing.T) {
 	}
 }
 
-func withGeneration(sc *v1.ScyllaCluster, generation int64) *v1.ScyllaCluster {
+func withGeneration(sc *scyllav1alpha1.ScyllaDatacenter, generation int64) *scyllav1alpha1.ScyllaDatacenter {
 	sc.Generation = generation
 	return sc
 }
 
-func withStatus(sc *v1.ScyllaCluster, status v1.ScyllaClusterStatus) *v1.ScyllaCluster {
+func withStatus(sc *scyllav1alpha1.ScyllaDatacenter, status scyllav1alpha1.ScyllaDatacenterStatus) *scyllav1alpha1.ScyllaDatacenter {
 	sc.Status = status
 	return sc
 }
 
-func placementChanged(c *v1.ScyllaCluster) *v1.ScyllaCluster {
-	c.Spec.Datacenter.Racks[0].Placement = &v1.PlacementSpec{}
+func placementChanged(c *scyllav1alpha1.ScyllaDatacenter) *scyllav1alpha1.ScyllaDatacenter {
+	c.Spec.Datacenter.Racks[0].Placement = &scyllav1alpha1.PlacementSpec{}
 	return c
 }
 
-func resourceChanged(c *v1.ScyllaCluster) *v1.ScyllaCluster {
-	c.Spec.Datacenter.Racks[0].Resources.Requests = map[corev1.ResourceName]resource.Quantity{
+func resourceChanged(c *scyllav1alpha1.ScyllaDatacenter) *scyllav1alpha1.ScyllaDatacenter {
+	c.Spec.Datacenter.Racks[0].ScyllaContainer.Resources.Requests = map[corev1.ResourceName]resource.Quantity{
 		corev1.ResourceCPU: *resource.NewMilliQuantity(1000, resource.DecimalSI),
 	}
 	return c
 }
 
-func racksDeleted(c *v1.ScyllaCluster) *v1.ScyllaCluster {
+func racksDeleted(c *scyllav1alpha1.ScyllaDatacenter) *scyllav1alpha1.ScyllaDatacenter {
 	c.Spec.Datacenter.Racks = nil
 	return c
 }
 
-func storageChanged(c *v1.ScyllaCluster) *v1.ScyllaCluster {
+func storageChanged(c *scyllav1alpha1.ScyllaDatacenter) *scyllav1alpha1.ScyllaDatacenter {
 	c.Spec.Datacenter.Racks[0].Storage.Capacity = "15Gi"
 	return c
 }
