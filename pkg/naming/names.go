@@ -175,6 +175,8 @@ func RemoteNamespace(sc *scyllav2alpha1.ScyllaCluster, dc scyllav2alpha1.Datacen
 	}
 	remoteNamespace := fmt.Sprintf("%s-%s-%s-%s", dc.RemoteKubeClusterConfigRef.Name, sc.Namespace, sc.Name, dc.Name)
 	if len(remoteNamespace) >= namespaceLengthLimit {
-		return remoteNamespace[len(remoteNamespace)-namespaceLengthLimit:]
+		remoteNamespace = remoteNamespace[len(remoteNamespace)-namespaceLengthLimit:]
 	}
+
+	return remoteNamespace
 }
