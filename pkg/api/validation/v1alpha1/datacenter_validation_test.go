@@ -40,9 +40,9 @@ func TestValidateScyllaDatacenter(t *testing.T) {
 				return cluster
 			}(),
 			expectedErrorList: field.ErrorList{
-				&field.Error{Type: field.ErrorTypeDuplicate, Field: "spec.datacenter.racks[1].name", BadValue: "test-rack"},
+				&field.Error{Type: field.ErrorTypeDuplicate, Field: "spec.racks[1].name", BadValue: "test-rack"},
 			},
-			expectedErrorString: `spec.datacenter.racks[1].name: Duplicate value: "test-rack"`,
+			expectedErrorString: `spec.racks[1].name: Duplicate value: "test-rack"`,
 		},
 	}
 

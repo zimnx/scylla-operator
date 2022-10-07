@@ -58,7 +58,7 @@ var _ = g.Describe("ScyllaCluster", func() {
 			RoleRef: rbacv1.RoleRef{
 				APIGroup: rbacv1.GroupName,
 				Kind:     "ClusterRole",
-				Name:     "scyllacluster-member",
+				Name:     "scylladatacenter-member",
 			},
 		}, metav1.CreateOptions{})
 		o.Expect(err).NotTo(o.HaveOccurred())
