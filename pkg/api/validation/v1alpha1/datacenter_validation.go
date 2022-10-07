@@ -49,7 +49,7 @@ func ValidateScyllaDatacenterSpec(spec *scyllav1alpha1.ScyllaDatacenterSpec, fld
 	}
 
 	for i, rack := range spec.Racks {
-		allErrs = append(allErrs, ValidateScyllaDatacenterRackSpec(rack, rackNames, nil, fldPath.Child("datacenter", "racks").Index(i))...)
+		allErrs = append(allErrs, ValidateScyllaDatacenterRackSpec(rack, rackNames, nil, fldPath.Child("racks").Index(i))...)
 	}
 
 	return allErrs

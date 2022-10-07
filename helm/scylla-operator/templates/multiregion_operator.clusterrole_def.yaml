@@ -95,6 +95,10 @@ rules:
   resources:
   - remotekubeclusterconfigs
   verbs:
+  - create
+  - delete
   - get
   - list
+  - patch
+  - update
   - watch

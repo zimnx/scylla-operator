@@ -167,8 +167,14 @@ func MemberServiceAccountNameForScyllaDatacenter(scName string) string {
 }
 
 func RemoteNamespace(sc *scyllav2alpha1.ScyllaCluster, dc scyllav2alpha1.Datacenter) string {
+	const (
+		namespaceLengthLimit = 63
+	)
 	if dc.RemoteKubeClusterConfigRef == nil {
 		return sc.Namespace
 	}
-	return fmt.Sprintf("%s-%s-%s-%s", dc.RemoteKubeClusterConfigRef.Name, sc.Namespace, sc.Name, dc.Name)
+	remoteNamespace := fmt.Sprintf("%s-%s-%s-%s", dc.RemoteKubeClusterConfigRef.Name, sc.Namespace, sc.Name, dc.Name)
+	if len(remoteNamespace) >= namespaceLengthLimit {
+		return remoteNamespace[len(remoteNamespace)-namespaceLengthLimit:]
+	}
 }

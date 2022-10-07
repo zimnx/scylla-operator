@@ -575,15 +575,20 @@ func convertV2alpha1ScyllaClusterStatusToV1(sc *scyllav2alpha1.ScyllaCluster) (*
 					version = versionParts[1]
 				}
 
-				rackStatuses[dcSpec.Racks[i].Name] = scyllav1.RackStatus{
+				rs := scyllav1.RackStatus{
 					Version:                 version,
-					Members:                 *rackStatus.Nodes,
-					ReadyMembers:            *rackStatus.ReadyNodes,
 					UpdatedMembers:          rackStatus.UpdatedNodes,
 					Stale:                   rackStatus.Stale,
 					Conditions:              rackConditions,
 					ReplaceAddressFirstBoot: rackStatus.ReplaceAddressFirstBoot,
 				}
+				if rackStatus.Nodes != nil {
+					rs.Members = *rackStatus.Nodes
+				}
+				if rackStatus.ReadyNodes != nil {
+					rs.ReadyMembers = *rackStatus.ReadyNodes
+				}
+				rackStatuses[dcSpec.Racks[i].Name] = rs
 			}
 		}
 	}
