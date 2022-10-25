@@ -96,6 +96,11 @@ runs:
         e2e_timeout_minutes="$(( ${e2e_timeout_minutes} + ${flake_attempts} * 10 ))"
       fi
 
+      ingress_class_name='haproxy'
+      ingress_custom_annotations='haproxy.org/ssl-passthrough=true'
+      
+      ingress_controller_address="$( kubectl -n haproxy-controller get svc haproxy-kubernetes-ingress --template='{{ .spec.clusterIP }}' ):9142"
+
       docker run --user="$( id -u ):$( id -g )" --rm \
       --entrypoint=/usr/bin/scylla-operator-tests \
       -v="${ARTIFACTS_DIR}:${ARTIFACTS_DIR}:rw" \
@@ -106,7 +111,10 @@ runs:
       --artifacts-dir="${ARTIFACTS_DIR}" \
       --flake-attempts="${flake_attempts}" \
       --timeout="${e2e_timeout_minutes}m" \
-      --feature-gates='${{ inputs.featureGates }}'
+      --feature-gates='${{ inputs.featureGates }}' \
+      --ingress-controller-address="${ingress_controller_address}" \
+      --ingress-controller-ingress-class-name="${ingress_class_name}" \
+      --ingress-controller-custom-annotations="${ingress_custom_annotations}" \
       ${{ inputs.extraArgs }}
   - name: Dump cluster state
     if: ${{ always() }}

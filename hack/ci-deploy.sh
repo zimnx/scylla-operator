@@ -32,11 +32,12 @@ ARTIFACTS_DIR=${ARTIFACTS_DIR:-$( mktemp -d )}
 OPERATOR_IMAGE_REF=${1}
 
 deploy_dir=${ARTIFACTS_DIR}/deploy
-mkdir -p "${deploy_dir}/"{operator,manager}
+mkdir -p "${deploy_dir}/"{operator,manager,ingress-controller}
 
 cp ./deploy/manager/dev/*.yaml "${deploy_dir}/manager"
 cp ./deploy/operator/*.yaml "${deploy_dir}/operator"
 cp ./examples/common/cert-manager.yaml "${deploy_dir}/"
+cp ./examples/common/ingress-controller/*.yaml "${deploy_dir}/ingress-controller"
 
 for f in $( find "${deploy_dir}"/ -type f -name '*.yaml' ); do
     sed -i -E -e "s~docker.io/scylladb/scylla-operator(:|@sha256:)[^ ]*~${OPERATOR_IMAGE_REF}~" "${f}"
@@ -74,3 +75,6 @@ kubectl -n scylla-manager rollout status --timeout=5m deployment.apps/scylla-man
 
 kubectl wait --for condition=established crd/nodeconfigs.scylla.scylladb.com
 kubectl wait --for condition=established crd/scyllaoperatorconfigs.scylla.scylladb.com
+
+kubectl_create -f "${deploy_dir}"/ingress-controller
+kubectl -n haproxy-controller rollout status --timeout=5m deployment.apps/haproxy-kubernetes-ingress

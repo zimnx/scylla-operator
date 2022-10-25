@@ -30,7 +30,15 @@ type TestData struct {
 	Data string `db:"data"`
 }
 
-func NewDataInserter(hosts []string) (*DataInserter, error) {
+type DataInserterOption func(*DataInserter)
+
+func WithSession(session *gocqlx.Session) func(*DataInserter) {
+	return func(di *DataInserter) {
+		di.session = session
+	}
+}
+
+func NewDataInserter(hosts []string, options ...DataInserterOption) (*DataInserter, error) {
 	keyspace := utilrand.String(8)
 	table := table.New(table.Metadata{
 		Name:    fmt.Sprintf(`"%s"."test"`, keyspace),
@@ -49,9 +57,15 @@ func NewDataInserter(hosts []string) (*DataInserter, error) {
 		replicationFactor: len(hosts),
 	}
 
-	err := di.SetClientEndpoints(hosts)
-	if err != nil {
-		return nil, fmt.Errorf("can't set client endpoints: %w", err)
+	for _, option := range options {
+		option(di)
+	}
+
+	if di.session == nil {
+		err := di.SetClientEndpoints(hosts)
+		if err != nil {
+			return nil, fmt.Errorf("can't set client endpoints: %w", err)
+		}
 	}
 
 	return di, nil

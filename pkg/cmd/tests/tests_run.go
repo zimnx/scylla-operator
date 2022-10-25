@@ -257,6 +257,11 @@ func (o *RunOptions) run(ctx context.Context, streams genericclioptions.IOStream
 		RestConfig:            o.RestConfig,
 		ArtifactsDir:          o.ArtifactsDir,
 		DeleteTestingNSPolicy: o.DeleteTestingNSPolicy,
+		IngressController: framework.IngressController{
+			Address:           o.IngressController.Address,
+			IngressClassName:  o.IngressController.IngressClassName,
+			CustomAnnotations: o.IngressController.CustomAnnotations,
+		},
 	}
 
 	suiteConfig, reporterConfig := ginkgo.GinkgoConfiguration()

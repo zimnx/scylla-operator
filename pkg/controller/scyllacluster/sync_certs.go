@@ -73,7 +73,7 @@ func makeScyllaConnectionConfig(
 				NodeDomain: naming.GetCQLSubDomain(nodeDomain),
 				// FIXME: we don't know what port the cql proxy runs on (global config or a default?)
 				// We need to set sni proxy on the default cql over tls port and drop the port here
-				Server:                   fmt.Sprintf("%s:443", naming.GetCQLAnySubDomain(nodeDomain)),
+				Server:                   fmt.Sprintf("%s:9142", naming.GetCQLAnySubDomain(nodeDomain)),
 				CertificateAuthorityData: servingCABytes,
 			},
 		},

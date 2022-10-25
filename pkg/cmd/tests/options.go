@@ -9,10 +9,17 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/util/errors"
 )
 
+type IngressControllerOptions struct {
+	Address           string
+	IngressClassName  string
+	CustomAnnotations map[string]string
+}
+
 type TestFrameworkOptions struct {
 	ArtifactsDir                 string
 	DeleteTestingNSPolicyUntyped string
 	DeleteTestingNSPolicy        framework.DeleteTestingNSPolicyType
+	IngressController            IngressControllerOptions
 }
 
 func NewTestFrameworkOptions() TestFrameworkOptions {
@@ -32,6 +39,9 @@ func (o *TestFrameworkOptions) AddFlags(cmd *cobra.Command) {
 		},
 		", ",
 	)))
+	cmd.PersistentFlags().StringVarP(&o.IngressController.Address, "ingress-controller-address", "", o.IngressController.Address, "IP address of ingress controller service")
+	cmd.PersistentFlags().StringVarP(&o.IngressController.IngressClassName, "ingress-controller-ingress-class-name", "", o.IngressController.IngressClassName, "Ingress class name under which ingress controller is registered")
+	cmd.PersistentFlags().StringToStringVarP(&o.IngressController.CustomAnnotations, "ingress-controller-custom-annotations", "", o.IngressController.CustomAnnotations, "Custom annotations required by the ingress controller")
 }
 
 func (o *TestFrameworkOptions) Validate() error {
