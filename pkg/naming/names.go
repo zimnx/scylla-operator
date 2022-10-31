@@ -188,10 +188,18 @@ func GetScyllaClusterLocalServingCertName(scName string) string {
 	return fmt.Sprintf("%s-local-serving-certs", scName)
 }
 
+func GetScyllaClusterLocalAdminConnectionConfigName(scName string) string {
+	return fmt.Sprintf("%s-local-connection-config-admin", scName)
+}
+
+func GetCQLSubDomain(domain string) string {
+	return fmt.Sprintf("cql.%s", domain)
+}
+
 func GetCQLAnySubDomain(domain string) string {
-	return fmt.Sprintf("any.cql.%s", domain)
+	return fmt.Sprintf("any.%s", GetCQLSubDomain(domain))
 }
 
 func GetCQLHostIDSubDomain(hostID, domain string) string {
-	return fmt.Sprintf("%s.cql.%s", hostID, domain)
+	return fmt.Sprintf("%s.%s", hostID, GetCQLSubDomain(domain))
 }

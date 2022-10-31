@@ -51,9 +51,13 @@ CODEGEN_PKG ?=./vendor/k8s.io/code-generator
 CODEGEN_HEADER_FILE ?=/dev/null
 
 # API_PACKAGES is a list of comma separated full api package refs (like golang import strings)
-API_PACKAGES ?=$(shell $(GO) list -json ./pkg/api/scylla/... | $(JQ) -sr 'map(select(.Name | test("^v[0-9]+.*$$"))) | reduce .[] as $$item ([]; . + [$$item.ImportPath]) | join(",")')$(if $(filter $(.SHELLSTATUS),0),,$(error failed to list api packages))
+API_PACKAGES ?=$(shell $(GO) list -json ./pkg/api/... | $(JQ) -sr 'map(select(.Name | test("^v[0-9]+.*$$"))) | reduce .[] as $$item ([]; . + [$$item.ImportPath]) | join(",")')$(if $(filter $(.SHELLSTATUS),0),,$(error failed to list api packages))
 ifeq "$(API_PACKAGES)" ""
 	$(error "API_PACKAGES can't be empty")
+endif
+NONREST_API_PACKAGES ?=$(shell $(GO) list -json ./pkg/scylla/api/cqlclient/... | $(JQ) -sr 'map(select(.Name | test("^v[0-9]+.*$$"))) | reduce .[] as $$item ([]; . + [$$item.ImportPath]) | join(",")')$(if $(filter $(.SHELLSTATUS),0),,$(error failed to list non-rest api packages))
+ifeq "$(NONREST_API_PACKAGES)" ""
+	$(error "NONREST_API_PACKAGES can't be empty")
 endif
 
 api_package_array :=$(subst $(comma), ,$(API_PACKAGES))
@@ -222,8 +226,9 @@ define run-codegen
 
 endef
 
+# $1 - api packages
 define run-deepcopy-gen
-	$(call run-codegen,deepcopy-gen,--input-dirs='$(API_PACKAGES)' --output-file-base='zz_generated.deepcopy' --bounding-dirs='github.com/scylladb/scylla-operator/pkg/api/' $(1))
+	$(call run-codegen,deepcopy-gen,--input-dirs='$(1)' --output-file-base='zz_generated.deepcopy' $(3))
 
 endef
 
@@ -243,7 +248,8 @@ define run-informer-gen
 endef
 
 update-codegen:
-	$(call run-deepcopy-gen,)
+	$(call run-deepcopy-gen,$(NONREST_API_PACKAGES),)
+	$(call run-deepcopy-gen,$(API_PACKAGES),)
 	$(call run-client-gen,)
 	$(call run-lister-gen,)
 	$(call run-informer-gen,)
