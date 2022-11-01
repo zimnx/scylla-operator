@@ -122,27 +122,27 @@ EKS_ZONES_QUOTED=$(printf ',"%s"' "${EKS_ZONES[@]}")
 EKS_ZONES_QUOTED="${EKS_ZONES_QUOTED:1}"
 yq eval -P ".metadata.region = \"${EKS_REGION}\" | .metadata.name = \"${CLUSTER_NAME}\" | .availabilityZones |= [${EKS_ZONES_QUOTED}] | (.nodeGroups[] | select(.name==\"scylla-pool\") | .availabilityZones) |= [${EKS_ZONES_QUOTED}]" eks-cluster.yaml | eksctl create cluster -f -
 
-# Configure node disks and network
-kubectl apply -f node-setup-daemonset.yaml
-wait-for-object-creation default daemonset.apps/node-setup
-kubectl rollout status --timeout=5m daemonset.apps/node-setup
+## Configure node disks and network
+#kubectl apply -f node-setup-daemonset.yaml
+#wait-for-object-creation default daemonset.apps/node-setup
+#kubectl rollout status --timeout=5m daemonset.apps/node-setup
 
-# Install local volume provisioner
-echo "Installing local volume provisioner..."
-helm install local-provisioner ../common/provisioner
-echo "Your disks are ready to use."
+## Install local volume provisioner
+#echo "Installing local volume provisioner..."
+#helm install local-provisioner ../common/provisioner
+#echo "Your disks are ready to use."
 
-echo "Starting the cert manger..."
-kubectl apply -f ../common/cert-manager.yaml
-kubectl wait --for condition=established --timeout=60s crd/certificates.cert-manager.io crd/issuers.cert-manager.io
-wait-for-object-creation cert-manager deployment.apps/cert-manager-webhook
-kubectl -n cert-manager rollout status --timeout=5m deployment.apps/cert-manager-webhook
-
-echo "Starting the scylla operator..."
-kubectl apply -f ../common/operator.yaml
-kubectl wait --for condition=established crd/scyllaclusters.scylla.scylladb.com
-wait-for-object-creation scylla-operator deployment.apps/scylla-operator
-kubectl -n scylla-operator rollout status --timeout=5m deployment.apps/scylla-operator
-
-echo "Starting the scylla cluster..."
-kubectl apply -f cluster.yaml
+#echo "Starting the cert manger..."
+#kubectl apply -f ../common/cert-manager.yaml
+#kubectl wait --for condition=established --timeout=60s crd/certificates.cert-manager.io crd/issuers.cert-manager.io
+#wait-for-object-creation cert-manager deployment.apps/cert-manager-webhook
+#kubectl -n cert-manager rollout status --timeout=5m deployment.apps/cert-manager-webhook
+#
+#echo "Starting the scylla operator..."
+#kubectl apply -f ../common/operator.yaml
+#kubectl wait --for condition=established crd/scyllaclusters.scylla.scylladb.com
+#wait-for-object-creation scylla-operator deployment.apps/scylla-operator
+#kubectl -n scylla-operator rollout status --timeout=5m deployment.apps/scylla-operator
+#
+#echo "Starting the scylla cluster..."
+#kubectl apply -f cluster.yaml
