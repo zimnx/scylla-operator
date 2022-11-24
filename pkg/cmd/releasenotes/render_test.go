@@ -18,18 +18,18 @@ func TestCleanupPRTitle(t *testing.T) {
 	}{
 		{
 			Name:          "Regular PR title",
-			Title:         "Add XYZ feature",
-			ExpectedTitle: "Add XYZ feature",
+			Title:         "HandleAdd XYZ feature",
+			ExpectedTitle: "HandleAdd XYZ feature",
 		},
 		{
 			Name:          "Branch prefix is removed",
-			Title:         "[Anything] Add XYZ feature",
-			ExpectedTitle: "Add XYZ feature",
+			Title:         "[Anything] HandleAdd XYZ feature",
+			ExpectedTitle: "HandleAdd XYZ feature",
 		},
 		{
 			Name:          "whitespaces are trimmed",
-			Title:         "       Add XYZ feature    \r\n",
-			ExpectedTitle: "Add XYZ feature",
+			Title:         "       HandleAdd XYZ feature    \r\n",
+			ExpectedTitle: "HandleAdd XYZ feature",
 		},
 	}
 

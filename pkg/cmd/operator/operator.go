@@ -12,7 +12,12 @@ import (
 	"github.com/scylladb/scylla-operator/pkg/controller/nodeconfigpod"
 	"github.com/scylladb/scylla-operator/pkg/controller/orphanedpv"
 	"github.com/scylladb/scylla-operator/pkg/controller/scyllacluster"
+	"github.com/scylladb/scylla-operator/pkg/controller/scylladbmonitoring"
 	"github.com/scylladb/scylla-operator/pkg/controller/scyllaoperatorconfig"
+	integreatlyversionedclient "github.com/scylladb/scylla-operator/pkg/externalclient/integreatly/clientset/versioned"
+	integreatlyinformers "github.com/scylladb/scylla-operator/pkg/externalclient/integreatly/informers/externalversions"
+	monitoringversionedclient "github.com/scylladb/scylla-operator/pkg/externalclient/monitoring/clientset/versioned"
+	monitoringinformers "github.com/scylladb/scylla-operator/pkg/externalclient/monitoring/informers/externalversions"
 	"github.com/scylladb/scylla-operator/pkg/genericclioptions"
 	"github.com/scylladb/scylla-operator/pkg/leaderelection"
 	"github.com/scylladb/scylla-operator/pkg/naming"
@@ -34,8 +39,10 @@ type OperatorOptions struct {
 	genericclioptions.InClusterReflection
 	genericclioptions.LeaderElection
 
-	kubeClient   kubernetes.Interface
-	scyllaClient scyllaversionedclient.Interface
+	kubeClient        kubernetes.Interface
+	scyllaClient      scyllaversionedclient.Interface
+	monitoringClient  monitoringversionedclient.Interface
+	integreatlyClient integreatlyversionedclient.Interface
 
 	ConcurrentSyncs int
 	OperatorImage   string
@@ -140,6 +147,16 @@ func (o *OperatorOptions) Complete() error {
 		return fmt.Errorf("can't build scylla clientset: %w", err)
 	}
 
+	o.monitoringClient, err = monitoringversionedclient.NewForConfig(o.RestConfig)
+	if err != nil {
+		return fmt.Errorf("can't build monitoring clientset: %w", err)
+	}
+
+	o.integreatlyClient, err = integreatlyversionedclient.NewForConfig(o.RestConfig)
+	if err != nil {
+		return fmt.Errorf("can't build integreatly clientset: %w", err)
+	}
+
 	return nil
 }
 
@@ -183,65 +200,125 @@ func (o *OperatorOptions) run(ctx context.Context, streams genericclioptions.IOS
 		},
 	))
 
-	scc, err := scyllacluster.NewController(
+	monitoringInformers := monitoringinformers.NewSharedInformerFactory(o.monitoringClient, resyncPeriod)
+
+	integreatlyInformers := integreatlyinformers.NewSharedInformerFactory(o.integreatlyClient, resyncPeriod)
+
+	var err error
+	var scc *scyllacluster.Controller
+	func() error {
+		scc, err = scyllacluster.NewController(
+			o.kubeClient,
+			o.scyllaClient.ScyllaV1(),
+			kubeInformers.Core().V1().Pods(),
+			kubeInformers.Core().V1().Services(),
+			kubeInformers.Core().V1().Secrets(),
+			kubeInformers.Core().V1().ConfigMaps(),
+			kubeInformers.Core().V1().ServiceAccounts(),
+			kubeInformers.Rbac().V1().RoleBindings(),
+			kubeInformers.Apps().V1().StatefulSets(),
+			kubeInformers.Policy().V1().PodDisruptionBudgets(),
+			kubeInformers.Networking().V1().Ingresses(),
+			scyllaInformers.Scylla().V1().ScyllaClusters(),
+			o.OperatorImage,
+			o.CQLSIngressPort,
+		)
+		if err != nil {
+			return err
+		}
+		return nil
+	}()
+
+	var opc *orphanedpv.Controller
+	func() error {
+		opc, err = orphanedpv.NewController(
+			o.kubeClient,
+			kubeInformers.Core().V1().PersistentVolumes(),
+			kubeInformers.Core().V1().PersistentVolumeClaims(),
+			kubeInformers.Core().V1().Nodes(),
+			scyllaInformers.Scylla().V1().ScyllaClusters(),
+		)
+		if err != nil {
+			return err
+		}
+		return nil
+	}()
+
+	var ncc *nodeconfig.Controller
+	func() error {
+		ncc, err = nodeconfig.NewController(
+			o.kubeClient,
+			o.scyllaClient.ScyllaV1alpha1(),
+			scyllaInformers.Scylla().V1alpha1().NodeConfigs(),
+			scyllaInformers.Scylla().V1alpha1().ScyllaOperatorConfigs(),
+			kubeInformers.Rbac().V1().ClusterRoles(),
+			kubeInformers.Rbac().V1().ClusterRoleBindings(),
+			kubeInformers.Apps().V1().DaemonSets(),
+			kubeInformers.Core().V1().Namespaces(),
+			kubeInformers.Core().V1().Nodes(),
+			kubeInformers.Core().V1().ServiceAccounts(),
+			o.OperatorImage,
+		)
+		if err != nil {
+			return err
+		}
+		return nil
+	}()
+
+	var ncpc *nodeconfigpod.Controller
+	func() error {
+		ncpc, err = nodeconfigpod.NewController(
+			o.kubeClient,
+			o.scyllaClient.ScyllaV1alpha1(),
+			kubeInformers.Core().V1().Pods(),
+			kubeInformers.Core().V1().ConfigMaps(),
+			kubeInformers.Core().V1().Nodes(),
+			scyllaInformers.Scylla().V1alpha1().NodeConfigs(),
+		)
+		if err != nil {
+			return err
+		}
+		return nil
+	}()
+
+	var socc *scyllaoperatorconfig.Controller
+	func() error {
+		socc, err = scyllaoperatorconfig.NewController(
+			o.kubeClient,
+			o.scyllaClient.ScyllaV1alpha1(),
+			scyllaOperatorConfigInformers.Scylla().V1alpha1().ScyllaOperatorConfigs(),
+		)
+		if err != nil {
+			return err
+		}
+		return nil
+	}()
+
+	mc, err := scylladbmonitoring.NewController(
 		o.kubeClient,
-		o.scyllaClient.ScyllaV1(),
-		kubeInformers.Core().V1().Pods(),
-		kubeInformers.Core().V1().Services(),
+		o.scyllaClient.ScyllaV1alpha1(),
+		o.monitoringClient.MonitoringV1(),
+		o.integreatlyClient.IntegreatlyV1alpha1(),
+		kubeInformers.Core().V1().Endpoints(),
 		kubeInformers.Core().V1().Secrets(),
 		kubeInformers.Core().V1().ConfigMaps(),
+		kubeInformers.Core().V1().Services(),
 		kubeInformers.Core().V1().ServiceAccounts(),
 		kubeInformers.Rbac().V1().RoleBindings(),
-		kubeInformers.Apps().V1().StatefulSets(),
 		kubeInformers.Policy().V1().PodDisruptionBudgets(),
 		kubeInformers.Networking().V1().Ingresses(),
-		scyllaInformers.Scylla().V1().ScyllaClusters(),
-		o.OperatorImage,
-		o.CQLSIngressPort,
+		scyllaInformers.Scylla().V1alpha1().ScyllaDBMonitorings(),
+		monitoringInformers.Monitoring().V1().Prometheuses(),
+		monitoringInformers.Monitoring().V1().PrometheusRules(),
+		monitoringInformers.Monitoring().V1().ServiceMonitors(),
+		integreatlyInformers.Integreatly().V1alpha1().Grafanas(),
+		integreatlyInformers.Integreatly().V1alpha1().GrafanaFolders(),
+		integreatlyInformers.Integreatly().V1alpha1().GrafanaDashboards(),
+		integreatlyInformers.Integreatly().V1alpha1().GrafanaDataSources(),
 	)
 	if err != nil {
 		return err
 	}
-
-	opc, err := orphanedpv.NewController(
-		o.kubeClient,
-		kubeInformers.Core().V1().PersistentVolumes(),
-		kubeInformers.Core().V1().PersistentVolumeClaims(),
-		kubeInformers.Core().V1().Nodes(),
-		scyllaInformers.Scylla().V1().ScyllaClusters(),
-	)
-	if err != nil {
-		return err
-	}
-
-	ncc, err := nodeconfig.NewController(
-		o.kubeClient,
-		o.scyllaClient.ScyllaV1alpha1(),
-		scyllaInformers.Scylla().V1alpha1().NodeConfigs(),
-		scyllaInformers.Scylla().V1alpha1().ScyllaOperatorConfigs(),
-		kubeInformers.Rbac().V1().ClusterRoles(),
-		kubeInformers.Rbac().V1().ClusterRoleBindings(),
-		kubeInformers.Apps().V1().DaemonSets(),
-		kubeInformers.Core().V1().Namespaces(),
-		kubeInformers.Core().V1().Nodes(),
-		kubeInformers.Core().V1().ServiceAccounts(),
-		o.OperatorImage,
-	)
-
-	ncpc, err := nodeconfigpod.NewController(
-		o.kubeClient,
-		o.scyllaClient.ScyllaV1alpha1(),
-		kubeInformers.Core().V1().Pods(),
-		kubeInformers.Core().V1().ConfigMaps(),
-		kubeInformers.Core().V1().Nodes(),
-		scyllaInformers.Scylla().V1alpha1().NodeConfigs(),
-	)
-
-	socc, err := scyllaoperatorconfig.NewController(
-		o.kubeClient,
-		o.scyllaClient.ScyllaV1alpha1(),
-		scyllaOperatorConfigInformers.Scylla().V1alpha1().ScyllaOperatorConfigs(),
-	)
 
 	var wg sync.WaitGroup
 	defer wg.Wait()
@@ -267,31 +344,51 @@ func (o *OperatorOptions) run(ctx context.Context, streams genericclioptions.IOS
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		scc.Run(ctx, o.ConcurrentSyncs)
+		monitoringInformers.Start(ctx.Done())
 	}()
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		opc.Run(ctx, o.ConcurrentSyncs)
+		integreatlyInformers.Start(ctx.Done())
+	}()
+
+	func() {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			scc.Run(ctx, o.ConcurrentSyncs)
+		}()
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			opc.Run(ctx, o.ConcurrentSyncs)
+		}()
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ncc.Run(ctx, o.ConcurrentSyncs)
+		}()
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ncpc.Run(ctx, o.ConcurrentSyncs)
+		}()
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			socc.Run(ctx, o.ConcurrentSyncs)
+		}()
 	}()
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		ncc.Run(ctx, o.ConcurrentSyncs)
-	}()
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		ncpc.Run(ctx, o.ConcurrentSyncs)
-	}()
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		socc.Run(ctx, o.ConcurrentSyncs)
+		mc.Run(ctx, o.ConcurrentSyncs)
 	}()
 
 	<-ctx.Done()

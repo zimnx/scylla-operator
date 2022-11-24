@@ -1,0 +1,15 @@
+apiVersion: integreatly.org/v1alpha1
+kind: GrafanaFolder
+metadata:
+  name: '{{ .scyllaDBMonitoringName }}-scylladb'
+  labels:
+    app: grafana
+spec:
+  title: scylladb
+  permissions:
+  - permissionLevel: 1
+    permissionTarget: "Viewer"
+    permissionTargetType: "role"
+  - permissionLevel: 2
+    permissionTarget: "Editor"
+    permissionTargetType: "role"

@@ -285,7 +285,7 @@ func Parse(s string) (CPUSet, error) {
 			if err != nil {
 				return NewCPUSet(), err
 			}
-			// Add all elements to the result.
+			// HandleAdd all elements to the result.
 			// e.g. "0-5", "46-48" => [0, 1, 2, 3, 4, 5, 46, 47, 48].
 			for e := start; e <= end; e++ {
 				b.Add(e)

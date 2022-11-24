@@ -491,7 +491,7 @@ func (scc *Controller) syncStatefulSets(
 	}
 	if len(createProgressingConditions) > 0 {
 		// Wait for the informers to catch up.
-		// TODO: Add expectations, not to reconcile sooner then we see this new StatefulSet in our caches. (#682)
+		// TODO: HandleAdd expectations, not to reconcile sooner then we see this new StatefulSet in our caches. (#682)
 		time.Sleep(artificialDelayForCachesToCatchUp)
 		return progressingConditions, nil
 	}
@@ -700,7 +700,7 @@ func (scc *Controller) syncStatefulSets(
 				}
 			}
 			if anyStsChanged {
-				// TODO: Add expectations, not to reconcile sooner then we see this new StatefulSet in our caches. (#682)
+				// TODO: HandleAdd expectations, not to reconcile sooner then we see this new StatefulSet in our caches. (#682)
 				time.Sleep(artificialDelayForCachesToCatchUp)
 			}
 			err = utilerrors.NewAggregate(errs)
@@ -823,7 +823,7 @@ func (scc *Controller) syncStatefulSets(
 	anyStsChanged := false
 	defer func() {
 		if anyStsChanged {
-			// TODO: Add expectations, not to reconcile sooner then we see this new StatefulSet in our caches. (#682)
+			// TODO: HandleAdd expectations, not to reconcile sooner then we see this new StatefulSet in our caches. (#682)
 			time.Sleep(artificialDelayForCachesToCatchUp)
 		}
 	}()

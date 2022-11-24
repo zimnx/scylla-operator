@@ -1,0 +1,53 @@
+apiVersion: integreatly.org/v1alpha1
+kind: Grafana
+metadata:
+  name: "{{ .scyllaDBMonitoringName }}"
+spec:
+  baseImage: "docker.io/grafana/grafana:8.4.0"
+  client:
+    preferService: true
+  ingress:
+    enabled: False
+  secrets:
+  - "{{ .servingCertSecretName }}"
+  - "{{ .scyllaDBMonitoringName }}-prometheus-client-grafana"
+  configMaps:
+  - "{{ .scyllaDBMonitoringName }}-prometheus-serving-ca"
+  - "{{ .scyllaDBMonitoringName }}-grafana-dashboard-overview"
+  config:
+    log:
+      mode: "console"
+      level: "error"
+    log.frontend:
+      enabled: true
+    auth:
+      disable_login_form: False
+      disable_signout_menu: False
+    auth.anonymous:
+      enabled: True
+    dashboards:
+      default_home_dashboard_path: "/etc/grafana-configmaps/{{ .scyllaDBMonitoringName }}-grafana-dashboard-overview/overview.json"
+    security:
+      admin_user: "admin"
+      admin_password: "{{ .password }}"
+    server:
+      protocol: https
+      cert_file: /etc/grafana-secrets/{{ .servingCertSecretName }}/tls.crt
+      cert_key: /etc/grafana-secrets/{{ .servingCertSecretName }}/tls.key
+  service:
+    name: "{{ .scyllaDBMonitoringName }}-grafana"
+    labels:
+      scylla-operator.scylladb.com/scylladbmonitoring-name: "{{ .scyllaDBMonitoringName }}"
+  dashboardLabelSelector:
+  - matchLabels:
+      scylla-operator.scylladb.com/scylladbmonitoring-name: "{{ .scyllaDBMonitoringName }}"
+  deployment:
+    env:
+    - name: GF_SECURITY_DISABLE_BRUTE_FORCE_LOGIN_PROTECTION
+      value: "true"
+    affinity:
+      {{- .affinity | toYAML | nindent 6 }}
+    tolerations:
+      {{- .tolerations | toYAML | nindent 6 }}
+  resources:
+    {{- .resources | toYAML | nindent 4 }}

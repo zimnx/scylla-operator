@@ -70,6 +70,14 @@ func (f *Framework) Username() string {
 	return f.username
 }
 
+func (f *Framework) GetIngressAddress(hostname string) string {
+	if len(TestContext.OverrideIngressAddress) == 0 {
+		return hostname
+	}
+
+	return TestContext.OverrideIngressAddress
+}
+
 func (f *Framework) FieldManager() string {
 	h := sha512.Sum512([]byte(fmt.Sprintf("scylla-operator-e2e-%s", f.Namespace())))
 	return base64.StdEncoding.EncodeToString(h[:])
@@ -118,6 +126,7 @@ func (f *Framework) ScyllaClient() *scyllaclientset.Clientset {
 	o.Expect(err).NotTo(o.HaveOccurred())
 	return client
 }
+
 func (f *Framework) ScyllaAdminClient() *scyllaclientset.Clientset {
 	client, err := scyllaclientset.NewForConfig(f.AdminClientConfig())
 	o.Expect(err).NotTo(o.HaveOccurred())

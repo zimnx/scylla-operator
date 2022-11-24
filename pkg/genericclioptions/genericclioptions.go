@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/klog/v2"
 )
 
 // IOStreams is a structure containing all standard streams.
@@ -59,6 +60,7 @@ func (cc *ClientConfig) Complete() error {
 	loader := clientcmd.NewDefaultClientConfigLoadingRules()
 	// Use explicit kubeconfig if set.
 	loader.ExplicitPath = cc.Kubeconfig
+	klog.V(4).InfoS("Kubeconfig", "ExplicitPath", loader.ExplicitPath)
 	cc.RestConfig, err = clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
 		loader,
 		&clientcmd.ConfigOverrides{},

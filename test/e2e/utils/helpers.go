@@ -130,6 +130,24 @@ func IsScyllaClusterRolledOut(sc *scyllav1.ScyllaCluster) (bool, error) {
 	return true, nil
 }
 
+func IsScyllaDBMonitoringRolledOut(sc *scyllav1alpha1.ScyllaDBMonitoring) (bool, error) {
+	if !helpers.IsStatusConditionPresentAndTrue(sc.Status.Conditions, scyllav1.AvailableCondition, sc.Generation) {
+		return false, nil
+	}
+
+	if !helpers.IsStatusConditionPresentAndFalse(sc.Status.Conditions, scyllav1.ProgressingCondition, sc.Generation) {
+		return false, nil
+	}
+
+	if !helpers.IsStatusConditionPresentAndFalse(sc.Status.Conditions, scyllav1.DegradedCondition, sc.Generation) {
+		return false, nil
+	}
+
+	framework.Infof("ScyllaDBMonitoring %s (RV=%s) is rolled out", klog.KObj(sc), sc.ResourceVersion)
+
+	return true, nil
+}
+
 type listerWatcher[ListObject runtime.Object] interface {
 	List(context.Context, metav1.ListOptions) (ListObject, error)
 	Watch(context.Context, metav1.ListOptions) (watch.Interface, error)
@@ -198,6 +216,10 @@ func WaitForObjectState[Object, ListObject runtime.Object](ctx context.Context, 
 
 func WaitForScyllaClusterState(ctx context.Context, client scyllav1client.ScyllaV1Interface, namespace string, name string, options WaitForStateOptions, condition func(*scyllav1.ScyllaCluster) (bool, error), additionalConditions ...func(*scyllav1.ScyllaCluster) (bool, error)) (*scyllav1.ScyllaCluster, error) {
 	return WaitForObjectState[*scyllav1.ScyllaCluster, *scyllav1.ScyllaClusterList](ctx, client.ScyllaClusters(namespace), name, options, condition, additionalConditions...)
+}
+
+func WaitForScyllaDBMonitoringState(ctx context.Context, client scyllav1alpha1client.ScyllaDBMonitoringInterface, name string, options WaitForStateOptions, condition func(monitoring *scyllav1alpha1.ScyllaDBMonitoring) (bool, error), additionalConditions ...func(monitoring *scyllav1alpha1.ScyllaDBMonitoring) (bool, error)) (*scyllav1alpha1.ScyllaDBMonitoring, error) {
+	return WaitForObjectState[*scyllav1alpha1.ScyllaDBMonitoring, *scyllav1alpha1.ScyllaDBMonitoringList](ctx, client, name, options, condition, additionalConditions...)
 }
 
 func WaitForPodState(ctx context.Context, client corev1client.PodInterface, name string, options WaitForStateOptions, condition func(*corev1.Pod) (bool, error), additionalConditions ...func(*corev1.Pod) (bool, error)) (*corev1.Pod, error) {

@@ -100,7 +100,7 @@ func (scc *Controller) calculateRackStatus(sc *scyllav1.ScyllaCluster, rackName 
 	for _, svc := range serviceMap {
 		// Check if there is a decommission in progress
 		if _, ok := svc.Labels[naming.DecommissionedLabel]; ok {
-			// Add MemberLeaving Condition to rack status
+			// HandleAdd MemberLeaving Condition to rack status
 			controllerhelpers.SetRackCondition(status, scyllav1.RackConditionTypeMemberLeaving)
 			// Sanity check. Only the last member should be decommissioning.
 			index, err := naming.IndexFromName(svc.Name)

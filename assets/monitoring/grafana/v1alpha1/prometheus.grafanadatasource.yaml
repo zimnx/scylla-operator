@@ -1,0 +1,21 @@
+apiVersion: integreatly.org/v1alpha1
+kind: GrafanaDataSource
+metadata:
+  name: "{{ .scyllaDBMonitoringName }}-prometheus"
+spec:
+  name: prometheus.yaml
+  datasources:
+  - name: prometheus
+    type: prometheus
+    access: proxy
+    url: "https://{{ .scyllaDBMonitoringName }}-prometheus:9090"
+    isDefault: true
+    version: 1
+    editable: true
+    jsonData:
+      timeInterval: "5s"
+      tlsAuthWithCACert: true
+    secureJsonData:
+      tlsCACert: "$__file{/etc/grafana-configmaps/{{ .scyllaDBMonitoringName }}-prometheus-serving-ca/ca-bundle.crt}"
+      tlsClientCert: "$__file{/etc/grafana-secrets/{{ .scyllaDBMonitoringName }}-prometheus-client-grafana/tls.crt}"
+      tlsClientKey: "$__file{/etc/grafana-secrets/{{ .scyllaDBMonitoringName }}-prometheus-client-grafana/tls.key}"

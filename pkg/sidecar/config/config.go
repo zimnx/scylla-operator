@@ -249,7 +249,7 @@ func (s *ScyllaConfig) setupEntrypoint(ctx context.Context) (*exec.Cmd, error) {
 		args["replace-address-first-boot"] = pointer.StringPtr(addr)
 	}
 	// See if we need to use cpu-pinning
-	// TODO: Add more checks to make sure this is valid.
+	// TODO: HandleAdd more checks to make sure this is valid.
 	// eg. parse the cpuset and check the number of cpus is the same as cpu limits
 	// Now we rely completely on the user to have the cpu policy correctly
 	// configured in the kubelet, otherwise scylla will crash.

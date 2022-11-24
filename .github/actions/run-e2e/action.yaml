@@ -22,6 +22,9 @@ inputs:
     description: "Default timeout in minutes. Can be extended to accommodate for flake retries."
     required: false
     default: 120
+  overrideIngressAddress:
+    description: "This will override destination address when sending testing data to applications behind ingresses."
+    required: true
 runs:
   using: "composite"
   steps:
@@ -106,7 +109,8 @@ runs:
       --artifacts-dir="${ARTIFACTS_DIR}" \
       --flake-attempts="${flake_attempts}" \
       --timeout="${e2e_timeout_minutes}m" \
-      --feature-gates='${{ inputs.featureGates }}'
+      --feature-gates='${{ inputs.featureGates }}' \
+      --override-ingress-address="$( kubectl -n haproxy-controller get svc haproxy-kubernetes-ingress --template='{{ .spec.clusterIP }}' )" \
       ${{ inputs.extraArgs }}
   - name: Dump cluster state
     if: ${{ always() }}

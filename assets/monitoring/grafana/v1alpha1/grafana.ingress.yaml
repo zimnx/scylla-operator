@@ -1,0 +1,21 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: "{{ .scyllaDBMonitoringName }}-grafana"
+  annotations:
+    {{- .ingressOptions.Annotations | toYAML | nindent 4 }}
+spec:
+  ingressClassName: {{ or .ingressOptions.IngressClassName "null" }}
+  rules:
+  {{- range $_, $dnsDomain := .ingressOptions.DNSDomains }}
+  - host: "{{ $dnsDomain }}"
+    http:
+      paths:
+      - backend:
+          service:
+            name: "{{ $.scyllaDBMonitoringName }}-grafana"
+            port:
+              number: 3000
+        path: /
+        pathType: Prefix
+  {{- end }}

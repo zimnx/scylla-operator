@@ -10,6 +10,7 @@ import (
 	scyllav1client "github.com/scylladb/scylla-operator/pkg/client/scylla/clientset/versioned/typed/scylla/v1"
 	scyllav1informers "github.com/scylladb/scylla-operator/pkg/client/scylla/informers/externalversions/scylla/v1"
 	scyllav1listers "github.com/scylladb/scylla-operator/pkg/client/scylla/listers/scylla/v1"
+	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
 	"github.com/scylladb/scylla-operator/pkg/resource"
 	"github.com/scylladb/scylla-operator/pkg/scheme"
 	appsv1 "k8s.io/api/apps/v1"
@@ -76,7 +77,8 @@ type Controller struct {
 
 	eventRecorder record.EventRecorder
 
-	queue workqueue.RateLimitingInterface
+	queue    workqueue.RateLimitingInterface
+	handlers *controllerhelpers.Handlers[*scyllav1.ScyllaCluster]
 }
 
 func NewController(
@@ -143,6 +145,20 @@ func NewController(
 		eventRecorder: eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "scyllacluster-controller"}),
 
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "scyllacluster"),
+	}
+
+	var err error
+	scc.handlers, err = controllerhelpers.NewHandlers[*scyllav1.ScyllaCluster](
+		scc.queue,
+		keyFunc,
+		scheme.Scheme,
+		scyllaClusterControllerGVK,
+		func(namespace, name string) (*scyllav1.ScyllaCluster, error) {
+			return scc.scyllaLister.ScyllaClusters(namespace).Get(name)
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("can't create handlers: %w", err)
 	}
 
 	serviceInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -471,47 +487,26 @@ func (scc *Controller) deleteSecret(obj interface{}) {
 }
 
 func (scc *Controller) addConfigMap(obj interface{}) {
-	configMap := obj.(*corev1.ConfigMap)
-	klog.V(4).InfoS("Observed addition of ConfigMap", "ConfigMap", klog.KObj(configMap))
-	scc.enqueueOwner(configMap)
+	scc.handlers.HandleAdd(
+		obj.(*corev1.ConfigMap),
+		scc.handlers.EnqueueOwner,
+	)
 }
 
 func (scc *Controller) updateConfigMap(old, cur interface{}) {
-	oldConfigMap := old.(*corev1.ConfigMap)
-	currentConfigMap := cur.(*corev1.ConfigMap)
-
-	if currentConfigMap.UID != oldConfigMap.UID {
-		key, err := keyFunc(oldConfigMap)
-		if err != nil {
-			utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", oldConfigMap, err))
-			return
-		}
-		scc.deleteConfigMap(cache.DeletedFinalStateUnknown{
-			Key: key,
-			Obj: oldConfigMap,
-		})
-	}
-
-	klog.V(4).InfoS("Observed update of ConfigMap", "ConfigMap", klog.KObj(oldConfigMap))
-	scc.enqueueOwner(currentConfigMap)
+	scc.handlers.HandleUpdate(
+		old.(*corev1.ConfigMap),
+		cur.(*corev1.ConfigMap),
+		scc.handlers.EnqueueOwner,
+		scc.deleteConfigMap,
+	)
 }
 
 func (scc *Controller) deleteConfigMap(obj interface{}) {
-	configMap, ok := obj.(*corev1.ConfigMap)
-	if !ok {
-		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
-		if !ok {
-			utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
-			return
-		}
-		configMap, ok = tombstone.Obj.(*corev1.ConfigMap)
-		if !ok {
-			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a ConfigMap %#v", obj))
-			return
-		}
-	}
-	klog.V(4).InfoS("Observed deletion of ConfigMap", "ConfigMap", klog.KObj(configMap))
-	scc.enqueueOwner(configMap)
+	scc.handlers.HandleDelete(
+		obj,
+		scc.handlers.EnqueueOwner,
+	)
 }
 
 func (scc *Controller) addServiceAccount(obj interface{}) {

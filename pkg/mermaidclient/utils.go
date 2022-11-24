@@ -203,7 +203,7 @@ func FormatError(msg string) string {
 	r := regexp.MustCompile(`(^|: |; )(` + ipRegex + `): `)
 	msg = r.ReplaceAllString(msg, "\n"+prefix+"${2}: ")
 
-	// Add "failed to" prefix if needed
+	// HandleAdd "failed to" prefix if needed
 	if !strings.HasPrefix(msg, "failed to") && !strings.HasPrefix(msg, "\n") {
 		msg = "failed to " + msg
 	}

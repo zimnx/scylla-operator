@@ -29,6 +29,10 @@ func SanitizeObject(obj metav1.Object) {
 	cleanRemovalKeys(obj.GetLabels())
 }
 
+func MergeMapInPlaceWithoutRemovalKeys2(required map[string]string, existing map[string]string) {
+	MergeMapInPlaceWithoutRemovalKeys(&required, existing)
+}
+
 // MergeMapInPlaceWithoutRemovalKeys merges keys from existing into the required object.
 func MergeMapInPlaceWithoutRemovalKeys(required *map[string]string, existing map[string]string) {
 	for existingKey, existingValue := range existing {
@@ -52,4 +56,9 @@ func MergeMapInPlaceWithoutRemovalKeys(required *map[string]string, existing map
 func MergeMetadataInPlace(required *metav1.ObjectMeta, existing metav1.ObjectMeta) {
 	MergeMapInPlaceWithoutRemovalKeys(&required.Annotations, existing.Annotations)
 	MergeMapInPlaceWithoutRemovalKeys(&required.Labels, existing.Labels)
+}
+
+func MergeMetadataInPlaceInt(required metav1.Object, existing metav1.Object) {
+	MergeMapInPlaceWithoutRemovalKeys2(required.GetAnnotations(), existing.GetAnnotations())
+	MergeMapInPlaceWithoutRemovalKeys2(required.GetLabels(), existing.GetLabels())
 }
