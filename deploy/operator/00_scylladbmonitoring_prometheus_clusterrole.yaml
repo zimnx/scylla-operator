@@ -1,0 +1,8 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: scylladbmonitoring-prometheus
+aggregationRule:
+  clusterRoleSelectors:
+  - matchLabels:
+      rbac.operator.scylladb.com/aggregate-to-scylladbmonitoring-prometheus: "true"

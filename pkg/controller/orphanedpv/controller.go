@@ -283,7 +283,7 @@ func (opc *Controller) deleteNode(obj interface{}) {
 	klog.V(4).InfoS("Observed deletion of Node", "Node", klog.KObj(node))
 
 	// We can't run a long running task in the handler because it'd block the informer.
-	// Add on background.
+	// HandleAdd on background.
 	opc.enqueueAllScyllaClustersOnBackground()
 }
 

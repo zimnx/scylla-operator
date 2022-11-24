@@ -435,7 +435,7 @@ func StatefulSetForRack(r scyllav1.RackSpec, c *scyllav1.ScyllaCluster, existing
 
 								return mounts
 							}(),
-							// Add CAP_SYS_NICE as instructed by scylla logs
+							// HandleAdd CAP_SYS_NICE as instructed by scylla logs
 							SecurityContext: &corev1.SecurityContext{
 								RunAsUser:  pointer.Int64(rootUID),
 								RunAsGroup: pointer.Int64(rootGID),

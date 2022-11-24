@@ -1,0 +1,11 @@
+apiVersion: monitoring.coreos.com/v1
+kind: Alertmanager
+metadata:
+  namespace: "{{ .namespace }}"
+  name: "{{ .namePrefix }}"
+spec:
+  replicas: 1
+  alertmanagerConfigSelector:
+    matchLabels:
+      scylladbmonitoring-name: "{{ .scylladbMonitoringName }}"
+

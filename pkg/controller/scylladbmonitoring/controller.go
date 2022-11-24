@@ -1,0 +1,279 @@
+package scylladbmonitoring
+
+import (
+	"context"
+	"fmt"
+	"sync"
+	"time"
+
+	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
+	scyllav1alpha1client "github.com/scylladb/scylla-operator/pkg/client/scylla/clientset/versioned/typed/scylla/v1alpha1"
+	scyllav1alpha1informers "github.com/scylladb/scylla-operator/pkg/client/scylla/informers/externalversions/scylla/v1alpha1"
+	scyllav1alpha1listers "github.com/scylladb/scylla-operator/pkg/client/scylla/listers/scylla/v1alpha1"
+	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
+	monitoringv1client "github.com/scylladb/scylla-operator/pkg/externalclient/monitoring/clientset/versioned/typed/monitoring/v1"
+	monitoringv1informers "github.com/scylladb/scylla-operator/pkg/externalclient/monitoring/informers/externalversions/monitoring/v1"
+	monitoringv1listers "github.com/scylladb/scylla-operator/pkg/externalclient/monitoring/listers/monitoring/v1"
+	"github.com/scylladb/scylla-operator/pkg/scheme"
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/apimachinery/pkg/util/wait"
+	corev1informers "k8s.io/client-go/informers/core/v1"
+	networkingv1informers "k8s.io/client-go/informers/networking/v1"
+	policyv1informers "k8s.io/client-go/informers/policy/v1"
+	rbacv1informers "k8s.io/client-go/informers/rbac/v1"
+	"k8s.io/client-go/kubernetes"
+	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
+	corev1listers "k8s.io/client-go/listers/core/v1"
+	networkingv1listers "k8s.io/client-go/listers/networking/v1"
+	rbacv1listers "k8s.io/client-go/listers/rbac/v1"
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/workqueue"
+	"k8s.io/component-base/metrics/prometheus/ratelimiter"
+	"k8s.io/klog/v2"
+)
+
+const (
+	ControllerName = "ScyllaDBMonitoringController"
+)
+
+var (
+	keyFunc                         = cache.DeletionHandlingMetaNamespaceKeyFunc
+	scylladbMonitoringControllerGVK = scyllav1alpha1.GroupVersion.WithKind("ScyllaDBMonitoring")
+)
+
+type Controller struct {
+	kubeClient           kubernetes.Interface
+	scyllaV1alpha1Client scyllav1alpha1client.ScyllaV1alpha1Interface
+	monitoringClient     monitoringv1client.MonitoringV1Interface
+
+	endpointsLister      corev1listers.EndpointsLister
+	secretLister         corev1listers.SecretLister
+	configMapLister      corev1listers.ConfigMapLister
+	serviceLister        corev1listers.ServiceLister
+	serviceAccountLister corev1listers.ServiceAccountLister
+	roleBindingLister    rbacv1listers.RoleBindingLister
+	// pdbLister            policyv1listers.PodDisruptionBudgetLister
+	ingressLister networkingv1listers.IngressLister
+
+	scylladbMonitoringLister scyllav1alpha1listers.ScyllaDBMonitoringLister
+
+	prometheusLister     monitoringv1listers.PrometheusLister
+	serviceMonitorLister monitoringv1listers.ServiceMonitorLister
+
+	cachesToSync []cache.InformerSynced
+
+	eventRecorder record.EventRecorder
+
+	queue    workqueue.RateLimitingInterface
+	handlers *controllerhelpers.Handlers[*scyllav1alpha1.ScyllaDBMonitoring]
+}
+
+func NewController(
+	kubeClient kubernetes.Interface,
+	scyllaV1alpha1Client scyllav1alpha1client.ScyllaV1alpha1Interface,
+	monitoringClient monitoringv1client.MonitoringV1Interface,
+	endpointsInformer corev1informers.EndpointsInformer,
+	secretInformer corev1informers.SecretInformer,
+	configMapInformer corev1informers.ConfigMapInformer,
+	serviceInformer corev1informers.ServiceInformer,
+	serviceAccountInformer corev1informers.ServiceAccountInformer,
+	roleBindingInformer rbacv1informers.RoleBindingInformer,
+	pdbInformer policyv1informers.PodDisruptionBudgetInformer,
+	ingressInformer networkingv1informers.IngressInformer,
+	scyllaDBMonitoringInformer scyllav1alpha1informers.ScyllaDBMonitoringInformer,
+	prometheusInformer monitoringv1informers.PrometheusInformer,
+	serviceMonitorInformer monitoringv1informers.ServiceMonitorInformer,
+) (*Controller, error) {
+	eventBroadcaster := record.NewBroadcaster()
+	eventBroadcaster.StartStructuredLogging(0)
+	eventBroadcaster.StartRecordingToSink(&corev1client.EventSinkImpl{Interface: kubeClient.CoreV1().Events("")})
+
+	if kubeClient.CoreV1().RESTClient().GetRateLimiter() != nil {
+		err := ratelimiter.RegisterMetricAndTrackRateLimiterUsage(
+			"scylladbmonitoring_controller",
+			kubeClient.CoreV1().RESTClient().GetRateLimiter(),
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	mc := &Controller{
+		kubeClient:           kubeClient,
+		scyllaV1alpha1Client: scyllaV1alpha1Client,
+		monitoringClient:     monitoringClient,
+
+		endpointsLister:      endpointsInformer.Lister(),
+		secretLister:         secretInformer.Lister(),
+		configMapLister:      configMapInformer.Lister(),
+		serviceLister:        serviceInformer.Lister(),
+		serviceAccountLister: serviceAccountInformer.Lister(),
+		roleBindingLister:    roleBindingInformer.Lister(),
+		// pdbLister:            pdbInformer.Lister(),
+		ingressLister: ingressInformer.Lister(),
+
+		scylladbMonitoringLister: scyllaDBMonitoringInformer.Lister(),
+
+		prometheusLister:     prometheusInformer.Lister(),
+		serviceMonitorLister: serviceMonitorInformer.Lister(),
+
+		cachesToSync: []cache.InformerSynced{
+			endpointsInformer.Informer().HasSynced,
+			secretInformer.Informer().HasSynced,
+			configMapInformer.Informer().HasSynced,
+			serviceInformer.Informer().HasSynced,
+			serviceAccountInformer.Informer().HasSynced,
+			roleBindingInformer.Informer().HasSynced,
+			pdbInformer.Informer().HasSynced,
+			ingressInformer.Informer().HasSynced,
+			scyllaDBMonitoringInformer.Informer().HasSynced,
+			prometheusInformer.Informer().HasSynced,
+			serviceMonitorInformer.Informer().HasSynced,
+		},
+
+		eventRecorder: eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "scylladbmonitoring-controller"}),
+
+		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "scylladbmonitoring"),
+	}
+
+	var err error
+	mc.handlers, err = controllerhelpers.NewHandlers[*scyllav1alpha1.ScyllaDBMonitoring](
+		mc.queue,
+		keyFunc,
+		scheme.Scheme,
+		scylladbMonitoringControllerGVK,
+		func(namespace, name string) (*scyllav1alpha1.ScyllaDBMonitoring, error) {
+			return mc.scylladbMonitoringLister.ScyllaDBMonitorings(namespace).Get(name)
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("can't create handlers: %w", err)
+	}
+
+	scyllaDBMonitoringInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    mc.addScyllaDBMonitoring,
+		UpdateFunc: mc.updateScyllaDBMonitoring,
+		DeleteFunc: mc.deleteScyllaDBMonitoring,
+	})
+
+	endpointsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    mc.addEndpoints,
+		UpdateFunc: mc.updateEndpoints,
+		DeleteFunc: mc.deleteEndpoints,
+	})
+
+	return mc, nil
+}
+
+func (smc *Controller) addScyllaDBMonitoring(obj interface{}) {
+	smc.handlers.HandleAdd(
+		obj.(*scyllav1alpha1.ScyllaDBMonitoring),
+		smc.handlers.Enqueue,
+	)
+}
+
+func (smc *Controller) updateScyllaDBMonitoring(old, cur interface{}) {
+	smc.handlers.HandleUpdate(
+		old.(*scyllav1alpha1.ScyllaDBMonitoring),
+		cur.(*scyllav1alpha1.ScyllaDBMonitoring),
+		smc.handlers.Enqueue,
+		smc.deleteScyllaDBMonitoring,
+	)
+}
+
+func (smc *Controller) deleteScyllaDBMonitoring(obj interface{}) {
+	smc.handlers.HandleDelete(
+		obj,
+		smc.handlers.Enqueue,
+	)
+}
+
+func (smc *Controller) addEndpoints(obj interface{}) {
+	smc.handlers.HandleAdd(
+		obj.(*corev1.Endpoints),
+		smc.handlers.EnqueueOwner,
+	)
+}
+
+func (smc *Controller) updateEndpoints(old, cur interface{}) {
+	smc.handlers.HandleUpdate(
+		old.(*corev1.Endpoints),
+		cur.(*corev1.Endpoints),
+		smc.handlers.EnqueueOwner,
+		smc.deleteEndpoints,
+	)
+}
+
+func (smc *Controller) deleteEndpoints(obj interface{}) {
+	smc.handlers.HandleDelete(
+		obj,
+		smc.handlers.EnqueueOwner,
+	)
+}
+
+func (smc *Controller) processNextItem(ctx context.Context) bool {
+	key, quit := smc.queue.Get()
+	if quit {
+		return false
+	}
+	defer smc.queue.Done(key)
+
+	err := smc.sync(ctx, key.(string))
+	// TODO: Do smarter filtering then just Reduce to handle cases like 2 conflict errors.
+	err = utilerrors.Reduce(err)
+	switch {
+	case err == nil:
+		smc.queue.Forget(key)
+		return true
+
+	case apierrors.IsConflict(err):
+		klog.V(2).InfoS("Hit conflict, will retry in a bit", "Key", key, "Error", err)
+
+	case apierrors.IsAlreadyExists(err):
+		klog.V(2).InfoS("Hit already exists, will retry in a bit", "Key", key, "Error", err)
+
+	default:
+		utilruntime.HandleError(fmt.Errorf("syncing key '%v' failed: %v", key, err))
+	}
+
+	smc.queue.AddRateLimited(key)
+
+	return true
+}
+
+func (smc *Controller) runWorker(ctx context.Context) {
+	for smc.processNextItem(ctx) {
+	}
+}
+
+func (smc *Controller) Run(ctx context.Context, workers int) {
+	defer utilruntime.HandleCrash()
+
+	klog.InfoS("Starting controller", "controller", "ScyllaDBMonitoring")
+
+	var wg sync.WaitGroup
+	defer func() {
+		klog.InfoS("Shutting down controller", "controller", "ScyllaDBMonitoring")
+		smc.queue.ShutDown()
+		wg.Wait()
+		klog.InfoS("Shut down controller", "controller", "ScyllaDBMonitoring")
+	}()
+
+	if !cache.WaitForNamedCacheSync(ControllerName, ctx.Done(), smc.cachesToSync...) {
+		return
+	}
+
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			wait.UntilWithContext(ctx, smc.runWorker, time.Second)
+		}()
+	}
+
+	<-ctx.Done()
+}

@@ -1,0 +1,20 @@
+apiVersion: monitoring.coreos.com/v1
+kind: Prometheus
+metadata:
+  name: "{{ .scylladbMonitoringName }}"
+spec:
+  serviceAccountName: "{{ .scylladbMonitoringName }}-prometheus"
+  serviceMonitorNamespaceSelector: {}
+  serviceMonitorSelector: {}
+  podMonitorSelector: {}
+  resources:
+    requests:
+      memory: 400Mi
+  alerting:
+    alertmanagers:
+    - namespace: "{{ .namespace }}"
+      name: "{{ .scylladbMonitoringName }}"
+      port: web
+  ruleSelector:
+    matchLabels:
+      scylla-operator.scylladb.com/scylladbmonitoring-name: "{{ .scylladbMonitoringName }}"

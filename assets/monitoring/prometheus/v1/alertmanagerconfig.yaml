@@ -1,0 +1,22 @@
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  namespace: "{{ .namespace }}"
+  name: "{{ .namePrefix }}"
+  labels:
+    scylladbmonitoring-name: "{{ .scylladbMonitoringName }}"
+spec:
+  route:
+    groupBy: ['job']
+    groupWait: 30s
+    groupInterval: 5m
+    repeatInterval: 12h
+    receiver: 'wechat-socks-shop'
+  receivers:
+  - name: 'wechat-socks-shop'
+    wechatConfigs:
+    - apiURL: 'http://wechatserver:8080/'
+      corpID: 'wechat-corpid'
+      apiSecret:
+        name: 'wechat-config'
+        key: 'apiSecret'
