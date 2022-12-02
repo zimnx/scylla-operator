@@ -7,5 +7,5 @@ spec:
   replicas: 1
   alertmanagerConfigSelector:
     matchLabels:
-      scylladbmonitoring-name: "{{ .scylladbMonitoringName }}"
+      scylladbmonitoring-name: "{{ .scyllaDBMonitoringName }}"
 

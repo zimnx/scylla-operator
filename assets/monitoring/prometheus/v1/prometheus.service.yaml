@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: "{{ .scylladbMonitoringName }}-prometheus"
+  name: "{{ .scyllaDBMonitoringName }}-prometheus"
 spec:
   type: ClusterIP
   ports:
@@ -10,4 +10,4 @@ spec:
     protocol: TCP
     targetPort: web
   selector:
-    scylla-operator.scylladb.com/scylladbmonitoring-name: "{{ .scylladbMonitoringName }}"
+    scylla-operator.scylladb.com/scylladbmonitoring-name: "{{ .scyllaDBMonitoringName }}"

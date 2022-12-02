@@ -55,13 +55,9 @@ type PlacementSpec struct {
 }
 
 type StorageSpec struct {
-	// capacity describes the requested size of each persistent volume.
-	// +kubebuilder:validation:Required
-	Capacity string `json:"capacity"`
-
-	// storageClassName is the name of a storageClass to request.
+	// volumeClaimTemplates is a PVC template defining storage to be used with Prometheus.
 	// +optional
-	StorageClassName *string `json:"storageClassName,omitempty"`
+	VolumeClaimTemplate *corev1.PersistentVolumeClaim `json:"volumeClaimTemplate,omitempty"`
 }
 
 type PrometheusSpec struct {

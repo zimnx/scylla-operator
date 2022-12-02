@@ -1,9 +1,9 @@
 apiVersion: monitoring.coreos.com/v1
 kind: Prometheus
 metadata:
-  name: "{{ .scylladbMonitoringName }}"
+  name: "{{ .scyllaDBMonitoringName }}"
 spec:
-  serviceAccountName: "{{ .scylladbMonitoringName }}-prometheus"
+  serviceAccountName: "{{ .scyllaDBMonitoringName }}-prometheus"
   serviceMonitorNamespaceSelector: {}
   serviceMonitorSelector: {}
   podMonitorSelector: {}
@@ -13,8 +13,11 @@ spec:
   alerting:
     alertmanagers:
     - namespace: "{{ .namespace }}"
-      name: "{{ .scylladbMonitoringName }}"
+      name: "{{ .scyllaDBMonitoringName }}"
       port: web
   ruleSelector:
     matchLabels:
-      scylla-operator.scylladb.com/scylladbmonitoring-name: "{{ .scylladbMonitoringName }}"
+      scylla-operator.scylladb.com/scylladbmonitoring-name: "{{ .scyllaDBMonitoringName }}"
+  storage:
+    volumeClaimTemplate:
+      {{- .volumeClaimTemplate | yaml | nindent 6 }}

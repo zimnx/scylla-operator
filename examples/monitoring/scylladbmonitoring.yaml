@@ -3,3 +3,7 @@ kind: ScyllaDBMonitoring
 metadata:
   name: test
 spec:
+  endpointsSelector:
+    matchLabels:
+      app.kubernetes.io/name: scylla
+      scylla-operator.scylladb.com/scylla-service-type: identity

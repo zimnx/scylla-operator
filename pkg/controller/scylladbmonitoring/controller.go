@@ -11,6 +11,9 @@ import (
 	scyllav1alpha1informers "github.com/scylladb/scylla-operator/pkg/client/scylla/informers/externalversions/scylla/v1alpha1"
 	scyllav1alpha1listers "github.com/scylladb/scylla-operator/pkg/client/scylla/listers/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
+	integreatlyv1alpha1client "github.com/scylladb/scylla-operator/pkg/externalclient/integreatly/clientset/versioned/typed/integreatly/v1alpha1"
+	integreatlyv1alpha1informers "github.com/scylladb/scylla-operator/pkg/externalclient/integreatly/informers/externalversions/integreatly/v1alpha1"
+	integreatlyv1alpha1listers "github.com/scylladb/scylla-operator/pkg/externalclient/integreatly/listers/integreatly/v1alpha1"
 	monitoringv1client "github.com/scylladb/scylla-operator/pkg/externalclient/monitoring/clientset/versioned/typed/monitoring/v1"
 	monitoringv1informers "github.com/scylladb/scylla-operator/pkg/externalclient/monitoring/informers/externalversions/monitoring/v1"
 	monitoringv1listers "github.com/scylladb/scylla-operator/pkg/externalclient/monitoring/listers/monitoring/v1"
@@ -49,6 +52,7 @@ type Controller struct {
 	kubeClient           kubernetes.Interface
 	scyllaV1alpha1Client scyllav1alpha1client.ScyllaV1alpha1Interface
 	monitoringClient     monitoringv1client.MonitoringV1Interface
+	integreatlyClient    integreatlyv1alpha1client.IntegreatlyV1alpha1Interface
 
 	endpointsLister      corev1listers.EndpointsLister
 	secretLister         corev1listers.SecretLister
@@ -63,6 +67,8 @@ type Controller struct {
 
 	prometheusLister     monitoringv1listers.PrometheusLister
 	serviceMonitorLister monitoringv1listers.ServiceMonitorLister
+
+	grafanaLister integreatlyv1alpha1listers.GrafanaLister
 
 	cachesToSync []cache.InformerSynced
 
@@ -87,6 +93,7 @@ func NewController(
 	scyllaDBMonitoringInformer scyllav1alpha1informers.ScyllaDBMonitoringInformer,
 	prometheusInformer monitoringv1informers.PrometheusInformer,
 	serviceMonitorInformer monitoringv1informers.ServiceMonitorInformer,
+	grafanaInformer integreatlyv1alpha1informers.GrafanaInformer,
 ) (*Controller, error) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartStructuredLogging(0)

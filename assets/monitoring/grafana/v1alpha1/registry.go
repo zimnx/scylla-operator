@@ -1,4 +1,4 @@
-package scylla
+package v1alpha1
 
 import (
 	_ "embed"
@@ -10,11 +10,11 @@ import (
 )
 
 func ParseObjectTemplateOrDie[T runtime.Object](name, tmplString string) assets.ObjectTemplate[T] {
-	return assets.ParseObjectTemplateOrDie[T](name, tmplString, scheme.Codecs.UniversalDeserializer())
+	return assets.ParseObjectTemplateOrDie[T](name, tmplString, assets.TemplateFuncs, scheme.Codecs.UniversalDeserializer())
 }
 
 var (
-	//go:embed "prometheus.grafanadatasource.yaml.tmpl"
-	prometheusGrafanaDataSourceTemplateString string
-	PrometheusGrafanaDataSourceTemplate       = ParseObjectTemplateOrDie[*integreatlyv1alpha1.GrafanaDataSource]("prometheus.grafanadatasource", prometheusGrafanaDataSourceTemplateString)
+	//go:embed "grafana.yaml"
+	grafanaTemplateString string
+	GrafanaTemplate       = ParseObjectTemplateOrDie[*integreatlyv1alpha1.Grafana]("grafana", grafanaTemplateString)
 )

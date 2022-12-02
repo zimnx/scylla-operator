@@ -196,7 +196,7 @@ func (o *OperatorOptions) run(ctx context.Context, streams genericclioptions.IOS
 
 	var err error
 	var scc *scyllacluster.Controller
-	_ = func() error {
+	func() error {
 		scc, err = scyllacluster.NewController(
 			o.kubeClient,
 			o.scyllaClient.ScyllaV1(),
@@ -217,10 +217,10 @@ func (o *OperatorOptions) run(ctx context.Context, streams genericclioptions.IOS
 			return err
 		}
 		return nil
-	}
+	}()
 
 	var opc *orphanedpv.Controller
-	_ = func() error {
+	func() error {
 		opc, err = orphanedpv.NewController(
 			o.kubeClient,
 			kubeInformers.Core().V1().PersistentVolumes(),
@@ -232,10 +232,10 @@ func (o *OperatorOptions) run(ctx context.Context, streams genericclioptions.IOS
 			return err
 		}
 		return nil
-	}
+	}()
 
 	var ncc *nodeconfig.Controller
-	_ = func() error {
+	func() error {
 		ncc, err = nodeconfig.NewController(
 			o.kubeClient,
 			o.scyllaClient.ScyllaV1alpha1(),
@@ -253,10 +253,10 @@ func (o *OperatorOptions) run(ctx context.Context, streams genericclioptions.IOS
 			return err
 		}
 		return nil
-	}
+	}()
 
 	var ncpc *nodeconfigpod.Controller
-	_ = func() error {
+	func() error {
 		ncpc, err = nodeconfigpod.NewController(
 			o.kubeClient,
 			o.scyllaClient.ScyllaV1alpha1(),
@@ -269,10 +269,10 @@ func (o *OperatorOptions) run(ctx context.Context, streams genericclioptions.IOS
 			return err
 		}
 		return nil
-	}
+	}()
 
 	var socc *scyllaoperatorconfig.Controller
-	_ = func() error {
+	func() error {
 		socc, err = scyllaoperatorconfig.NewController(
 			o.kubeClient,
 			o.scyllaClient.ScyllaV1alpha1(),
@@ -282,7 +282,7 @@ func (o *OperatorOptions) run(ctx context.Context, streams genericclioptions.IOS
 			return err
 		}
 		return nil
-	}
+	}()
 
 	mc, err := scylladbmonitoring.NewController(
 		o.kubeClient,
@@ -331,7 +331,7 @@ func (o *OperatorOptions) run(ctx context.Context, streams genericclioptions.IOS
 		monitoringInformers.Start(ctx.Done())
 	}()
 
-	_ = func() {
+	func() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -361,7 +361,7 @@ func (o *OperatorOptions) run(ctx context.Context, streams genericclioptions.IOS
 			defer wg.Done()
 			socc.Run(ctx, o.ConcurrentSyncs)
 		}()
-	}
+	}()
 
 	wg.Add(1)
 	go func() {

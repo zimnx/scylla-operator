@@ -4,9 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	prometheusv1assets "github.com/scylladb/scylla-operator/assets/monitoring/prometheus/v1"
+	grafanav1alpha1assets "github.com/scylladb/scylla-operator/assets/monitoring/grafana/v1alpha1"
 	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
+	integreatlyv1alpha1 "github.com/scylladb/scylla-operator/pkg/externalapi/integreatly/v1alpha1"
 	monitoringv1 "github.com/scylladb/scylla-operator/pkg/externalapi/monitoring/v1"
 	"github.com/scylladb/scylla-operator/pkg/helpers"
 	"github.com/scylladb/scylla-operator/pkg/kubeinterfaces"
@@ -22,60 +23,36 @@ import (
 	"k8s.io/utils/pointer"
 )
 
-func (smc *Controller) getPrometheusLabels(sm *scyllav1alpha1.ScyllaDBMonitoring) labels.Set {
+func (smc *Controller) getGrafanaLabels(sm *scyllav1alpha1.ScyllaDBMonitoring) labels.Set {
 	return labels.Set{
 		naming.ScyllaDBMonitoringNameLabel: sm.Name,
-		naming.ControllerNameLabel:         "prometheus",
+		naming.ControllerNameLabel:         "grafana",
 	}
 }
 
-func (smc *Controller) getPrometheusSelector(sm *scyllav1alpha1.ScyllaDBMonitoring) labels.Selector {
-	return labels.SelectorFromSet(smc.getPrometheusLabels(sm))
+func (smc *Controller) getGrafanaSelector(sm *scyllav1alpha1.ScyllaDBMonitoring) labels.Selector {
+	return labels.SelectorFromSet(smc.getGrafanaLabels(sm))
 }
 
-func makeScyllaDBServiceMonitor(sm *scyllav1alpha1.ScyllaDBMonitoring) (*monitoringv1.ServiceMonitor, string, error) {
-	return prometheusv1assets.ScyllaDBServiceMonitorTemplate.RenderObject(map[string]any{
-		"scyllaDBMonitoringName": sm.Name,
-		"endpointsSelector":      sm.Spec.EndpointsSelector,
-	})
-}
-
-func makePrometheus(sm *scyllav1alpha1.ScyllaDBMonitoring) (*monitoringv1.Prometheus, string, error) {
-	var volumeClaimTemplate *corev1.PersistentVolumeClaim
-	if sm.Spec.Components != nil && sm.Spec.Components.Prometheus != nil {
-		volumeClaimTemplate = sm.Spec.Components.Prometheus.Storage.VolumeClaimTemplate
-	}
-	return prometheusv1assets.PrometheusTemplate.RenderObject(map[string]any{
+func makeGrafana(sm *scyllav1alpha1.ScyllaDBMonitoring) (*integreatlyv1alpha1.Grafana, string, error) {
+	return grafanav1alpha1assets.GrafanaTemplate.RenderObject(map[string]any{
 		"namespace":              sm.Namespace,
 		"scyllaDBMonitoringName": sm.Name,
-		"volumeClaimTemplate":    volumeClaimTemplate,
 	})
 }
 
-func (smc *Controller) syncPrometheus(
+func (smc *Controller) syncGrafana(
 	ctx context.Context,
 	sm *scyllav1alpha1.ScyllaDBMonitoring,
-	prometheuses map[string]*monitoringv1.Prometheus,
+	grafanas map[string]*integreatlyv1alpha1.Grafana,
 ) ([]metav1.Condition, error) {
 	var progressingConditions []metav1.Condition
-
-	// secretsMap, err := controllerhelpers.GetObjects[CT, *corev1.Secret](
-	// 	ctx,
-	// 	sm,
-	// 	scylladbMonitoringControllerGVK,
-	// 	smc.getPrometheusSelector(sm),
-	// 	controllerhelpers.ControlleeManagerGetObjectsFuncs[CT, *corev1.Secret]{
-	// 		GetControllerUncachedFunc: smc.scyllaV1alpha1Client.ScyllaDBMonitorings(sm.Namespace).Get,
-	// 		ListObjectsFunc:           smc.secretLister.List,
-	// 		PatchObjectFunc:           smc.kubeClient.CoreV1().Secrets(sm.Namespace).Patch,
-	// 	},
-	// )
 
 	serviceAccounts, err := controllerhelpers.GetObjects[CT, *corev1.ServiceAccount](
 		ctx,
 		sm,
 		scylladbMonitoringControllerGVK,
-		smc.getPrometheusSelector(sm),
+		smc.getGrafanaSelector(sm),
 		controllerhelpers.ControlleeManagerGetObjectsFuncs[CT, *corev1.ServiceAccount]{
 			GetControllerUncachedFunc: smc.scyllaV1alpha1Client.ScyllaDBMonitorings(sm.Namespace).Get,
 			ListObjectsFunc:           smc.serviceAccountLister.List,
@@ -83,23 +60,11 @@ func (smc *Controller) syncPrometheus(
 		},
 	)
 
-	services, err := controllerhelpers.GetObjects[CT, *corev1.Service](
-		ctx,
-		sm,
-		scylladbMonitoringControllerGVK,
-		smc.getPrometheusSelector(sm),
-		controllerhelpers.ControlleeManagerGetObjectsFuncs[CT, *corev1.Service]{
-			GetControllerUncachedFunc: smc.scyllaV1alpha1Client.ScyllaDBMonitorings(sm.Namespace).Get,
-			ListObjectsFunc:           smc.serviceLister.List,
-			PatchObjectFunc:           smc.kubeClient.CoreV1().Services(sm.Namespace).Patch,
-		},
-	)
-
 	roleBindings, err := controllerhelpers.GetObjects[CT, *rbacv1.RoleBinding](
 		ctx,
 		sm,
 		scylladbMonitoringControllerGVK,
-		smc.getPrometheusSelector(sm),
+		smc.getGrafanaSelector(sm),
 		controllerhelpers.ControlleeManagerGetObjectsFuncs[CT, *rbacv1.RoleBinding]{
 			GetControllerUncachedFunc: smc.scyllaV1alpha1Client.ScyllaDBMonitorings(sm.Namespace).Get,
 			ListObjectsFunc:           smc.roleBindingLister.List,
@@ -107,40 +72,10 @@ func (smc *Controller) syncPrometheus(
 		},
 	)
 
-	serviceMonitors, err := controllerhelpers.GetObjects[CT, *monitoringv1.ServiceMonitor](
-		ctx,
-		sm,
-		scylladbMonitoringControllerGVK,
-		smc.getPrometheusSelector(sm),
-		controllerhelpers.ControlleeManagerGetObjectsFuncs[CT, *monitoringv1.ServiceMonitor]{
-			GetControllerUncachedFunc: smc.scyllaV1alpha1Client.ScyllaDBMonitorings(sm.Namespace).Get,
-			ListObjectsFunc:           smc.serviceMonitorLister.List,
-			PatchObjectFunc:           smc.monitoringClient.ServiceMonitors(sm.Namespace).Patch,
-		},
-	)
-
 	// Render manifests.
 	var renderErrors []error
 
-	requiredPrometheusSA, _, err := prometheusv1assets.PrometheusSATemplate.RenderObject(map[string]any{
-		"namespace":              sm.Namespace,
-		"scyllaDBMonitoringName": sm.Name,
-	})
-	renderErrors = append(renderErrors, err)
-
-	requiredPrometheusRoleBinding, _, err := prometheusv1assets.PrometheusRoleBindingTemplate.RenderObject(map[string]any{
-		"namespace":              sm.Namespace,
-		"scyllaDBMonitoringName": sm.Name,
-	})
-	renderErrors = append(renderErrors, err)
-
-	requiredPrometheusService, _, err := prometheusv1assets.PrometheusServiceTemplate.RenderObject(map[string]any{
-		"namespace":              sm.Namespace,
-		"scyllaDBMonitoringName": sm.Name,
-	})
-	renderErrors = append(renderErrors, err)
-
-	requiredPrometheus, _, err := makePrometheus(sm)
+	requiredGrafana, _, err := makeGrafana(sm)
 	renderErrors = append(renderErrors, err)
 
 	requiredScyllaDBServiceMonitor, _, err := makeScyllaDBServiceMonitor(sm)
@@ -153,42 +88,13 @@ func (smc *Controller) syncPrometheus(
 
 	// Prune objects.
 	var pruneErrors []error
-	err = controllerhelpers.Prune(
-		ctx,
-		helpers.ToArray(requiredPrometheusSA),
-		serviceAccounts,
-		&controllerhelpers.PruneControlFuncs{
-			DeleteFunc: smc.kubeClient.CoreV1().ServiceAccounts(sm.Namespace).Delete,
-		},
-	)
-	pruneErrors = append(pruneErrors, err)
 
 	err = controllerhelpers.Prune(
 		ctx,
-		helpers.ToArray(requiredPrometheusService),
-		services,
+		helpers.ToArray(requiredGrafana),
+		grafanas,
 		&controllerhelpers.PruneControlFuncs{
-			DeleteFunc: smc.kubeClient.CoreV1().Services(sm.Namespace).Delete,
-		},
-	)
-	pruneErrors = append(pruneErrors, err)
-
-	err = controllerhelpers.Prune(
-		ctx,
-		helpers.ToArray(requiredPrometheusRoleBinding),
-		roleBindings,
-		&controllerhelpers.PruneControlFuncs{
-			DeleteFunc: smc.kubeClient.RbacV1().RoleBindings(sm.Namespace).Delete,
-		},
-	)
-	pruneErrors = append(pruneErrors, err)
-
-	err = controllerhelpers.Prune(
-		ctx,
-		helpers.ToArray(requiredPrometheus),
-		prometheuses,
-		&controllerhelpers.PruneControlFuncs{
-			DeleteFunc: smc.monitoringClient.Prometheuses(sm.Namespace).Delete,
+			DeleteFunc: smc.monitoringClient.Grafanas(sm.Namespace).Delete,
 		},
 	)
 	pruneErrors = append(pruneErrors, err)
@@ -216,7 +122,7 @@ func (smc *Controller) syncPrometheus(
 		control  resourceapply.ApplyControlUntypedInterface
 	}{
 		{
-			required: requiredPrometheusSA,
+			required: requiredGrafanaSA,
 			control: resourceapply.ApplyControlFuncs[*corev1.ServiceAccount]{
 				GetCachedFunc: smc.serviceAccountLister.ServiceAccounts(sm.Namespace).Get,
 				CreateFunc:    smc.kubeClient.CoreV1().ServiceAccounts(sm.Namespace).Create,
@@ -224,7 +130,7 @@ func (smc *Controller) syncPrometheus(
 			}.ToUntyped(),
 		},
 		{
-			required: requiredPrometheusService,
+			required: requiredGrafanaService,
 			control: resourceapply.ApplyControlFuncs[*corev1.Service]{
 				GetCachedFunc: smc.serviceLister.Services(sm.Namespace).Get,
 				CreateFunc:    smc.kubeClient.CoreV1().Services(sm.Namespace).Create,
@@ -232,7 +138,7 @@ func (smc *Controller) syncPrometheus(
 			}.ToUntyped(),
 		},
 		{
-			required: requiredPrometheusRoleBinding,
+			required: requiredGrafanaRoleBinding,
 			control: resourceapply.ApplyControlFuncs[*rbacv1.RoleBinding]{
 				GetCachedFunc: smc.roleBindingLister.RoleBindings(sm.Namespace).Get,
 				CreateFunc:    smc.kubeClient.RbacV1().RoleBindings(sm.Namespace).Create,
@@ -240,11 +146,11 @@ func (smc *Controller) syncPrometheus(
 			}.ToUntyped(),
 		},
 		{
-			required: requiredPrometheus,
-			control: resourceapply.ApplyControlFuncs[*monitoringv1.Prometheus]{
-				GetCachedFunc: smc.prometheusLister.Prometheuses(sm.Namespace).Get,
-				CreateFunc:    smc.monitoringClient.Prometheuses(sm.Namespace).Create,
-				UpdateFunc:    smc.monitoringClient.Prometheuses(sm.Namespace).Update,
+			required: requiredGrafana,
+			control: resourceapply.ApplyControlFuncs[*monitoringv1.Grafana]{
+				GetCachedFunc: smc.grafanaLister.Grafanaes(sm.Namespace).Get,
+				CreateFunc:    smc.monitoringClient.Grafanaes(sm.Namespace).Create,
+				UpdateFunc:    smc.monitoringClient.Grafanaes(sm.Namespace).Update,
 			}.ToUntyped(),
 		},
 		{
@@ -261,9 +167,9 @@ func (smc *Controller) syncPrometheus(
 
 		// Enforce labels for selection.
 		if item.required.GetLabels() == nil {
-			item.required.SetLabels(smc.getPrometheusLabels(sm))
+			item.required.SetLabels(smc.getGrafanaLabels(sm))
 		} else {
-			resourcemerge.MergeMapInPlaceWithoutRemovalKeys2(item.required.GetLabels(), smc.getPrometheusLabels(sm))
+			resourcemerge.MergeMapInPlaceWithoutRemovalKeys2(item.required.GetLabels(), smc.getGrafanaLabels(sm))
 		}
 
 		// Set ControllerRef.
@@ -281,7 +187,7 @@ func (smc *Controller) syncPrometheus(
 		// Apply required object.
 		_, changed, err := resourceapply.Apply(ctx, item.required, item.control, smc.eventRecorder, resourceapply.ApplyOptions{})
 		if changed {
-			controllerhelpers.AddGenericProgressingStatusCondition(&progressingConditions, prometheusControllerProgressingCondition, item.required, "apply", sm.Generation)
+			controllerhelpers.AddGenericProgressingStatusCondition(&progressingConditions, grafanaControllerProgressingCondition, item.required, "apply", sm.Generation)
 		}
 		if err != nil {
 			gvk := resource.GetObjectGVKOrUnknown(item.required)
