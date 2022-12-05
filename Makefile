@@ -51,8 +51,8 @@ CODEGEN_PKG ?=./vendor/k8s.io/code-generator
 CODEGEN_HEADER_FILE ?=/dev/null
 
 api_groups :=$(patsubst %/,%,$(wildcard ./pkg/api/*/))
-external_api_groups :=$(patsubst %/,%,$(wildcard ./pkg/externalapi/*/))
-nonrest_api_groups :=$(patsubst %/,%,$(wildcard ./pkg/scylla/api/*/))
+external_api_groups :=$(patsubst %/.,%,$(wildcard ./pkg/externalapi/*/.))
+nonrest_api_groups :=$(patsubst %/.,%,$(wildcard ./pkg/scylla/api/*/.))
 
 HELM ?=helm
 HELM_CHANNEL ?=latest
