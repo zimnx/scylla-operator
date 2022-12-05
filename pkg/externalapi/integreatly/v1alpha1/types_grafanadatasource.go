@@ -38,8 +38,10 @@ type GrafanaDataSourceStatus struct {
 }
 
 // +kubebuilder:object:root=true
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:subresource:status
+// +kubebuilder:storageversion
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // GrafanaDataSource is the Schema for the grafanadatasources API
 type GrafanaDataSource struct {

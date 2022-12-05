@@ -8,15 +8,13 @@ import (
 	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
 	integreatlyv1alpha1 "github.com/scylladb/scylla-operator/pkg/externalapi/integreatly/v1alpha1"
-	monitoringv1 "github.com/scylladb/scylla-operator/pkg/externalapi/monitoring/v1"
 	"github.com/scylladb/scylla-operator/pkg/helpers"
 	"github.com/scylladb/scylla-operator/pkg/kubeinterfaces"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	"github.com/scylladb/scylla-operator/pkg/resource"
 	"github.com/scylladb/scylla-operator/pkg/resourceapply"
 	"github.com/scylladb/scylla-operator/pkg/resourcemerge"
-	corev1 "k8s.io/api/core/v1"
-	rbacv1 "k8s.io/api/rbac/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	kutilerrors "k8s.io/apimachinery/pkg/util/errors"
@@ -36,7 +34,29 @@ func (smc *Controller) getGrafanaSelector(sm *scyllav1alpha1.ScyllaDBMonitoring)
 
 func makeGrafana(sm *scyllav1alpha1.ScyllaDBMonitoring) (*integreatlyv1alpha1.Grafana, string, error) {
 	return grafanav1alpha1assets.GrafanaTemplate.RenderObject(map[string]any{
-		"namespace":              sm.Namespace,
+		"scyllaDBMonitoringName": sm.Name,
+	})
+}
+
+func makeGrafanaOverviewDashboard(sm *scyllav1alpha1.ScyllaDBMonitoring) (*integreatlyv1alpha1.GrafanaDashboard, string, error) {
+	return grafanav1alpha1assets.GrafanaOverviewDashboardTemplate.RenderObject(map[string]any{
+		"scyllaDBMonitoringName": sm.Name,
+	})
+}
+
+func makeGrafanaIngress(sm *scyllav1alpha1.ScyllaDBMonitoring) (*networkingv1.Ingress, string, error) {
+	var ingressOptions *scyllav1alpha1.IngressOptions
+	if sm.Spec.Components != nil && sm.Spec.Components.Grafana != nil && sm.Spec.Components.Grafana.ExposeOptions != nil && sm.Spec.Components.Grafana.ExposeOptions.WebInterface != nil && sm.Spec.Components.Grafana.ExposeOptions.WebInterface.Ingress != nil {
+		ingressOptions = sm.Spec.Components.Grafana.ExposeOptions.WebInterface.Ingress
+	}
+	return grafanav1alpha1assets.GrafanaIngressTemplate.RenderObject(map[string]any{
+		"scyllaDBMonitoringName": sm.Name,
+		"ingressOptions":         ingressOptions,
+	})
+}
+
+func makeGrafanaPrometheusDataSource(sm *scyllav1alpha1.ScyllaDBMonitoring) (*integreatlyv1alpha1.GrafanaDataSource, string, error) {
+	return grafanav1alpha1assets.GrafanaPrometheusDatasourceTemplate.RenderObject(map[string]any{
 		"scyllaDBMonitoringName": sm.Name,
 	})
 }
@@ -48,37 +68,55 @@ func (smc *Controller) syncGrafana(
 ) ([]metav1.Condition, error) {
 	var progressingConditions []metav1.Condition
 
-	serviceAccounts, err := controllerhelpers.GetObjects[CT, *corev1.ServiceAccount](
+	dashboards, err := controllerhelpers.GetObjects[CT, *integreatlyv1alpha1.GrafanaDashboard](
 		ctx,
 		sm,
 		scylladbMonitoringControllerGVK,
 		smc.getGrafanaSelector(sm),
-		controllerhelpers.ControlleeManagerGetObjectsFuncs[CT, *corev1.ServiceAccount]{
+		controllerhelpers.ControlleeManagerGetObjectsFuncs[CT, *integreatlyv1alpha1.GrafanaDashboard]{
 			GetControllerUncachedFunc: smc.scyllaV1alpha1Client.ScyllaDBMonitorings(sm.Namespace).Get,
-			ListObjectsFunc:           smc.serviceAccountLister.List,
-			PatchObjectFunc:           smc.kubeClient.CoreV1().ServiceAccounts(sm.Namespace).Patch,
+			ListObjectsFunc:           smc.grafanaDashboardLister.List,
+			PatchObjectFunc:           smc.integreatlyClient.GrafanaDashboards(sm.Namespace).Patch,
 		},
 	)
 
-	roleBindings, err := controllerhelpers.GetObjects[CT, *rbacv1.RoleBinding](
+	datasources, err := controllerhelpers.GetObjects[CT, *integreatlyv1alpha1.GrafanaDataSource](
 		ctx,
 		sm,
 		scylladbMonitoringControllerGVK,
 		smc.getGrafanaSelector(sm),
-		controllerhelpers.ControlleeManagerGetObjectsFuncs[CT, *rbacv1.RoleBinding]{
+		controllerhelpers.ControlleeManagerGetObjectsFuncs[CT, *integreatlyv1alpha1.GrafanaDataSource]{
 			GetControllerUncachedFunc: smc.scyllaV1alpha1Client.ScyllaDBMonitorings(sm.Namespace).Get,
-			ListObjectsFunc:           smc.roleBindingLister.List,
-			PatchObjectFunc:           smc.kubeClient.RbacV1().RoleBindings(sm.Namespace).Patch,
+			ListObjectsFunc:           smc.grafanaDataSourceLister.List,
+			PatchObjectFunc:           smc.integreatlyClient.GrafanaDataSources(sm.Namespace).Patch,
+		},
+	)
+
+	ingresses, err := controllerhelpers.GetObjects[CT, *networkingv1.Ingress](
+		ctx,
+		sm,
+		scylladbMonitoringControllerGVK,
+		smc.getGrafanaSelector(sm),
+		controllerhelpers.ControlleeManagerGetObjectsFuncs[CT, *networkingv1.Ingress]{
+			GetControllerUncachedFunc: smc.scyllaV1alpha1Client.ScyllaDBMonitorings(sm.Namespace).Get,
+			ListObjectsFunc:           smc.ingressLister.List,
+			PatchObjectFunc:           smc.kubeClient.NetworkingV1().Ingresses(sm.Namespace).Patch,
 		},
 	)
 
 	// Render manifests.
 	var renderErrors []error
 
-	requiredGrafana, _, err := makeGrafana(sm)
+	requiredOverviewDashboard, _, err := makeGrafanaOverviewDashboard(sm)
 	renderErrors = append(renderErrors, err)
 
-	requiredScyllaDBServiceMonitor, _, err := makeScyllaDBServiceMonitor(sm)
+	requiredIngress, _, err := makeGrafanaIngress(sm)
+	renderErrors = append(renderErrors, err)
+
+	requiredPrometheusDatasource, _, err := makeGrafanaPrometheusDataSource(sm)
+	renderErrors = append(renderErrors, err)
+
+	requiredGrafana, _, err := makeGrafana(sm)
 	renderErrors = append(renderErrors, err)
 
 	renderError := kutilerrors.NewAggregate(renderErrors)
@@ -91,20 +129,40 @@ func (smc *Controller) syncGrafana(
 
 	err = controllerhelpers.Prune(
 		ctx,
-		helpers.ToArray(requiredGrafana),
-		grafanas,
+		helpers.ToArray(requiredOverviewDashboard),
+		dashboards,
 		&controllerhelpers.PruneControlFuncs{
-			DeleteFunc: smc.monitoringClient.Grafanas(sm.Namespace).Delete,
+			DeleteFunc: smc.integreatlyClient.GrafanaDashboards(sm.Namespace).Delete,
 		},
 	)
 	pruneErrors = append(pruneErrors, err)
 
 	err = controllerhelpers.Prune(
 		ctx,
-		helpers.ToArray(requiredScyllaDBServiceMonitor),
-		serviceMonitors,
+		helpers.ToArray(requiredIngress),
+		ingresses,
 		&controllerhelpers.PruneControlFuncs{
-			DeleteFunc: smc.monitoringClient.ServiceMonitors(sm.Namespace).Delete,
+			DeleteFunc: smc.kubeClient.NetworkingV1().Ingresses(sm.Namespace).Delete,
+		},
+	)
+	pruneErrors = append(pruneErrors, err)
+
+	err = controllerhelpers.Prune(
+		ctx,
+		helpers.ToArray(requiredPrometheusDatasource),
+		datasources,
+		&controllerhelpers.PruneControlFuncs{
+			DeleteFunc: smc.integreatlyClient.GrafanaDataSources(sm.Namespace).Delete,
+		},
+	)
+	pruneErrors = append(pruneErrors, err)
+
+	err = controllerhelpers.Prune(
+		ctx,
+		helpers.ToArray(requiredGrafana),
+		grafanas,
+		&controllerhelpers.PruneControlFuncs{
+			DeleteFunc: smc.integreatlyClient.Grafanas(sm.Namespace).Delete,
 		},
 	)
 	pruneErrors = append(pruneErrors, err)
@@ -122,43 +180,35 @@ func (smc *Controller) syncGrafana(
 		control  resourceapply.ApplyControlUntypedInterface
 	}{
 		{
-			required: requiredGrafanaSA,
-			control: resourceapply.ApplyControlFuncs[*corev1.ServiceAccount]{
-				GetCachedFunc: smc.serviceAccountLister.ServiceAccounts(sm.Namespace).Get,
-				CreateFunc:    smc.kubeClient.CoreV1().ServiceAccounts(sm.Namespace).Create,
-				UpdateFunc:    smc.kubeClient.CoreV1().ServiceAccounts(sm.Namespace).Update,
+			required: requiredOverviewDashboard,
+			control: resourceapply.ApplyControlFuncs[*integreatlyv1alpha1.GrafanaDashboard]{
+				GetCachedFunc: smc.grafanaDashboardLister.GrafanaDashboards(sm.Namespace).Get,
+				CreateFunc:    smc.integreatlyClient.GrafanaDashboards(sm.Namespace).Create,
+				UpdateFunc:    smc.integreatlyClient.GrafanaDashboards(sm.Namespace).Update,
 			}.ToUntyped(),
 		},
 		{
-			required: requiredGrafanaService,
-			control: resourceapply.ApplyControlFuncs[*corev1.Service]{
-				GetCachedFunc: smc.serviceLister.Services(sm.Namespace).Get,
-				CreateFunc:    smc.kubeClient.CoreV1().Services(sm.Namespace).Create,
-				UpdateFunc:    smc.kubeClient.CoreV1().Services(sm.Namespace).Update,
+			required: requiredPrometheusDatasource,
+			control: resourceapply.ApplyControlFuncs[*integreatlyv1alpha1.GrafanaDataSource]{
+				GetCachedFunc: smc.grafanaDataSourceLister.GrafanaDataSources(sm.Namespace).Get,
+				CreateFunc:    smc.integreatlyClient.GrafanaDataSources(sm.Namespace).Create,
+				UpdateFunc:    smc.integreatlyClient.GrafanaDataSources(sm.Namespace).Update,
 			}.ToUntyped(),
 		},
 		{
-			required: requiredGrafanaRoleBinding,
-			control: resourceapply.ApplyControlFuncs[*rbacv1.RoleBinding]{
-				GetCachedFunc: smc.roleBindingLister.RoleBindings(sm.Namespace).Get,
-				CreateFunc:    smc.kubeClient.RbacV1().RoleBindings(sm.Namespace).Create,
-				UpdateFunc:    smc.kubeClient.RbacV1().RoleBindings(sm.Namespace).Update,
+			required: requiredIngress,
+			control: resourceapply.ApplyControlFuncs[*networkingv1.Ingress]{
+				GetCachedFunc: smc.ingressLister.Ingresses(sm.Namespace).Get,
+				CreateFunc:    smc.kubeClient.NetworkingV1().Ingresses(sm.Namespace).Create,
+				UpdateFunc:    smc.kubeClient.NetworkingV1().Ingresses(sm.Namespace).Update,
 			}.ToUntyped(),
 		},
 		{
 			required: requiredGrafana,
-			control: resourceapply.ApplyControlFuncs[*monitoringv1.Grafana]{
-				GetCachedFunc: smc.grafanaLister.Grafanaes(sm.Namespace).Get,
-				CreateFunc:    smc.monitoringClient.Grafanaes(sm.Namespace).Create,
-				UpdateFunc:    smc.monitoringClient.Grafanaes(sm.Namespace).Update,
-			}.ToUntyped(),
-		},
-		{
-			required: requiredScyllaDBServiceMonitor,
-			control: resourceapply.ApplyControlFuncs[*monitoringv1.ServiceMonitor]{
-				GetCachedFunc: smc.serviceMonitorLister.ServiceMonitors(sm.Namespace).Get,
-				CreateFunc:    smc.monitoringClient.ServiceMonitors(sm.Namespace).Create,
-				UpdateFunc:    smc.monitoringClient.ServiceMonitors(sm.Namespace).Update,
+			control: resourceapply.ApplyControlFuncs[*integreatlyv1alpha1.Grafana]{
+				GetCachedFunc: smc.grafanaLister.Grafanas(sm.Namespace).Get,
+				CreateFunc:    smc.integreatlyClient.Grafanas(sm.Namespace).Create,
+				UpdateFunc:    smc.integreatlyClient.Grafanas(sm.Namespace).Update,
 			}.ToUntyped(),
 		},
 	} {

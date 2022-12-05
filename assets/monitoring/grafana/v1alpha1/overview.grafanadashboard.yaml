@@ -1,11 +1,11 @@
 apiVersion: integreatly.org/v1alpha1
 kind: GrafanaDashboard
 metadata:
-  name: overview
+  name: "{{ .scyllaDBMonitoringName }}-overview"
   labels:
     app: grafana
 spec:
-  json: >
+  json: >{{`
    {
     "annotations": {
         "class": "default_annotations",
@@ -4719,5 +4719,4 @@ spec:
     "title": "Overview",
     "uid": "overview-5-1",
     "version": 1
-   }
-
+   }`}}

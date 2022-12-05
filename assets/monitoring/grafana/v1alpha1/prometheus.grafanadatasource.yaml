@@ -1,17 +1,17 @@
 apiVersion: integreatly.org/v1alpha1
 kind: GrafanaDataSource
 metadata:
-  name: {{ .Name }}
+  name: "{{ .scyllaDBMonitoringName }}-prometheus"
 spec:
-  name: middleware.yaml
+  name: prometheus.yaml
   datasources:
   - name: prometheus
     type: prometheus
     access: proxy
-    url: http://172.17.0.15:9090
+    url: "http://{{ .scyllaDBMonitoringName }}-prometheus:9090" # FIXME: move to https
     isDefault: true
     version: 1
     editable: true
     jsonData:
-      tlsSkipVerify: true
+      tlsSkipVerify: true # FIXME: remove
       timeInterval: "5s"

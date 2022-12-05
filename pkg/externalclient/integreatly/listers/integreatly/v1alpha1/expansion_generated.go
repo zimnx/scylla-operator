@@ -2,50 +2,42 @@
 
 package v1alpha1
 
-// AlertmanagerListerExpansion allows custom methods to be added to
-// AlertmanagerLister.
-type AlertmanagerListerExpansion interface{}
+// GrafanaListerExpansion allows custom methods to be added to
+// GrafanaLister.
+type GrafanaListerExpansion interface{}
 
-// AlertmanagerNamespaceListerExpansion allows custom methods to be added to
-// AlertmanagerNamespaceLister.
-type AlertmanagerNamespaceListerExpansion interface{}
+// GrafanaNamespaceListerExpansion allows custom methods to be added to
+// GrafanaNamespaceLister.
+type GrafanaNamespaceListerExpansion interface{}
 
-// PodMonitorListerExpansion allows custom methods to be added to
-// PodMonitorLister.
-type PodMonitorListerExpansion interface{}
+// GrafanaDashboardListerExpansion allows custom methods to be added to
+// GrafanaDashboardLister.
+type GrafanaDashboardListerExpansion interface{}
 
-// PodMonitorNamespaceListerExpansion allows custom methods to be added to
-// PodMonitorNamespaceLister.
-type PodMonitorNamespaceListerExpansion interface{}
+// GrafanaDashboardNamespaceListerExpansion allows custom methods to be added to
+// GrafanaDashboardNamespaceLister.
+type GrafanaDashboardNamespaceListerExpansion interface{}
 
-// ProbeListerExpansion allows custom methods to be added to
-// ProbeLister.
-type ProbeListerExpansion interface{}
+// GrafanaDataSourceListerExpansion allows custom methods to be added to
+// GrafanaDataSourceLister.
+type GrafanaDataSourceListerExpansion interface{}
 
-// ProbeNamespaceListerExpansion allows custom methods to be added to
-// ProbeNamespaceLister.
-type ProbeNamespaceListerExpansion interface{}
+// GrafanaDataSourceNamespaceListerExpansion allows custom methods to be added to
+// GrafanaDataSourceNamespaceLister.
+type GrafanaDataSourceNamespaceListerExpansion interface{}
 
-// PrometheusListerExpansion allows custom methods to be added to
-// PrometheusLister.
-type PrometheusListerExpansion interface{}
+// GrafanaFolderListerExpansion allows custom methods to be added to
+// GrafanaFolderLister.
+type GrafanaFolderListerExpansion interface{}
 
-// PrometheusNamespaceListerExpansion allows custom methods to be added to
-// PrometheusNamespaceLister.
-type PrometheusNamespaceListerExpansion interface{}
+// GrafanaFolderNamespaceListerExpansion allows custom methods to be added to
+// GrafanaFolderNamespaceLister.
+type GrafanaFolderNamespaceListerExpansion interface{}
 
-// PrometheusRuleListerExpansion allows custom methods to be added to
-// PrometheusRuleLister.
-type PrometheusRuleListerExpansion interface{}
+// GrafanaNotificationChannelListerExpansion allows custom methods to be added to
+// GrafanaNotificationChannelLister.
+type GrafanaNotificationChannelListerExpansion interface{}
 
-// PrometheusRuleNamespaceListerExpansion allows custom methods to be added to
-// PrometheusRuleNamespaceLister.
-type PrometheusRuleNamespaceListerExpansion interface{}
-
-// ServiceMonitorListerExpansion allows custom methods to be added to
-// ServiceMonitorLister.
-type ServiceMonitorListerExpansion interface{}
-
-// ServiceMonitorNamespaceListerExpansion allows custom methods to be added to
-// ServiceMonitorNamespaceLister.
-type ServiceMonitorNamespaceListerExpansion interface{}
+// GrafanaNotificationChannelNamespaceListerExpansion allows custom methods to be added to
+// GrafanaNotificationChannelNamespaceLister.
+type GrafanaNotificationChannelNamespaceListerExpansion interface{}

@@ -2,14 +2,12 @@
 
 package v1alpha1
 
-type AlertmanagerExpansion interface{}
+type GrafanaExpansion interface{}
 
-type PodMonitorExpansion interface{}
+type GrafanaDashboardExpansion interface{}
 
-type ProbeExpansion interface{}
+type GrafanaDataSourceExpansion interface{}
 
-type PrometheusExpansion interface{}
+type GrafanaFolderExpansion interface{}
 
-type PrometheusRuleExpansion interface{}
-
-type ServiceMonitorExpansion interface{}
+type GrafanaNotificationChannelExpansion interface{}

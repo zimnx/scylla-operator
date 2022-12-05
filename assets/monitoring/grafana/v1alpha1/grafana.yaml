@@ -7,9 +7,7 @@ spec:
   client:
     preferService: true
   ingress:
-    enabled: True
-    pathType: Prefix
-    path: "/"
+    enabled: False
   config:
     log:
       mode: "console"
@@ -25,16 +23,12 @@ spec:
       admin_password: "admin"
       admin_user: "admin"
   service:
-    name: "grafana-service"
+    name: "{{ .scyllaDBMonitoringName }}-grafana"
     labels:
-      app: "grafana"
-      type: "grafana-service"
+      scylla-operator.scylladb.com/scylladbmonitoring-name: "{{ .scyllaDBMonitoringName }}"
   dashboardLabelSelector:
-  - matchExpressions:
-    - key: app
-      operator: In
-      values:
-      - grafana
+  - matchLabels:
+      scylla-operator.scylladb.com/scylladbmonitoring-name: "{{ .scyllaDBMonitoringName }}"
   resources:
     limits:
       cpu: 200m

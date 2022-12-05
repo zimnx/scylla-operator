@@ -11,25 +11,33 @@ const (
 	DegradedCondition    = "Degraded"
 )
 
-// ExposeOptions hold options related to exposing ScyllaCluster backends.
-type ExposeOptions struct {
-	// cql specifies expose options for CQL SSL backend.
+// GrafanaExposeOptions hold options related to exposing ScyllaCluster backends.
+type GrafanaExposeOptions struct {
+	// webInterface specifies expose options for the user interface.
 	// +optional
-	CQL *CQLExposeOptions `json:"cql,omitempty"`
+	WebInterface *HTTPSExposeOptions `json:"webInterface,omitempty"`
 }
 
-// IngressOptions defines configuration options for Ingress objects associated with cluster nodes.
+// IngressOptions defines configuration options for Ingress objects.
 type IngressOptions struct {
+	// disabled controls if Ingress object creation is disabled.
+	// +optional
+	Disabled *bool `json:"disabled,omitempty"`
+
 	// ingressClassName specifies Ingress class name.
 	IngressClassName string `json:"ingressClassName,omitempty"`
 
 	// annotations specifies custom annotations merged into every Ingress object.
 	// +optional
 	Annotations map[string]string `json:"annotations,omitempty"`
+
+	// dnsDomains is a list of DNS domains this ingress is reachable by.
+	// +optional
+	DNSDomains []string `json:"dnsDomains,omitempty"`
 }
 
-// CQLExposeOptions hold options related to exposing CQL backend.
-type CQLExposeOptions struct {
+// HTTPSExposeOptions hold options related to exposing CQL backend.
+type HTTPSExposeOptions struct {
 	// ingress is an Ingress configuration options.
 	// +optional
 	Ingress *IngressOptions `json:"ingress,omitempty"`
@@ -85,7 +93,7 @@ type GrafanaSpec struct {
 
 	// exposeOptions specifies options for exposing Grafana UI.
 	// +optional
-	ExposeOptions *ExposeOptions `json:"exposeOptions,omitempty"`
+	ExposeOptions *GrafanaExposeOptions `json:"exposeOptions,omitempty"`
 }
 
 type Components struct {

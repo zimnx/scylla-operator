@@ -285,3 +285,17 @@ rules:
 #  - "/metrics"
 #  verbs:
 #  - get
+- apiGroups:
+  - integreatly.org
+  resources:
+  - grafanas
+  - grafanadashboards
+  - grafanadatasources
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - patch
+  - update
+  - delete

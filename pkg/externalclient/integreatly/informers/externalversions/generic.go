@@ -37,18 +37,16 @@ func (f *genericInformer) Lister() cache.GenericLister {
 func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource) (GenericInformer, error) {
 	switch resource {
 	// Group=integreatly.org, Version=v1alpha1
-	case v1alpha1.SchemeGroupVersion.WithResource("alertmanagers"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.Integreatly().V1alpha1().Alertmanagers().Informer()}, nil
-	case v1alpha1.SchemeGroupVersion.WithResource("podmonitors"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.Integreatly().V1alpha1().PodMonitors().Informer()}, nil
-	case v1alpha1.SchemeGroupVersion.WithResource("probes"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.Integreatly().V1alpha1().Probes().Informer()}, nil
-	case v1alpha1.SchemeGroupVersion.WithResource("prometheuses"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.Integreatly().V1alpha1().Prometheuses().Informer()}, nil
-	case v1alpha1.SchemeGroupVersion.WithResource("prometheusrules"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.Integreatly().V1alpha1().PrometheusRules().Informer()}, nil
-	case v1alpha1.SchemeGroupVersion.WithResource("servicemonitors"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.Integreatly().V1alpha1().ServiceMonitors().Informer()}, nil
+	case v1alpha1.SchemeGroupVersion.WithResource("grafanas"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Integreatly().V1alpha1().Grafanas().Informer()}, nil
+	case v1alpha1.SchemeGroupVersion.WithResource("grafanadashboards"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Integreatly().V1alpha1().GrafanaDashboards().Informer()}, nil
+	case v1alpha1.SchemeGroupVersion.WithResource("grafanadatasources"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Integreatly().V1alpha1().GrafanaDataSources().Informer()}, nil
+	case v1alpha1.SchemeGroupVersion.WithResource("grafanafolders"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Integreatly().V1alpha1().GrafanaFolders().Informer()}, nil
+	case v1alpha1.SchemeGroupVersion.WithResource("grafananotificationchannels"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Integreatly().V1alpha1().GrafanaNotificationChannels().Informer()}, nil
 
 	}
 

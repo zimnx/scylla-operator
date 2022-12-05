@@ -80,9 +80,11 @@ type GrafanaDashboardError struct {
 	Retries int    `json:"retries,omitempty"`
 }
 
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:storageversion
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // GrafanaDashboard is the Schema for the grafanadashboards API
 type GrafanaDashboard struct {

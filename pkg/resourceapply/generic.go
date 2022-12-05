@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 
+	integreatlyv1alpha1 "github.com/scylladb/scylla-operator/pkg/externalapi/integreatly/v1alpha1"
 	monitoringv1 "github.com/scylladb/scylla-operator/pkg/externalapi/monitoring/v1"
 	"github.com/scylladb/scylla-operator/pkg/kubeinterfaces"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	"github.com/scylladb/scylla-operator/pkg/resource"
 	"github.com/scylladb/scylla-operator/pkg/resourcemerge"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -166,6 +168,15 @@ func Apply(
 			options,
 		)
 
+	case *networkingv1.Ingress:
+		return ApplyIngress2(
+			ctx,
+			required.(*networkingv1.Ingress),
+			TypeApplyControlInterface[*networkingv1.Ingress](control),
+			recorder,
+			options,
+		)
+
 	case *monitoringv1.Prometheus:
 		return ApplyPrometheus(
 			ctx,
@@ -180,6 +191,33 @@ func Apply(
 			ctx,
 			required.(*monitoringv1.ServiceMonitor),
 			TypeApplyControlInterface[*monitoringv1.ServiceMonitor](control),
+			recorder,
+			options,
+		)
+
+	case *integreatlyv1alpha1.Grafana:
+		return ApplyGrafana(
+			ctx,
+			required.(*integreatlyv1alpha1.Grafana),
+			TypeApplyControlInterface[*integreatlyv1alpha1.Grafana](control),
+			recorder,
+			options,
+		)
+
+	case *integreatlyv1alpha1.GrafanaDashboard:
+		return ApplyGrafanaDashboard(
+			ctx,
+			required.(*integreatlyv1alpha1.GrafanaDashboard),
+			TypeApplyControlInterface[*integreatlyv1alpha1.GrafanaDashboard](control),
+			recorder,
+			options,
+		)
+
+	case *integreatlyv1alpha1.GrafanaDataSource:
+		return ApplyGrafanaDataSource(
+			ctx,
+			required.(*integreatlyv1alpha1.GrafanaDataSource),
+			TypeApplyControlInterface[*integreatlyv1alpha1.GrafanaDataSource](control),
 			recorder,
 			options,
 		)
@@ -207,6 +245,36 @@ func ApplyServiceMonitor(
 	options ApplyOptions,
 ) (*monitoringv1.ServiceMonitor, bool, error) {
 	return ApplyGeneric[*monitoringv1.ServiceMonitor](ctx, required, control, recorder, options)
+}
+
+func ApplyGrafana(
+	ctx context.Context,
+	required *integreatlyv1alpha1.Grafana,
+	control ApplyControlInterface[*integreatlyv1alpha1.Grafana],
+	recorder record.EventRecorder,
+	options ApplyOptions,
+) (*integreatlyv1alpha1.Grafana, bool, error) {
+	return ApplyGeneric[*integreatlyv1alpha1.Grafana](ctx, required, control, recorder, options)
+}
+
+func ApplyGrafanaDashboard(
+	ctx context.Context,
+	required *integreatlyv1alpha1.GrafanaDashboard,
+	control ApplyControlInterface[*integreatlyv1alpha1.GrafanaDashboard],
+	recorder record.EventRecorder,
+	options ApplyOptions,
+) (*integreatlyv1alpha1.GrafanaDashboard, bool, error) {
+	return ApplyGeneric[*integreatlyv1alpha1.GrafanaDashboard](ctx, required, control, recorder, options)
+}
+
+func ApplyGrafanaDataSource(
+	ctx context.Context,
+	required *integreatlyv1alpha1.GrafanaDataSource,
+	control ApplyControlInterface[*integreatlyv1alpha1.GrafanaDataSource],
+	recorder record.EventRecorder,
+	options ApplyOptions,
+) (*integreatlyv1alpha1.GrafanaDataSource, bool, error) {
+	return ApplyGeneric[*integreatlyv1alpha1.GrafanaDataSource](ctx, required, control, recorder, options)
 }
 
 func ApplyService2(
@@ -247,6 +315,16 @@ func ApplyRoleBinding2(
 	options ApplyOptions,
 ) (*rbacv1.RoleBinding, bool, error) {
 	return ApplyGeneric[*rbacv1.RoleBinding](ctx, required, control, recorder, options)
+}
+
+func ApplyIngress2(
+	ctx context.Context,
+	required *networkingv1.Ingress,
+	control ApplyControlInterface[*networkingv1.Ingress],
+	recorder record.EventRecorder,
+	options ApplyOptions,
+) (*networkingv1.Ingress, bool, error) {
+	return ApplyGeneric[*networkingv1.Ingress](ctx, required, control, recorder, options)
 }
 
 func ApplyGeneric[T kubeinterfaces.ObjectInterface](

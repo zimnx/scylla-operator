@@ -33,9 +33,12 @@ type GrafanaNotificationChannelRef struct {
 	Hash      string `json:"hash"`
 }
 
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:storageversion
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
 // GrafanaNotificationChannel is the Schema for the GrafanaNotificationChannels API
 type GrafanaNotificationChannel struct {
 	metav1.TypeMeta   `json:",inline"`
@@ -45,9 +48,9 @@ type GrafanaNotificationChannel struct {
 	Status GrafanaNotificationChannelStatus `json:"status,omitempty"`
 }
 
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:object:root=true
-// +kubebuilder:subresource:status
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
 // GrafanaNotificationChannelList contains a list of GrafanaNotificationChannel
 type GrafanaNotificationChannelList struct {
 	metav1.TypeMeta `json:",inline"`

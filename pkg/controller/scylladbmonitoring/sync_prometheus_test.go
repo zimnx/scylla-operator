@@ -285,9 +285,6 @@ metadata:
   name: "sm-name"
 spec:
   serviceAccountName: "sm-name-prometheus"
-  serviceMonitorNamespaceSelector: {}
-  serviceMonitorSelector: {}
-  podMonitorSelector: {}
   resources:
     requests:
       memory: 400Mi
@@ -299,9 +296,6 @@ spec:
   ruleSelector:
     matchLabels:
       scylla-operator.scylladb.com/scylladbmonitoring-name: "sm-name"
-  storage:
-    volumeClaimTemplate:
-      null
 `, "\n"),
 			expectedErr: nil,
 		},
@@ -338,9 +332,6 @@ metadata:
   name: "sm-name"
 spec:
   serviceAccountName: "sm-name-prometheus"
-  serviceMonitorNamespaceSelector: {}
-  serviceMonitorSelector: {}
-  podMonitorSelector: {}
   resources:
     requests:
       memory: 400Mi

@@ -16,59 +16,59 @@ import (
 	cache "k8s.io/client-go/tools/cache"
 )
 
-// AlertmanagerInformer provides access to a shared informer and lister for
-// Alertmanagers.
-type AlertmanagerInformer interface {
+// GrafanaInformer provides access to a shared informer and lister for
+// Grafanas.
+type GrafanaInformer interface {
 	Informer() cache.SharedIndexInformer
-	Lister() v1alpha1.AlertmanagerLister
+	Lister() v1alpha1.GrafanaLister
 }
 
-type alertmanagerInformer struct {
+type grafanaInformer struct {
 	factory          internalinterfaces.SharedInformerFactory
 	tweakListOptions internalinterfaces.TweakListOptionsFunc
 	namespace        string
 }
 
-// NewAlertmanagerInformer constructs a new informer for Alertmanager type.
+// NewGrafanaInformer constructs a new informer for Grafana type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
-func NewAlertmanagerInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
-	return NewFilteredAlertmanagerInformer(client, namespace, resyncPeriod, indexers, nil)
+func NewGrafanaInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
+	return NewFilteredGrafanaInformer(client, namespace, resyncPeriod, indexers, nil)
 }
 
-// NewFilteredAlertmanagerInformer constructs a new informer for Alertmanager type.
+// NewFilteredGrafanaInformer constructs a new informer for Grafana type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
-func NewFilteredAlertmanagerInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
+func NewFilteredGrafanaInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
 	return cache.NewSharedIndexInformer(
 		&cache.ListWatch{
 			ListFunc: func(options v1.ListOptions) (runtime.Object, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.IntegreatlyV1alpha1().Alertmanagers(namespace).List(context.TODO(), options)
+				return client.IntegreatlyV1alpha1().Grafanas(namespace).List(context.TODO(), options)
 			},
 			WatchFunc: func(options v1.ListOptions) (watch.Interface, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.IntegreatlyV1alpha1().Alertmanagers(namespace).Watch(context.TODO(), options)
+				return client.IntegreatlyV1alpha1().Grafanas(namespace).Watch(context.TODO(), options)
 			},
 		},
-		&integreatlyv1alpha1.Alertmanager{},
+		&integreatlyv1alpha1.Grafana{},
 		resyncPeriod,
 		indexers,
 	)
 }
 
-func (f *alertmanagerInformer) defaultInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
-	return NewFilteredAlertmanagerInformer(client, f.namespace, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, f.tweakListOptions)
+func (f *grafanaInformer) defaultInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
+	return NewFilteredGrafanaInformer(client, f.namespace, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, f.tweakListOptions)
 }
 
-func (f *alertmanagerInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&integreatlyv1alpha1.Alertmanager{}, f.defaultInformer)
+func (f *grafanaInformer) Informer() cache.SharedIndexInformer {
+	return f.factory.InformerFor(&integreatlyv1alpha1.Grafana{}, f.defaultInformer)
 }
 
-func (f *alertmanagerInformer) Lister() v1alpha1.AlertmanagerLister {
-	return v1alpha1.NewAlertmanagerLister(f.Informer().GetIndexer())
+func (f *grafanaInformer) Lister() v1alpha1.GrafanaLister {
+	return v1alpha1.NewGrafanaLister(f.Informer().GetIndexer())
 }

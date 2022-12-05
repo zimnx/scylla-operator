@@ -12,12 +12,11 @@ import (
 
 type IntegreatlyV1alpha1Interface interface {
 	RESTClient() rest.Interface
-	AlertmanagersGetter
-	PodMonitorsGetter
-	ProbesGetter
-	PrometheusesGetter
-	PrometheusRulesGetter
-	ServiceMonitorsGetter
+	GrafanasGetter
+	GrafanaDashboardsGetter
+	GrafanaDataSourcesGetter
+	GrafanaFoldersGetter
+	GrafanaNotificationChannelsGetter
 }
 
 // IntegreatlyV1alpha1Client is used to interact with features provided by the integreatly.org group.
@@ -25,28 +24,24 @@ type IntegreatlyV1alpha1Client struct {
 	restClient rest.Interface
 }
 
-func (c *IntegreatlyV1alpha1Client) Alertmanagers(namespace string) AlertmanagerInterface {
-	return newAlertmanagers(c, namespace)
+func (c *IntegreatlyV1alpha1Client) Grafanas(namespace string) GrafanaInterface {
+	return newGrafanas(c, namespace)
 }
 
-func (c *IntegreatlyV1alpha1Client) PodMonitors(namespace string) PodMonitorInterface {
-	return newPodMonitors(c, namespace)
+func (c *IntegreatlyV1alpha1Client) GrafanaDashboards(namespace string) GrafanaDashboardInterface {
+	return newGrafanaDashboards(c, namespace)
 }
 
-func (c *IntegreatlyV1alpha1Client) Probes(namespace string) ProbeInterface {
-	return newProbes(c, namespace)
+func (c *IntegreatlyV1alpha1Client) GrafanaDataSources(namespace string) GrafanaDataSourceInterface {
+	return newGrafanaDataSources(c, namespace)
 }
 
-func (c *IntegreatlyV1alpha1Client) Prometheuses(namespace string) PrometheusInterface {
-	return newPrometheuses(c, namespace)
+func (c *IntegreatlyV1alpha1Client) GrafanaFolders(namespace string) GrafanaFolderInterface {
+	return newGrafanaFolders(c, namespace)
 }
 
-func (c *IntegreatlyV1alpha1Client) PrometheusRules(namespace string) PrometheusRuleInterface {
-	return newPrometheusRules(c, namespace)
-}
-
-func (c *IntegreatlyV1alpha1Client) ServiceMonitors(namespace string) ServiceMonitorInterface {
-	return newServiceMonitors(c, namespace)
+func (c *IntegreatlyV1alpha1Client) GrafanaNotificationChannels(namespace string) GrafanaNotificationChannelInterface {
+	return newGrafanaNotificationChannels(c, namespace)
 }
 
 // NewForConfig creates a new IntegreatlyV1alpha1Client for the given config.

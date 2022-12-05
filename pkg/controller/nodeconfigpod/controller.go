@@ -60,7 +60,8 @@ type Controller struct {
 
 	eventRecorder record.EventRecorder
 
-	queue workqueue.RateLimitingInterface
+	queue    workqueue.RateLimitingInterface
+	handlers *controllerhelpers.Handlers[*scyllav1alpha1.NodeConfig]
 }
 
 func NewController(
@@ -103,6 +104,20 @@ func NewController(
 		eventRecorder: eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "NodeConfigCM-controller"}),
 
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "NodeConfigCM"),
+	}
+
+	var err error
+	ncpc.handlers, err = controllerhelpers.NewHandlers[*scyllav1alpha1.NodeConfig](
+		ncpc.queue,
+		keyFunc,
+		scheme.Scheme,
+		controllerGVK,
+		func(namespace, name string) (*scyllav1alpha1.NodeConfig, error) {
+			return ncpc.nodeConfigLister.Get(name)
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("can't create handlers: %w", err)
 	}
 
 	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -261,47 +276,26 @@ func (ncpc *Controller) updatePod(old, cur interface{}) {
 }
 
 func (ncpc *Controller) addConfigMap(obj interface{}) {
-	cm := obj.(*corev1.ConfigMap)
-	klog.V(4).InfoS("Observed addition of ConfigMap", "ConfigMap", klog.KObj(cm))
-	ncpc.enqueueOwner(cm)
+	ncpc.handlers.HandleAdd(
+		obj.(*corev1.ConfigMap),
+		ncpc.handlers.EnqueueOwner,
+	)
 }
 
 func (ncpc *Controller) updateConfigMap(old, cur interface{}) {
-	oldCM := old.(*corev1.ConfigMap)
-	currentCM := cur.(*corev1.ConfigMap)
-
-	if currentCM.UID != oldCM.UID {
-		key, err := keyFunc(oldCM)
-		if err != nil {
-			utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", oldCM, err))
-			return
-		}
-		ncpc.deleteConfigMap(cache.DeletedFinalStateUnknown{
-			Key: key,
-			Obj: oldCM,
-		})
-	}
-
-	klog.V(4).InfoS("Observed update of ConfigMap", "ConfigMap", klog.KObj(oldCM))
-	ncpc.enqueueOwner(currentCM)
+	ncpc.handlers.HandleUpdate(
+		old.(*corev1.ConfigMap),
+		cur.(*corev1.ConfigMap),
+		ncpc.handlers.EnqueueOwner,
+		ncpc.deleteConfigMap,
+	)
 }
 
 func (ncpc *Controller) deleteConfigMap(obj interface{}) {
-	cm, ok := obj.(*corev1.ConfigMap)
-	if !ok {
-		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
-		if !ok {
-			utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
-			return
-		}
-		cm, ok = tombstone.Obj.(*corev1.ConfigMap)
-		if !ok {
-			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a ConfigMap %#v", obj))
-			return
-		}
-	}
-	klog.V(4).InfoS("Observed deletion of ConfigMap", "ConfigMap", klog.KObj(cm))
-	ncpc.enqueueOwner(cm)
+	ncpc.handlers.HandleDelete(
+		obj,
+		ncpc.handlers.EnqueueOwner,
+	)
 }
 
 func (ncpc *Controller) updateNode(old, cur interface{}) {

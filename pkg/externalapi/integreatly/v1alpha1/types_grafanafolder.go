@@ -35,9 +35,12 @@ type GrafanaFolderSpec struct {
 	FolderPermissions []GrafanaPermissionItem `json:"permissions,omitempty"`
 }
 
-// GrafanaFolder is the Schema for the grafana folders and folderpermissions API
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:object:root=true
+// +kubebuilder:storageversion
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+// GrafanaFolder is the Schema for the grafana folders and folderpermissions API
 type GrafanaFolder struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -45,9 +48,10 @@ type GrafanaFolder struct {
 	Spec GrafanaFolderSpec `json:"spec,omitempty"`
 }
 
-// GrafanaFolderList contains a list of GrafanaFolder
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:object:root=true
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+// GrafanaFolderList contains a list of GrafanaFolder
 type GrafanaFolderList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`

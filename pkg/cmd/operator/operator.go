@@ -14,6 +14,8 @@ import (
 	"github.com/scylladb/scylla-operator/pkg/controller/scyllacluster"
 	"github.com/scylladb/scylla-operator/pkg/controller/scylladbmonitoring"
 	"github.com/scylladb/scylla-operator/pkg/controller/scyllaoperatorconfig"
+	integreatlyversionedclient "github.com/scylladb/scylla-operator/pkg/externalclient/integreatly/clientset/versioned"
+	integreatlyinformers "github.com/scylladb/scylla-operator/pkg/externalclient/integreatly/informers/externalversions"
 	monitoringversionedclient "github.com/scylladb/scylla-operator/pkg/externalclient/monitoring/clientset/versioned"
 	monitoringinformers "github.com/scylladb/scylla-operator/pkg/externalclient/monitoring/informers/externalversions"
 	"github.com/scylladb/scylla-operator/pkg/genericclioptions"
@@ -37,9 +39,10 @@ type OperatorOptions struct {
 	genericclioptions.InClusterReflection
 	genericclioptions.LeaderElection
 
-	kubeClient       kubernetes.Interface
-	scyllaClient     scyllaversionedclient.Interface
-	monitoringClient monitoringversionedclient.Interface
+	kubeClient        kubernetes.Interface
+	scyllaClient      scyllaversionedclient.Interface
+	monitoringClient  monitoringversionedclient.Interface
+	integreatlyClient integreatlyversionedclient.Interface
 
 	ConcurrentSyncs int
 	OperatorImage   string
@@ -149,6 +152,11 @@ func (o *OperatorOptions) Complete() error {
 		return fmt.Errorf("can't build monitoring clientset: %w", err)
 	}
 
+	o.integreatlyClient, err = integreatlyversionedclient.NewForConfig(o.RestConfig)
+	if err != nil {
+		return fmt.Errorf("can't build integreatly clientset: %w", err)
+	}
+
 	return nil
 }
 
@@ -193,6 +201,8 @@ func (o *OperatorOptions) run(ctx context.Context, streams genericclioptions.IOS
 	))
 
 	monitoringInformers := monitoringinformers.NewSharedInformerFactory(o.monitoringClient, resyncPeriod)
+
+	integreatlyInformers := integreatlyinformers.NewSharedInformerFactory(o.integreatlyClient, resyncPeriod)
 
 	var err error
 	var scc *scyllacluster.Controller
@@ -288,6 +298,7 @@ func (o *OperatorOptions) run(ctx context.Context, streams genericclioptions.IOS
 		o.kubeClient,
 		o.scyllaClient.ScyllaV1alpha1(),
 		o.monitoringClient.MonitoringV1(),
+		o.integreatlyClient.IntegreatlyV1alpha1(),
 		kubeInformers.Core().V1().Endpoints(),
 		kubeInformers.Core().V1().Secrets(),
 		kubeInformers.Core().V1().ConfigMaps(),
@@ -299,6 +310,9 @@ func (o *OperatorOptions) run(ctx context.Context, streams genericclioptions.IOS
 		scyllaInformers.Scylla().V1alpha1().ScyllaDBMonitorings(),
 		monitoringInformers.Monitoring().V1().Prometheuses(),
 		monitoringInformers.Monitoring().V1().ServiceMonitors(),
+		integreatlyInformers.Integreatly().V1alpha1().Grafanas(),
+		integreatlyInformers.Integreatly().V1alpha1().GrafanaDashboards(),
+		integreatlyInformers.Integreatly().V1alpha1().GrafanaDataSources(),
 	)
 	if err != nil {
 		return err
@@ -329,6 +343,12 @@ func (o *OperatorOptions) run(ctx context.Context, streams genericclioptions.IOS
 	go func() {
 		defer wg.Done()
 		monitoringInformers.Start(ctx.Done())
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		integreatlyInformers.Start(ctx.Done())
 	}()
 
 	func() {

@@ -12,28 +12,24 @@ type FakeIntegreatlyV1alpha1 struct {
 	*testing.Fake
 }
 
-func (c *FakeIntegreatlyV1alpha1) Alertmanagers(namespace string) v1alpha1.AlertmanagerInterface {
-	return &FakeAlertmanagers{c, namespace}
+func (c *FakeIntegreatlyV1alpha1) Grafanas(namespace string) v1alpha1.GrafanaInterface {
+	return &FakeGrafanas{c, namespace}
 }
 
-func (c *FakeIntegreatlyV1alpha1) PodMonitors(namespace string) v1alpha1.PodMonitorInterface {
-	return &FakePodMonitors{c, namespace}
+func (c *FakeIntegreatlyV1alpha1) GrafanaDashboards(namespace string) v1alpha1.GrafanaDashboardInterface {
+	return &FakeGrafanaDashboards{c, namespace}
 }
 
-func (c *FakeIntegreatlyV1alpha1) Probes(namespace string) v1alpha1.ProbeInterface {
-	return &FakeProbes{c, namespace}
+func (c *FakeIntegreatlyV1alpha1) GrafanaDataSources(namespace string) v1alpha1.GrafanaDataSourceInterface {
+	return &FakeGrafanaDataSources{c, namespace}
 }
 
-func (c *FakeIntegreatlyV1alpha1) Prometheuses(namespace string) v1alpha1.PrometheusInterface {
-	return &FakePrometheuses{c, namespace}
+func (c *FakeIntegreatlyV1alpha1) GrafanaFolders(namespace string) v1alpha1.GrafanaFolderInterface {
+	return &FakeGrafanaFolders{c, namespace}
 }
 
-func (c *FakeIntegreatlyV1alpha1) PrometheusRules(namespace string) v1alpha1.PrometheusRuleInterface {
-	return &FakePrometheusRules{c, namespace}
-}
-
-func (c *FakeIntegreatlyV1alpha1) ServiceMonitors(namespace string) v1alpha1.ServiceMonitorInterface {
-	return &FakeServiceMonitors{c, namespace}
+func (c *FakeIntegreatlyV1alpha1) GrafanaNotificationChannels(namespace string) v1alpha1.GrafanaNotificationChannelInterface {
+	return &FakeGrafanaNotificationChannels{c, namespace}
 }
 
 // RESTClient returns a RESTClient that is used to communicate

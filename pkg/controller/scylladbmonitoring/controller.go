@@ -11,6 +11,8 @@ import (
 	scyllav1alpha1informers "github.com/scylladb/scylla-operator/pkg/client/scylla/informers/externalversions/scylla/v1alpha1"
 	scyllav1alpha1listers "github.com/scylladb/scylla-operator/pkg/client/scylla/listers/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
+	integreatlyv1alpha1 "github.com/scylladb/scylla-operator/pkg/externalapi/integreatly/v1alpha1"
+	monitoringv1 "github.com/scylladb/scylla-operator/pkg/externalapi/monitoring/v1"
 	integreatlyv1alpha1client "github.com/scylladb/scylla-operator/pkg/externalclient/integreatly/clientset/versioned/typed/integreatly/v1alpha1"
 	integreatlyv1alpha1informers "github.com/scylladb/scylla-operator/pkg/externalclient/integreatly/informers/externalversions/integreatly/v1alpha1"
 	integreatlyv1alpha1listers "github.com/scylladb/scylla-operator/pkg/externalclient/integreatly/listers/integreatly/v1alpha1"
@@ -68,7 +70,9 @@ type Controller struct {
 	prometheusLister     monitoringv1listers.PrometheusLister
 	serviceMonitorLister monitoringv1listers.ServiceMonitorLister
 
-	grafanaLister integreatlyv1alpha1listers.GrafanaLister
+	grafanaLister           integreatlyv1alpha1listers.GrafanaLister
+	grafanaDashboardLister  integreatlyv1alpha1listers.GrafanaDashboardLister
+	grafanaDataSourceLister integreatlyv1alpha1listers.GrafanaDataSourceLister
 
 	cachesToSync []cache.InformerSynced
 
@@ -82,6 +86,7 @@ func NewController(
 	kubeClient kubernetes.Interface,
 	scyllaV1alpha1Client scyllav1alpha1client.ScyllaV1alpha1Interface,
 	monitoringClient monitoringv1client.MonitoringV1Interface,
+	integreatlyClient integreatlyv1alpha1client.IntegreatlyV1alpha1Interface,
 	endpointsInformer corev1informers.EndpointsInformer,
 	secretInformer corev1informers.SecretInformer,
 	configMapInformer corev1informers.ConfigMapInformer,
@@ -94,6 +99,8 @@ func NewController(
 	prometheusInformer monitoringv1informers.PrometheusInformer,
 	serviceMonitorInformer monitoringv1informers.ServiceMonitorInformer,
 	grafanaInformer integreatlyv1alpha1informers.GrafanaInformer,
+	grafanaDashboardInformer integreatlyv1alpha1informers.GrafanaDashboardInformer,
+	grafanaDataSourceInformer integreatlyv1alpha1informers.GrafanaDataSourceInformer,
 ) (*Controller, error) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartStructuredLogging(0)
@@ -109,10 +116,11 @@ func NewController(
 		}
 	}
 
-	mc := &Controller{
+	smc := &Controller{
 		kubeClient:           kubeClient,
 		scyllaV1alpha1Client: scyllaV1alpha1Client,
 		monitoringClient:     monitoringClient,
+		integreatlyClient:    integreatlyClient,
 
 		endpointsLister:      endpointsInformer.Lister(),
 		secretLister:         secretInformer.Lister(),
@@ -128,6 +136,10 @@ func NewController(
 		prometheusLister:     prometheusInformer.Lister(),
 		serviceMonitorLister: serviceMonitorInformer.Lister(),
 
+		grafanaLister:           grafanaInformer.Lister(),
+		grafanaDashboardLister:  grafanaDashboardInformer.Lister(),
+		grafanaDataSourceLister: grafanaDataSourceInformer.Lister(),
+
 		cachesToSync: []cache.InformerSynced{
 			endpointsInformer.Informer().HasSynced,
 			secretInformer.Informer().HasSynced,
@@ -140,6 +152,9 @@ func NewController(
 			scyllaDBMonitoringInformer.Informer().HasSynced,
 			prometheusInformer.Informer().HasSynced,
 			serviceMonitorInformer.Informer().HasSynced,
+			grafanaInformer.Informer().HasSynced,
+			grafanaDashboardInformer.Informer().HasSynced,
+			grafanaDataSourceInformer.Informer().HasSynced,
 		},
 
 		eventRecorder: eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "scylladbmonitoring-controller"}),
@@ -148,13 +163,13 @@ func NewController(
 	}
 
 	var err error
-	mc.handlers, err = controllerhelpers.NewHandlers[*scyllav1alpha1.ScyllaDBMonitoring](
-		mc.queue,
+	smc.handlers, err = controllerhelpers.NewHandlers[*scyllav1alpha1.ScyllaDBMonitoring](
+		smc.queue,
 		keyFunc,
 		scheme.Scheme,
 		scylladbMonitoringControllerGVK,
 		func(namespace, name string) (*scyllav1alpha1.ScyllaDBMonitoring, error) {
-			return mc.scylladbMonitoringLister.ScyllaDBMonitorings(namespace).Get(name)
+			return smc.scylladbMonitoringLister.ScyllaDBMonitorings(namespace).Get(name)
 		},
 	)
 	if err != nil {
@@ -162,18 +177,44 @@ func NewController(
 	}
 
 	scyllaDBMonitoringInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    mc.addScyllaDBMonitoring,
-		UpdateFunc: mc.updateScyllaDBMonitoring,
-		DeleteFunc: mc.deleteScyllaDBMonitoring,
+		AddFunc:    smc.addScyllaDBMonitoring,
+		UpdateFunc: smc.updateScyllaDBMonitoring,
+		DeleteFunc: smc.deleteScyllaDBMonitoring,
+	})
+
+	prometheusInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    smc.addPrometheus,
+		UpdateFunc: smc.updatePrometheus,
+		DeleteFunc: smc.deletePrometheus,
+	})
+
+	grafanaInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    smc.addGrafana,
+		UpdateFunc: smc.updateGrafana,
+		DeleteFunc: smc.deleteGrafana,
+	})
+
+	grafanaDashboardInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    smc.addGrafanaDashboard,
+		UpdateFunc: smc.updateGrafanaDashboard,
+		DeleteFunc: smc.deleteGrafanaDashboard,
+	})
+
+	grafanaDataSourceInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    smc.addGrafanaDataSource,
+		UpdateFunc: smc.updateGrafanaDataSource,
+		DeleteFunc: smc.deleteGrafanaDataSource,
 	})
 
 	endpointsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    mc.addEndpoints,
-		UpdateFunc: mc.updateEndpoints,
-		DeleteFunc: mc.deleteEndpoints,
+		AddFunc:    smc.addEndpoints,
+		UpdateFunc: smc.updateEndpoints,
+		DeleteFunc: smc.deleteEndpoints,
 	})
 
-	return mc, nil
+	// FIXME: more handlers
+
+	return smc, nil
 }
 
 func (smc *Controller) addScyllaDBMonitoring(obj interface{}) {
@@ -216,6 +257,98 @@ func (smc *Controller) updateEndpoints(old, cur interface{}) {
 }
 
 func (smc *Controller) deleteEndpoints(obj interface{}) {
+	smc.handlers.HandleDelete(
+		obj,
+		smc.handlers.EnqueueOwner,
+	)
+}
+
+func (smc *Controller) addGrafana(obj interface{}) {
+	smc.handlers.HandleAdd(
+		obj.(*integreatlyv1alpha1.Grafana),
+		smc.handlers.EnqueueOwner,
+	)
+}
+
+func (smc *Controller) updateGrafana(old, cur interface{}) {
+	smc.handlers.HandleUpdate(
+		old.(*integreatlyv1alpha1.Grafana),
+		cur.(*integreatlyv1alpha1.Grafana),
+		smc.handlers.EnqueueOwner,
+		smc.deleteGrafana,
+	)
+}
+
+func (smc *Controller) deleteGrafana(obj interface{}) {
+	smc.handlers.HandleDelete(
+		obj,
+		smc.handlers.EnqueueOwner,
+	)
+}
+
+func (smc *Controller) addGrafanaDashboard(obj interface{}) {
+	smc.handlers.HandleAdd(
+		obj.(*integreatlyv1alpha1.GrafanaDashboard),
+		smc.handlers.EnqueueOwner,
+	)
+}
+
+func (smc *Controller) updateGrafanaDashboard(old, cur interface{}) {
+	smc.handlers.HandleUpdate(
+		old.(*integreatlyv1alpha1.GrafanaDashboard),
+		cur.(*integreatlyv1alpha1.GrafanaDashboard),
+		smc.handlers.EnqueueOwner,
+		smc.deleteGrafanaDashboard,
+	)
+}
+
+func (smc *Controller) deleteGrafanaDashboard(obj interface{}) {
+	smc.handlers.HandleDelete(
+		obj,
+		smc.handlers.EnqueueOwner,
+	)
+}
+
+func (smc *Controller) addGrafanaDataSource(obj interface{}) {
+	smc.handlers.HandleAdd(
+		obj.(*integreatlyv1alpha1.GrafanaDataSource),
+		smc.handlers.EnqueueOwner,
+	)
+}
+
+func (smc *Controller) updateGrafanaDataSource(old, cur interface{}) {
+	smc.handlers.HandleUpdate(
+		old.(*integreatlyv1alpha1.GrafanaDataSource),
+		cur.(*integreatlyv1alpha1.GrafanaDataSource),
+		smc.handlers.EnqueueOwner,
+		smc.deleteGrafanaDataSource,
+	)
+}
+
+func (smc *Controller) deleteGrafanaDataSource(obj interface{}) {
+	smc.handlers.HandleDelete(
+		obj,
+		smc.handlers.EnqueueOwner,
+	)
+}
+
+func (smc *Controller) addPrometheus(obj interface{}) {
+	smc.handlers.HandleAdd(
+		obj.(*monitoringv1.Prometheus),
+		smc.handlers.EnqueueOwner,
+	)
+}
+
+func (smc *Controller) updatePrometheus(old, cur interface{}) {
+	smc.handlers.HandleUpdate(
+		old.(*monitoringv1.Prometheus),
+		cur.(*monitoringv1.Prometheus),
+		smc.handlers.EnqueueOwner,
+		smc.deletePrometheus,
+	)
+}
+
+func (smc *Controller) deletePrometheus(obj interface{}) {
 	smc.handlers.HandleDelete(
 		obj,
 		smc.handlers.EnqueueOwner,

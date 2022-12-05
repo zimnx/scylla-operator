@@ -38,9 +38,7 @@ spec:
             fieldRef:
               fieldPath: metadata.name
         - name: WATCH_NAMESPACE
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.namespace
+          value: ""
         image: quay.io/grafana-operator/grafana-operator:v4.8.0
         imagePullPolicy: Always
         livenessProbe:

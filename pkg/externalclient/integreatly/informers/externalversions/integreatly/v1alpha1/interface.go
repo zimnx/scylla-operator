@@ -8,18 +8,16 @@ import (
 
 // Interface provides access to all the informers in this group version.
 type Interface interface {
-	// Alertmanagers returns a AlertmanagerInformer.
-	Alertmanagers() AlertmanagerInformer
-	// PodMonitors returns a PodMonitorInformer.
-	PodMonitors() PodMonitorInformer
-	// Probes returns a ProbeInformer.
-	Probes() ProbeInformer
-	// Prometheuses returns a PrometheusInformer.
-	Prometheuses() PrometheusInformer
-	// PrometheusRules returns a PrometheusRuleInformer.
-	PrometheusRules() PrometheusRuleInformer
-	// ServiceMonitors returns a ServiceMonitorInformer.
-	ServiceMonitors() ServiceMonitorInformer
+	// Grafanas returns a GrafanaInformer.
+	Grafanas() GrafanaInformer
+	// GrafanaDashboards returns a GrafanaDashboardInformer.
+	GrafanaDashboards() GrafanaDashboardInformer
+	// GrafanaDataSources returns a GrafanaDataSourceInformer.
+	GrafanaDataSources() GrafanaDataSourceInformer
+	// GrafanaFolders returns a GrafanaFolderInformer.
+	GrafanaFolders() GrafanaFolderInformer
+	// GrafanaNotificationChannels returns a GrafanaNotificationChannelInformer.
+	GrafanaNotificationChannels() GrafanaNotificationChannelInformer
 }
 
 type version struct {
@@ -33,32 +31,27 @@ func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakList
 	return &version{factory: f, namespace: namespace, tweakListOptions: tweakListOptions}
 }
 
-// Alertmanagers returns a AlertmanagerInformer.
-func (v *version) Alertmanagers() AlertmanagerInformer {
-	return &alertmanagerInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+// Grafanas returns a GrafanaInformer.
+func (v *version) Grafanas() GrafanaInformer {
+	return &grafanaInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 
-// PodMonitors returns a PodMonitorInformer.
-func (v *version) PodMonitors() PodMonitorInformer {
-	return &podMonitorInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+// GrafanaDashboards returns a GrafanaDashboardInformer.
+func (v *version) GrafanaDashboards() GrafanaDashboardInformer {
+	return &grafanaDashboardInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 
-// Probes returns a ProbeInformer.
-func (v *version) Probes() ProbeInformer {
-	return &probeInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+// GrafanaDataSources returns a GrafanaDataSourceInformer.
+func (v *version) GrafanaDataSources() GrafanaDataSourceInformer {
+	return &grafanaDataSourceInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 
-// Prometheuses returns a PrometheusInformer.
-func (v *version) Prometheuses() PrometheusInformer {
-	return &prometheusInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+// GrafanaFolders returns a GrafanaFolderInformer.
+func (v *version) GrafanaFolders() GrafanaFolderInformer {
+	return &grafanaFolderInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 
-// PrometheusRules returns a PrometheusRuleInformer.
-func (v *version) PrometheusRules() PrometheusRuleInformer {
-	return &prometheusRuleInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
-}
-
-// ServiceMonitors returns a ServiceMonitorInformer.
-func (v *version) ServiceMonitors() ServiceMonitorInformer {
-	return &serviceMonitorInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+// GrafanaNotificationChannels returns a GrafanaNotificationChannelInformer.
+func (v *version) GrafanaNotificationChannels() GrafanaNotificationChannelInformer {
+	return &grafanaNotificationChannelInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }

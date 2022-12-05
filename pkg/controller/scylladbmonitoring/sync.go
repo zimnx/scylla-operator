@@ -7,6 +7,7 @@ import (
 
 	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
+	integreatlyv1alpha1 "github.com/scylladb/scylla-operator/pkg/externalapi/integreatly/v1alpha1"
 	monitoringv1 "github.com/scylladb/scylla-operator/pkg/externalapi/monitoring/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -51,6 +52,18 @@ func (smc *Controller) sync(ctx context.Context, key string) error {
 		},
 	)
 
+	grafanas, err := controllerhelpers.GetObjects[CT, *integreatlyv1alpha1.Grafana](
+		ctx,
+		sm,
+		scylladbMonitoringControllerGVK,
+		smc.getGrafanaSelector(sm),
+		controllerhelpers.ControlleeManagerGetObjectsFuncs[CT, *integreatlyv1alpha1.Grafana]{
+			GetControllerUncachedFunc: smc.scyllaV1alpha1Client.ScyllaDBMonitorings(sm.Namespace).Get,
+			ListObjectsFunc:           smc.grafanaLister.List,
+			PatchObjectFunc:           smc.integreatlyClient.Grafanas(sm.Namespace).Patch,
+		},
+	)
+
 	status := &scyllav1alpha1.ScyllaDBMonitoringStatus{}
 	// status := mc.calculateStatus(sc, statefulSetMap, serviceMap)
 
@@ -71,6 +84,19 @@ func (smc *Controller) sync(ctx context.Context, key string) error {
 	)
 	if err != nil {
 		errs = append(errs, fmt.Errorf("can't sync prometheus: %w", err))
+	}
+
+	err = controllerhelpers.RunSync(
+		&status.Conditions,
+		grafanaControllerProgressingCondition,
+		grafanaControllerDegradedCondition,
+		sm.Generation,
+		func() ([]metav1.Condition, error) {
+			return smc.syncGrafana(ctx, sm, grafanas)
+		},
+	)
+	if err != nil {
+		errs = append(errs, fmt.Errorf("can't sync grafana: %w", err))
 	}
 
 	// Aggregate conditions.

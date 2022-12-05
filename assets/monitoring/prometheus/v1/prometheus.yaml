@@ -4,9 +4,8 @@ metadata:
   name: "{{ .scyllaDBMonitoringName }}"
 spec:
   serviceAccountName: "{{ .scyllaDBMonitoringName }}-prometheus"
-  serviceMonitorNamespaceSelector: {}
-  serviceMonitorSelector: {}
-  podMonitorSelector: {}
+  serviceMonitorSelector:
+    matchLabels: {}
   resources:
     requests:
       memory: 400Mi
@@ -18,6 +17,8 @@ spec:
   ruleSelector:
     matchLabels:
       scylla-operator.scylladb.com/scylladbmonitoring-name: "{{ .scyllaDBMonitoringName }}"
+  {{- if .volumeClaimTemplate }}
   storage:
     volumeClaimTemplate:
       {{- .volumeClaimTemplate | yaml | nindent 6 }}
+  {{- end }}
