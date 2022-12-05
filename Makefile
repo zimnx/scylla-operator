@@ -54,6 +54,9 @@ api_groups :=$(patsubst %/,%,$(wildcard ./pkg/api/*/))
 external_api_groups :=$(patsubst %/.,%,$(wildcard ./pkg/externalapi/*/.))
 nonrest_api_groups :=$(patsubst %/.,%,$(wildcard ./pkg/scylla/api/*/.))
 
+api_package_dirs :=$(api_groups) $(external_api_groups)
+api_packages =$(call expand_go_packages_with_spaces,$(addsuffix /...,$(api_package_dirs)))
+
 HELM ?=helm
 HELM_CHANNEL ?=latest
 HELM_CHARTS ?=scylla-operator scylla-manager scylla
@@ -298,7 +301,7 @@ endef
 
 # $1 - dir prefix
 define generate-crds
-	$(foreach p,$(call expand_go_packages_with_spaces,$(addsuffix /...,$(api_groups) $(addsuffix /...,$(external_api_groups)))),$(call run-crd-gen,$(subst $(GO_MODULE)/,,./$(p)),$(2)$(subst $(GO_MODULE)/,,./$(p))))
+	$(foreach p,$(api_packages),$(call run-crd-gen,$(subst $(GO_MODULE)/,,./$(p)),$(1)$(subst $(GO_MODULE)/,,./$(p))))
 
 endef
 
