@@ -2,18 +2,23 @@ package scylladbmonitoring
 
 import (
 	"context"
+	"crypto/x509/pkix"
 	"fmt"
+	"time"
 
 	grafanav1alpha1assets "github.com/scylladb/scylla-operator/assets/monitoring/grafana/v1alpha1"
 	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
+	ocrypto "github.com/scylladb/scylla-operator/pkg/crypto"
 	integreatlyv1alpha1 "github.com/scylladb/scylla-operator/pkg/externalapi/integreatly/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/helpers"
+	okubecrypto "github.com/scylladb/scylla-operator/pkg/kubecrypto"
 	"github.com/scylladb/scylla-operator/pkg/kubeinterfaces"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	"github.com/scylladb/scylla-operator/pkg/resource"
 	"github.com/scylladb/scylla-operator/pkg/resourceapply"
 	"github.com/scylladb/scylla-operator/pkg/resourcemerge"
+	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -101,6 +106,32 @@ func (smc *Controller) syncGrafana(
 			GetControllerUncachedFunc: smc.scyllaV1alpha1Client.ScyllaDBMonitorings(sm.Namespace).Get,
 			ListObjectsFunc:           smc.ingressLister.List,
 			PatchObjectFunc:           smc.kubeClient.NetworkingV1().Ingresses(sm.Namespace).Patch,
+		},
+	)
+
+	// FIXME: we can't prune secrets because they are managed separately and we don't know the desired ones
+	secrets, err := controllerhelpers.GetObjects[CT, *corev1.Secret](
+		ctx,
+		sm,
+		scylladbMonitoringControllerGVK,
+		smc.getGrafanaSelector(sm),
+		controllerhelpers.ControlleeManagerGetObjectsFuncs[CT, *corev1.Secret]{
+			GetControllerUncachedFunc: smc.scyllaV1alpha1Client.ScyllaDBMonitorings(sm.Namespace).Get,
+			ListObjectsFunc:           smc.secretLister.List,
+			PatchObjectFunc:           smc.kubeClient.CoreV1().Secrets(sm.Namespace).Patch,
+		},
+	)
+
+	// FIXME: we can't prune configMaps because they are managed separately and we don't know the desired ones
+	configMaps, err := controllerhelpers.GetObjects[CT, *corev1.ConfigMap](
+		ctx,
+		sm,
+		scylladbMonitoringControllerGVK,
+		smc.getGrafanaSelector(sm),
+		controllerhelpers.ControlleeManagerGetObjectsFuncs[CT, *corev1.ConfigMap]{
+			GetControllerUncachedFunc: smc.scyllaV1alpha1Client.ScyllaDBMonitorings(sm.Namespace).Get,
+			ListObjectsFunc:           smc.configMapLister.List,
+			PatchObjectFunc:           smc.kubeClient.CoreV1().ConfigMaps(sm.Namespace).Patch,
 		},
 	)
 
@@ -243,6 +274,56 @@ func (smc *Controller) syncGrafana(
 			gvk := resource.GetObjectGVKOrUnknown(item.required)
 			applyErrors = append(applyErrors, fmt.Errorf("can't apply %s: %w", gvk, err))
 		}
+	}
+
+	cm := okubecrypto.NewCertificateManager(
+		smc.kubeClient.CoreV1(),
+		smc.secretLister,
+		smc.kubeClient.CoreV1(),
+		smc.configMapLister,
+		smc.eventRecorder,
+	)
+
+	if sm.Spec.Components != nil && sm.Spec.Components.Grafana != nil && sm.Spec.Components.Grafana.ExposeOptions != nil && sm.Spec.Components.Grafana.ExposeOptions.WebInterface != nil && sm.Spec.Components.Grafana.ExposeOptions.WebInterface.Ingress != nil {
+		applyErrors = append(applyErrors, cm.ManageCertificates(
+			ctx,
+			time.Now,
+			&sm.ObjectMeta,
+			scylladbMonitoringControllerGVK,
+			&okubecrypto.CAConfig{
+				MetaConfig: okubecrypto.MetaConfig{
+					Name:   fmt.Sprintf("%s-grafana-serving-ca", sm.Name),
+					Labels: smc.getGrafanaLabels(sm),
+				},
+				Validity: 10 * 365 * 24 * time.Hour,
+				Refresh:  8 * 365 * 24 * time.Hour,
+			},
+			&okubecrypto.CABundleConfig{
+				MetaConfig: okubecrypto.MetaConfig{
+					Name:   fmt.Sprintf("%s-grafana-serving-ca", sm.Name),
+					Labels: smc.getGrafanaLabels(sm),
+				},
+			},
+			[]*okubecrypto.CertificateConfig{
+				{
+					MetaConfig: okubecrypto.MetaConfig{
+						Name:   fmt.Sprintf("%s-grafana-serving-certs", sm.Name),
+						Labels: smc.getGrafanaLabels(sm),
+					},
+					Validity: 30 * 24 * time.Hour,
+					Refresh:  20 * 24 * time.Hour,
+					CertCreator: (&ocrypto.ServingCertCreatorConfig{
+						Subject: pkix.Name{
+							CommonName: "",
+						},
+						IPAddresses: nil,
+						DNSNames:    sm.Spec.Components.Grafana.ExposeOptions.WebInterface.Ingress.DNSDomains,
+					}).ToCreator(),
+				},
+			},
+			secrets,
+			configMaps,
+		))
 	}
 
 	applyError := kutilerrors.NewAggregate(applyErrors)

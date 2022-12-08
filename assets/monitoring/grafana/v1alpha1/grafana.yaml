@@ -8,6 +8,8 @@ spec:
     preferService: true
   ingress:
     enabled: False
+  secrets:
+  - "{{ .scyllaDBMonitoringName }}-grafana-serving-certs"
   config:
     log:
       mode: "console"
@@ -19,9 +21,15 @@ spec:
       disable_signout_menu: True
     auth.anonymous:
       enabled: True
+#    dashboards:
+#      default_home_dashboard_path: "test/cql-overview"
     security:
       admin_password: "admin"
       admin_user: "admin"
+    server:
+      protocol: https
+      cert_file: /etc/grafana-secrets/test-grafana-serving-certs/tls.crt
+      cert_key: /etc/grafana-secrets/test-grafana-serving-certs/tls.key
   service:
     name: "{{ .scyllaDBMonitoringName }}-grafana"
     labels:
