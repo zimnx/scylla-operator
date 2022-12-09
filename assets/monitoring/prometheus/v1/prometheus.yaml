@@ -20,5 +20,5 @@ spec:
   {{- if .volumeClaimTemplate }}
   storage:
     volumeClaimTemplate:
-      {{- .volumeClaimTemplate | yaml | nindent 6 }}
+      {{- .volumeClaimTemplate | toYAML | nindent 6 }}
   {{- end }}

@@ -30,10 +30,5 @@ func ParseObjectTemplateOrDie[T runtime.Object](name, tmplString string, funcMap
 }
 
 func (t *ObjectTemplate[T]) RenderObject(inputs any) (T, string, error) {
-	obj, s, err := RenderAndDecode[T](t.tmpl, inputs, t.decoder)
-	if err != nil {
-		return obj, s, fmt.Errorf("can't render and decode template %q: %w", t.tmpl.Name(), err)
-	}
-
-	return obj, s, nil
+	return RenderAndDecode[T](t.tmpl, inputs, t.decoder)
 }

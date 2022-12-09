@@ -4,7 +4,7 @@ metadata:
   name: "{{ .scyllaDBMonitoringName }}-scylladb"
 spec:
   selector:
-    {{- .endpointsSelector | yaml | nindent 4 }}
+    {{- .endpointsSelector | toYAML | nindent 4 }}
   endpoints:
   - port: prometheus
     honorLabels: false

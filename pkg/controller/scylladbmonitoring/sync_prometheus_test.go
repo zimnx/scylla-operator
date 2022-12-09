@@ -285,6 +285,8 @@ metadata:
   name: "sm-name"
 spec:
   serviceAccountName: "sm-name-prometheus"
+  serviceMonitorSelector:
+    matchLabels: {}
   resources:
     requests:
       memory: 400Mi
@@ -332,6 +334,8 @@ metadata:
   name: "sm-name"
 spec:
   serviceAccountName: "sm-name-prometheus"
+  serviceMonitorSelector:
+    matchLabels: {}
   resources:
     requests:
       memory: 400Mi

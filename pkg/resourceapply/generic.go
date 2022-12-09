@@ -186,6 +186,15 @@ func Apply(
 			options,
 		)
 
+	case *monitoringv1.PrometheusRule:
+		return ApplyPrometheusRule(
+			ctx,
+			required.(*monitoringv1.PrometheusRule),
+			TypeApplyControlInterface[*monitoringv1.PrometheusRule](control),
+			recorder,
+			options,
+		)
+
 	case *monitoringv1.ServiceMonitor:
 		return ApplyServiceMonitor(
 			ctx,
@@ -235,6 +244,16 @@ func ApplyPrometheus(
 	options ApplyOptions,
 ) (*monitoringv1.Prometheus, bool, error) {
 	return ApplyGeneric[*monitoringv1.Prometheus](ctx, required, control, recorder, options)
+}
+
+func ApplyPrometheusRule(
+	ctx context.Context,
+	required *monitoringv1.PrometheusRule,
+	control ApplyControlInterface[*monitoringv1.PrometheusRule],
+	recorder record.EventRecorder,
+	options ApplyOptions,
+) (*monitoringv1.PrometheusRule, bool, error) {
+	return ApplyGeneric[*monitoringv1.PrometheusRule](ctx, required, control, recorder, options)
 }
 
 func ApplyServiceMonitor(

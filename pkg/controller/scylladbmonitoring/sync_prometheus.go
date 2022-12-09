@@ -40,6 +40,12 @@ func makeScyllaDBServiceMonitor(sm *scyllav1alpha1.ScyllaDBMonitoring) (*monitor
 	})
 }
 
+func makePrometheusRule(sm *scyllav1alpha1.ScyllaDBMonitoring) (*monitoringv1.PrometheusRule, string, error) {
+	return prometheusv1assets.PrometheusRuleTemplate.RenderObject(map[string]any{
+		"scyllaDBMonitoringName": sm.Name,
+	})
+}
+
 func makePrometheus(sm *scyllav1alpha1.ScyllaDBMonitoring) (*monitoringv1.Prometheus, string, error) {
 	var volumeClaimTemplate *corev1.PersistentVolumeClaim
 	if sm.Spec.Components != nil && sm.Spec.Components.Prometheus != nil {
@@ -119,6 +125,18 @@ func (smc *Controller) syncPrometheus(
 		},
 	)
 
+	prometheusRules, err := controllerhelpers.GetObjects[CT, *monitoringv1.PrometheusRule](
+		ctx,
+		sm,
+		scylladbMonitoringControllerGVK,
+		smc.getPrometheusSelector(sm),
+		controllerhelpers.ControlleeManagerGetObjectsFuncs[CT, *monitoringv1.PrometheusRule]{
+			GetControllerUncachedFunc: smc.scyllaV1alpha1Client.ScyllaDBMonitorings(sm.Namespace).Get,
+			ListObjectsFunc:           smc.prometheusRuleLister.List,
+			PatchObjectFunc:           smc.monitoringClient.PrometheusRules(sm.Namespace).Patch,
+		},
+	)
+
 	// Render manifests.
 	var renderErrors []error
 
@@ -141,6 +159,9 @@ func (smc *Controller) syncPrometheus(
 	renderErrors = append(renderErrors, err)
 
 	requiredPrometheus, _, err := makePrometheus(sm)
+	renderErrors = append(renderErrors, err)
+
+	requiredPrometheusRule, _, err := makePrometheusRule(sm)
 	renderErrors = append(renderErrors, err)
 
 	requiredScyllaDBServiceMonitor, _, err := makeScyllaDBServiceMonitor(sm)
@@ -189,6 +210,16 @@ func (smc *Controller) syncPrometheus(
 		prometheuses,
 		&controllerhelpers.PruneControlFuncs{
 			DeleteFunc: smc.monitoringClient.Prometheuses(sm.Namespace).Delete,
+		},
+	)
+	pruneErrors = append(pruneErrors, err)
+
+	err = controllerhelpers.Prune(
+		ctx,
+		helpers.ToArray(requiredPrometheusRule),
+		prometheusRules,
+		&controllerhelpers.PruneControlFuncs{
+			DeleteFunc: smc.monitoringClient.PrometheusRules(sm.Namespace).Delete,
 		},
 	)
 	pruneErrors = append(pruneErrors, err)
@@ -253,6 +284,14 @@ func (smc *Controller) syncPrometheus(
 				GetCachedFunc: smc.serviceMonitorLister.ServiceMonitors(sm.Namespace).Get,
 				CreateFunc:    smc.monitoringClient.ServiceMonitors(sm.Namespace).Create,
 				UpdateFunc:    smc.monitoringClient.ServiceMonitors(sm.Namespace).Update,
+			}.ToUntyped(),
+		},
+		{
+			required: requiredPrometheusRule,
+			control: resourceapply.ApplyControlFuncs[*monitoringv1.PrometheusRule]{
+				GetCachedFunc: smc.prometheusRuleLister.PrometheusRules(sm.Namespace).Get,
+				CreateFunc:    smc.monitoringClient.PrometheusRules(sm.Namespace).Create,
+				UpdateFunc:    smc.monitoringClient.PrometheusRules(sm.Namespace).Update,
 			}.ToUntyped(),
 		},
 	} {

@@ -282,6 +282,7 @@ rules:
   - monitoring.coreos.com
   resources:
   - prometheuses
+  - prometheusesrules
   - servicemonitors
   verbs:
   - get

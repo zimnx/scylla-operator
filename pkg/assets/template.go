@@ -10,7 +10,7 @@ import (
 )
 
 var TemplateFuncs template.FuncMap = template.FuncMap{
-	"yaml":    marshalYAML,
+	"toYAML":  marshalYAML,
 	"indent":  indent,
 	"nindent": nindent,
 }

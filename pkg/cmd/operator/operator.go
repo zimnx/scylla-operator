@@ -309,6 +309,7 @@ func (o *OperatorOptions) run(ctx context.Context, streams genericclioptions.IOS
 		kubeInformers.Networking().V1().Ingresses(),
 		scyllaInformers.Scylla().V1alpha1().ScyllaDBMonitorings(),
 		monitoringInformers.Monitoring().V1().Prometheuses(),
+		monitoringInformers.Monitoring().V1().PrometheusRules(),
 		monitoringInformers.Monitoring().V1().ServiceMonitors(),
 		integreatlyInformers.Integreatly().V1alpha1().Grafanas(),
 		integreatlyInformers.Integreatly().V1alpha1().GrafanaDashboards(),

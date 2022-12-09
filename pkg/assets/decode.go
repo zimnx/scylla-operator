@@ -5,6 +5,7 @@ import (
 	"text/template"
 
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/klog/v2"
 )
 
 func Decode[T any](data []byte, decoder runtime.Decoder) (T, error) {
@@ -28,5 +29,10 @@ func RenderAndDecode[T any](tmpl *template.Template, inputs any, decoder runtime
 	}
 
 	obj, err := Decode[T](renderedBytes, decoder)
-	return obj, string(renderedBytes), err
+	if err != nil {
+		klog.Errorf("Can't decode rendered template %q: %w. Template:\n%s", tmpl.Name(), err, string(renderedBytes))
+		return *new(T), string(renderedBytes), fmt.Errorf("can't decode rendered template %q: %w", tmpl.Name(), err)
+	}
+
+	return obj, string(renderedBytes), nil
 }

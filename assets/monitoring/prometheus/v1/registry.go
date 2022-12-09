@@ -35,4 +35,8 @@ var (
 	//go:embed "scylladb.servicemonitor.yaml"
 	scyllaDBServiceMonitorTemplateString string
 	ScyllaDBServiceMonitorTemplate       = ParseObjectTemplateOrDie[*monitoringv1.ServiceMonitor]("scylladb-servicemonitor", scyllaDBServiceMonitorTemplateString)
+
+	//go:embed "prometheusrule.yaml"
+	prometheusRuleTemplateString string
+	PrometheusRuleTemplate       = ParseObjectTemplateOrDie[*monitoringv1.PrometheusRule]("prometheus-rule", prometheusRuleTemplateString)
 )

@@ -23,7 +23,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	kutilerrors "k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/utils/pointer"
+)
+
+const (
+	grafanaPasswordLength = 20
 )
 
 func (smc *Controller) getGrafanaLabels(sm *scyllav1alpha1.ScyllaDBMonitoring) labels.Set {
@@ -37,10 +42,29 @@ func (smc *Controller) getGrafanaSelector(sm *scyllav1alpha1.ScyllaDBMonitoring)
 	return labels.SelectorFromSet(smc.getGrafanaLabels(sm))
 }
 
-func makeGrafana(sm *scyllav1alpha1.ScyllaDBMonitoring) (*integreatlyv1alpha1.Grafana, string, error) {
-	return grafanav1alpha1assets.GrafanaTemplate.RenderObject(map[string]any{
+func generateGrafanaPassword() string {
+	return rand.String(grafanaPasswordLength)
+}
+
+func makeGrafana(sm *scyllav1alpha1.ScyllaDBMonitoring, grafanas map[string]*integreatlyv1alpha1.Grafana) (*integreatlyv1alpha1.Grafana, error) {
+	required, _, err := grafanav1alpha1assets.GrafanaTemplate.RenderObject(map[string]any{
 		"scyllaDBMonitoringName": sm.Name,
+		"password":               "::to::be:replaced::",
 	})
+	if err != nil {
+		return required, err
+	}
+
+	existing, ok := grafanas[required.Name]
+	if ok && existing.Spec.Config.Security != nil && len(existing.Spec.Config.Security.AdminPassword) == grafanaPasswordLength {
+		required.Spec.Config.Security.AdminPassword = existing.Spec.Config.Security.AdminPassword
+
+		return required, nil
+	}
+
+	required.Spec.Config.Security.AdminPassword = generateGrafanaPassword()
+
+	return required, nil
 }
 
 func makeGrafanaOverviewDashboard(sm *scyllav1alpha1.ScyllaDBMonitoring) (*integreatlyv1alpha1.GrafanaDashboard, string, error) {
@@ -50,9 +74,9 @@ func makeGrafanaOverviewDashboard(sm *scyllav1alpha1.ScyllaDBMonitoring) (*integ
 }
 
 func makeGrafanaIngress(sm *scyllav1alpha1.ScyllaDBMonitoring) (*networkingv1.Ingress, string, error) {
-	var ingressOptions *scyllav1alpha1.IngressOptions
+	var ingressOptions scyllav1alpha1.IngressOptions
 	if sm.Spec.Components != nil && sm.Spec.Components.Grafana != nil && sm.Spec.Components.Grafana.ExposeOptions != nil && sm.Spec.Components.Grafana.ExposeOptions.WebInterface != nil && sm.Spec.Components.Grafana.ExposeOptions.WebInterface.Ingress != nil {
-		ingressOptions = sm.Spec.Components.Grafana.ExposeOptions.WebInterface.Ingress
+		ingressOptions = *sm.Spec.Components.Grafana.ExposeOptions.WebInterface.Ingress
 	}
 	return grafanav1alpha1assets.GrafanaIngressTemplate.RenderObject(map[string]any{
 		"scyllaDBMonitoringName": sm.Name,
@@ -147,7 +171,7 @@ func (smc *Controller) syncGrafana(
 	requiredPrometheusDatasource, _, err := makeGrafanaPrometheusDataSource(sm)
 	renderErrors = append(renderErrors, err)
 
-	requiredGrafana, _, err := makeGrafana(sm)
+	requiredGrafana, err := makeGrafana(sm, grafanas)
 	renderErrors = append(renderErrors, err)
 
 	renderError := kutilerrors.NewAggregate(renderErrors)

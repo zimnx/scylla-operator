@@ -22,10 +22,10 @@ spec:
     auth.anonymous:
       enabled: True
 #    dashboards:
-#      default_home_dashboard_path: "test/cql-overview"
+#      default_home_dashboard_path: "cql-overview"
     security:
-      admin_password: "admin"
       admin_user: "admin"
+      admin_password: "{{ .password }}"
     server:
       protocol: https
       cert_file: /etc/grafana-secrets/test-grafana-serving-certs/tls.crt

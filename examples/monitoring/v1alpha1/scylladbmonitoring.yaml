@@ -15,7 +15,7 @@ spec:
           ingress:
             ingressClassName: haproxy
             dnsDomains:
-            - haproxy.minikube
-#            annotations:
-#              haproxy-ingress.github.io/ssl-passthrough: "true"
+            - test-grafana.test.svc.cluster.local
+            annotations:
+              haproxy-ingress.github.io/ssl-passthrough: "true"
 

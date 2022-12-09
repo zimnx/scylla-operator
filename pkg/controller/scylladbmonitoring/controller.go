@@ -68,6 +68,7 @@ type Controller struct {
 	scylladbMonitoringLister scyllav1alpha1listers.ScyllaDBMonitoringLister
 
 	prometheusLister     monitoringv1listers.PrometheusLister
+	prometheusRuleLister monitoringv1listers.PrometheusRuleLister
 	serviceMonitorLister monitoringv1listers.ServiceMonitorLister
 
 	grafanaLister           integreatlyv1alpha1listers.GrafanaLister
@@ -97,6 +98,7 @@ func NewController(
 	ingressInformer networkingv1informers.IngressInformer,
 	scyllaDBMonitoringInformer scyllav1alpha1informers.ScyllaDBMonitoringInformer,
 	prometheusInformer monitoringv1informers.PrometheusInformer,
+	prometheusRuleInformer monitoringv1informers.PrometheusRuleInformer,
 	serviceMonitorInformer monitoringv1informers.ServiceMonitorInformer,
 	grafanaInformer integreatlyv1alpha1informers.GrafanaInformer,
 	grafanaDashboardInformer integreatlyv1alpha1informers.GrafanaDashboardInformer,
@@ -134,6 +136,7 @@ func NewController(
 		scylladbMonitoringLister: scyllaDBMonitoringInformer.Lister(),
 
 		prometheusLister:     prometheusInformer.Lister(),
+		prometheusRuleLister: prometheusRuleInformer.Lister(),
 		serviceMonitorLister: serviceMonitorInformer.Lister(),
 
 		grafanaLister:           grafanaInformer.Lister(),
@@ -151,6 +154,7 @@ func NewController(
 			ingressInformer.Informer().HasSynced,
 			scyllaDBMonitoringInformer.Informer().HasSynced,
 			prometheusInformer.Informer().HasSynced,
+			prometheusRuleInformer.Informer().HasSynced,
 			serviceMonitorInformer.Informer().HasSynced,
 			grafanaInformer.Informer().HasSynced,
 			grafanaDashboardInformer.Informer().HasSynced,
@@ -186,6 +190,12 @@ func NewController(
 		AddFunc:    smc.addPrometheus,
 		UpdateFunc: smc.updatePrometheus,
 		DeleteFunc: smc.deletePrometheus,
+	})
+
+	prometheusRuleInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    smc.addPrometheusRule,
+		UpdateFunc: smc.updatePrometheusRule,
+		DeleteFunc: smc.deletePrometheusRule,
 	})
 
 	grafanaInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -349,6 +359,29 @@ func (smc *Controller) updatePrometheus(old, cur interface{}) {
 }
 
 func (smc *Controller) deletePrometheus(obj interface{}) {
+	smc.handlers.HandleDelete(
+		obj,
+		smc.handlers.EnqueueOwner,
+	)
+}
+
+func (smc *Controller) addPrometheusRule(obj interface{}) {
+	smc.handlers.HandleAdd(
+		obj.(*monitoringv1.PrometheusRule),
+		smc.handlers.EnqueueOwner,
+	)
+}
+
+func (smc *Controller) updatePrometheusRule(old, cur interface{}) {
+	smc.handlers.HandleUpdate(
+		old.(*monitoringv1.PrometheusRule),
+		cur.(*monitoringv1.PrometheusRule),
+		smc.handlers.EnqueueOwner,
+		smc.deletePrometheusRule,
+	)
+}
+
+func (smc *Controller) deletePrometheusRule(obj interface{}) {
 	smc.handlers.HandleDelete(
 		obj,
 		smc.handlers.EnqueueOwner,
