@@ -3,8 +3,11 @@ package controllerhelpers
 import (
 	"context"
 
+	"github.com/scylladb/scylla-operator/pkg/kubeinterfaces"
+	"github.com/scylladb/scylla-operator/pkg/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/klog/v2"
 )
 
 type PruneControlInterface interface {
@@ -21,7 +24,7 @@ func (pcf *PruneControlFuncs) Delete(ctx context.Context, name string, opts meta
 
 var _ PruneControlInterface = &PruneControlFuncs{}
 
-func Prune[T metav1.Object](ctx context.Context, requiredObjects []T, existingObjects map[string]T, control PruneControlInterface) error {
+func Prune[T kubeinterfaces.ObjectInterface](ctx context.Context, requiredObjects []T, existingObjects map[string]T, control PruneControlInterface) error {
 	var errs []error
 
 	for _, existing := range existingObjects {
@@ -42,6 +45,8 @@ func Prune[T metav1.Object](ctx context.Context, requiredObjects []T, existingOb
 
 		uid := existing.GetUID()
 		propagationPolicy := metav1.DeletePropagationBackground
+		// FIXME: emit event
+		klog.V(2).InfoS("Pruning resource", "GVK", resource.GetObjectGVKOrUnknown(existing), "Ref", klog.KObj(existing))
 		err := control.Delete(ctx, existing.GetName(), metav1.DeleteOptions{
 			Preconditions: &metav1.Preconditions{
 				UID: &uid,

@@ -94,6 +94,12 @@ type GrafanaSpec struct {
 	// exposeOptions specifies options for exposing Grafana UI.
 	// +optional
 	ExposeOptions *GrafanaExposeOptions `json:"exposeOptions,omitempty"`
+
+	// servingCertSecretName is the name of the secret holding a serving cert-key pair.
+	// If not specified, the operator will create a self-signed CA that creates
+	// the default serving cert-key pair.
+	// +optional
+	ServingCertSecretName string `json:"servingCertSecretName,omitempty"`
 }
 
 type Components struct {

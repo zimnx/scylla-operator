@@ -8,10 +8,14 @@ spec:
   - name: prometheus
     type: prometheus
     access: proxy
-    url: "http://{{ .scyllaDBMonitoringName }}-prometheus:9090" # FIXME: move to https
+    url: "https://{{ .scyllaDBMonitoringName }}-prometheus:9090"
     isDefault: true
     version: 1
     editable: true
     jsonData:
-      tlsSkipVerify: true # FIXME: remove
       timeInterval: "5s"
+      tlsAuth: true
+    secureJsonData:
+      tlsCACert: "$__file{/etc/grafana-configmaps/{{ .scyllaDBMonitoringName }}-prometheus-serving-ca/ca-bundle.crt}"
+      tlsClientCert: "$__file{/etc/grafana-secrets/{{ .scyllaDBMonitoringName }}-prometheus-client-grafana/tls.crt}"
+      tlsClientKey: "$__file{/etc/grafana-secrets/{{ .scyllaDBMonitoringName }}-prometheus-client-grafana/tls.crt}"

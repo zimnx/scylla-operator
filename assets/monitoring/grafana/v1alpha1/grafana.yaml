@@ -10,6 +10,8 @@ spec:
     enabled: False
   secrets:
   - "{{ .scyllaDBMonitoringName }}-grafana-serving-certs"
+  configmaps:
+  - "{{ .scyllaDBMonitoringName }}-prometheus-serving-ca"
   config:
     log:
       mode: "console"
@@ -28,8 +30,8 @@ spec:
       admin_password: "{{ .password }}"
     server:
       protocol: https
-      cert_file: /etc/grafana-secrets/test-grafana-serving-certs/tls.crt
-      cert_key: /etc/grafana-secrets/test-grafana-serving-certs/tls.key
+      cert_file: /etc/grafana-secrets/{{ .servingCertSecretName }}/tls.crt
+      cert_key: /etc/grafana-secrets/{{ .servingCertSecretName }}/tls.key
   service:
     name: "{{ .scyllaDBMonitoringName }}-grafana"
     labels:

@@ -46,10 +46,11 @@ func generateGrafanaPassword() string {
 	return rand.String(grafanaPasswordLength)
 }
 
-func makeGrafana(sm *scyllav1alpha1.ScyllaDBMonitoring, grafanas map[string]*integreatlyv1alpha1.Grafana) (*integreatlyv1alpha1.Grafana, error) {
+func makeGrafana(sm *scyllav1alpha1.ScyllaDBMonitoring, grafanas map[string]*integreatlyv1alpha1.Grafana, grafanaServingCertSecretName string) (*integreatlyv1alpha1.Grafana, error) {
 	required, _, err := grafanav1alpha1assets.GrafanaTemplate.RenderObject(map[string]any{
 		"scyllaDBMonitoringName": sm.Name,
 		"password":               "::to::be:replaced::",
+		"servingCertSecretName":  grafanaServingCertSecretName,
 	})
 	if err != nil {
 		return required, err
@@ -97,6 +98,52 @@ func (smc *Controller) syncGrafana(
 ) ([]metav1.Condition, error) {
 	var progressingConditions []metav1.Condition
 
+	grafanaServingCertChainConfig := &okubecrypto.CertChainConfig{
+		CAConfig: &okubecrypto.CAConfig{
+			MetaConfig: okubecrypto.MetaConfig{
+				Name:   fmt.Sprintf("%s-grafana-serving-ca", sm.Name),
+				Labels: smc.getGrafanaLabels(sm),
+			},
+			Validity: 10 * 365 * 24 * time.Hour,
+			Refresh:  8 * 365 * 24 * time.Hour,
+		},
+		CABundleConfig: &okubecrypto.CABundleConfig{
+			MetaConfig: okubecrypto.MetaConfig{
+				Name:   fmt.Sprintf("%s-grafana-serving-ca", sm.Name),
+				Labels: smc.getGrafanaLabels(sm),
+			},
+		},
+		CertConfigs: []*okubecrypto.CertificateConfig{
+			{
+				MetaConfig: okubecrypto.MetaConfig{
+					Name:   fmt.Sprintf("%s-grafana-serving-certs", sm.Name),
+					Labels: smc.getGrafanaLabels(sm),
+				},
+				Validity: 30 * 24 * time.Hour,
+				Refresh:  20 * 24 * time.Hour,
+				CertCreator: (&ocrypto.ServingCertCreatorConfig{
+					Subject: pkix.Name{
+						CommonName: "",
+					},
+					IPAddresses: nil,
+					DNSNames:    sm.Spec.Components.Grafana.ExposeOptions.WebInterface.Ingress.DNSDomains,
+				}).ToCreator(),
+			},
+		},
+	}
+
+	var certChainConfigs okubecrypto.CertChainConfigs
+
+	var grafanaServingCertSecretName string
+	if sm.Spec.Components != nil && sm.Spec.Components.Grafana != nil {
+		grafanaServingCertSecretName = sm.Spec.Components.Grafana.ServingCertSecretName
+	}
+
+	if len(grafanaServingCertSecretName) == 0 {
+		grafanaServingCertSecretName = grafanaServingCertChainConfig.CertConfigs[0].Name
+		certChainConfigs = append(certChainConfigs, grafanaServingCertChainConfig)
+	}
+
 	dashboards, err := controllerhelpers.GetObjects[CT, *integreatlyv1alpha1.GrafanaDashboard](
 		ctx,
 		sm,
@@ -104,7 +151,7 @@ func (smc *Controller) syncGrafana(
 		smc.getGrafanaSelector(sm),
 		controllerhelpers.ControlleeManagerGetObjectsFuncs[CT, *integreatlyv1alpha1.GrafanaDashboard]{
 			GetControllerUncachedFunc: smc.scyllaV1alpha1Client.ScyllaDBMonitorings(sm.Namespace).Get,
-			ListObjectsFunc:           smc.grafanaDashboardLister.List,
+			ListObjectsFunc:           smc.grafanaDashboardLister.GrafanaDashboards(sm.Namespace).List,
 			PatchObjectFunc:           smc.integreatlyClient.GrafanaDashboards(sm.Namespace).Patch,
 		},
 	)
@@ -116,7 +163,7 @@ func (smc *Controller) syncGrafana(
 		smc.getGrafanaSelector(sm),
 		controllerhelpers.ControlleeManagerGetObjectsFuncs[CT, *integreatlyv1alpha1.GrafanaDataSource]{
 			GetControllerUncachedFunc: smc.scyllaV1alpha1Client.ScyllaDBMonitorings(sm.Namespace).Get,
-			ListObjectsFunc:           smc.grafanaDataSourceLister.List,
+			ListObjectsFunc:           smc.grafanaDataSourceLister.GrafanaDataSources(sm.Namespace).List,
 			PatchObjectFunc:           smc.integreatlyClient.GrafanaDataSources(sm.Namespace).Patch,
 		},
 	)
@@ -128,12 +175,11 @@ func (smc *Controller) syncGrafana(
 		smc.getGrafanaSelector(sm),
 		controllerhelpers.ControlleeManagerGetObjectsFuncs[CT, *networkingv1.Ingress]{
 			GetControllerUncachedFunc: smc.scyllaV1alpha1Client.ScyllaDBMonitorings(sm.Namespace).Get,
-			ListObjectsFunc:           smc.ingressLister.List,
+			ListObjectsFunc:           smc.ingressLister.Ingresses(sm.Namespace).List,
 			PatchObjectFunc:           smc.kubeClient.NetworkingV1().Ingresses(sm.Namespace).Patch,
 		},
 	)
 
-	// FIXME: we can't prune secrets because they are managed separately and we don't know the desired ones
 	secrets, err := controllerhelpers.GetObjects[CT, *corev1.Secret](
 		ctx,
 		sm,
@@ -141,12 +187,11 @@ func (smc *Controller) syncGrafana(
 		smc.getGrafanaSelector(sm),
 		controllerhelpers.ControlleeManagerGetObjectsFuncs[CT, *corev1.Secret]{
 			GetControllerUncachedFunc: smc.scyllaV1alpha1Client.ScyllaDBMonitorings(sm.Namespace).Get,
-			ListObjectsFunc:           smc.secretLister.List,
+			ListObjectsFunc:           smc.secretLister.Secrets(sm.Namespace).List,
 			PatchObjectFunc:           smc.kubeClient.CoreV1().Secrets(sm.Namespace).Patch,
 		},
 	)
 
-	// FIXME: we can't prune configMaps because they are managed separately and we don't know the desired ones
 	configMaps, err := controllerhelpers.GetObjects[CT, *corev1.ConfigMap](
 		ctx,
 		sm,
@@ -154,7 +199,7 @@ func (smc *Controller) syncGrafana(
 		smc.getGrafanaSelector(sm),
 		controllerhelpers.ControlleeManagerGetObjectsFuncs[CT, *corev1.ConfigMap]{
 			GetControllerUncachedFunc: smc.scyllaV1alpha1Client.ScyllaDBMonitorings(sm.Namespace).Get,
-			ListObjectsFunc:           smc.configMapLister.List,
+			ListObjectsFunc:           smc.configMapLister.ConfigMaps(sm.Namespace).List,
 			PatchObjectFunc:           smc.kubeClient.CoreV1().ConfigMaps(sm.Namespace).Patch,
 		},
 	)
@@ -171,7 +216,7 @@ func (smc *Controller) syncGrafana(
 	requiredPrometheusDatasource, _, err := makeGrafanaPrometheusDataSource(sm)
 	renderErrors = append(renderErrors, err)
 
-	requiredGrafana, err := makeGrafana(sm, grafanas)
+	requiredGrafana, err := makeGrafana(sm, grafanas, grafanaServingCertSecretName)
 	renderErrors = append(renderErrors, err)
 
 	renderError := kutilerrors.NewAggregate(renderErrors)
@@ -218,6 +263,26 @@ func (smc *Controller) syncGrafana(
 		grafanas,
 		&controllerhelpers.PruneControlFuncs{
 			DeleteFunc: smc.integreatlyClient.Grafanas(sm.Namespace).Delete,
+		},
+	)
+	pruneErrors = append(pruneErrors, err)
+
+	err = controllerhelpers.Prune(
+		ctx,
+		certChainConfigs.GetMetaSecrets(),
+		secrets,
+		&controllerhelpers.PruneControlFuncs{
+			DeleteFunc: smc.kubeClient.CoreV1().Secrets(sm.Namespace).Delete,
+		},
+	)
+	pruneErrors = append(pruneErrors, err)
+
+	err = controllerhelpers.Prune(
+		ctx,
+		certChainConfigs.GetMetaConfigMaps(),
+		configMaps,
+		&controllerhelpers.PruneControlFuncs{
+			DeleteFunc: smc.kubeClient.CoreV1().ConfigMaps(sm.Namespace).Delete,
 		},
 	)
 	pruneErrors = append(pruneErrors, err)
@@ -307,44 +372,13 @@ func (smc *Controller) syncGrafana(
 		smc.configMapLister,
 		smc.eventRecorder,
 	)
-
-	if sm.Spec.Components != nil && sm.Spec.Components.Grafana != nil && sm.Spec.Components.Grafana.ExposeOptions != nil && sm.Spec.Components.Grafana.ExposeOptions.WebInterface != nil && sm.Spec.Components.Grafana.ExposeOptions.WebInterface.Ingress != nil {
-		applyErrors = append(applyErrors, cm.ManageCertificates(
+	for _, ccc := range certChainConfigs {
+		applyErrors = append(applyErrors, cm.ManageCertificateChain(
 			ctx,
 			time.Now,
 			&sm.ObjectMeta,
 			scylladbMonitoringControllerGVK,
-			&okubecrypto.CAConfig{
-				MetaConfig: okubecrypto.MetaConfig{
-					Name:   fmt.Sprintf("%s-grafana-serving-ca", sm.Name),
-					Labels: smc.getGrafanaLabels(sm),
-				},
-				Validity: 10 * 365 * 24 * time.Hour,
-				Refresh:  8 * 365 * 24 * time.Hour,
-			},
-			&okubecrypto.CABundleConfig{
-				MetaConfig: okubecrypto.MetaConfig{
-					Name:   fmt.Sprintf("%s-grafana-serving-ca", sm.Name),
-					Labels: smc.getGrafanaLabels(sm),
-				},
-			},
-			[]*okubecrypto.CertificateConfig{
-				{
-					MetaConfig: okubecrypto.MetaConfig{
-						Name:   fmt.Sprintf("%s-grafana-serving-certs", sm.Name),
-						Labels: smc.getGrafanaLabels(sm),
-					},
-					Validity: 30 * 24 * time.Hour,
-					Refresh:  20 * 24 * time.Hour,
-					CertCreator: (&ocrypto.ServingCertCreatorConfig{
-						Subject: pkix.Name{
-							CommonName: "",
-						},
-						IPAddresses: nil,
-						DNSNames:    sm.Spec.Components.Grafana.ExposeOptions.WebInterface.Ingress.DNSDomains,
-					}).ToCreator(),
-				},
-			},
+			ccc,
 			secrets,
 			configMaps,
 		))

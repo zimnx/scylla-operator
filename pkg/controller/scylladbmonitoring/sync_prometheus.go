@@ -2,13 +2,17 @@ package scylladbmonitoring
 
 import (
 	"context"
+	"crypto/x509/pkix"
 	"fmt"
+	"time"
 
 	prometheusv1assets "github.com/scylladb/scylla-operator/assets/monitoring/prometheus/v1"
 	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
+	ocrypto "github.com/scylladb/scylla-operator/pkg/crypto"
 	monitoringv1 "github.com/scylladb/scylla-operator/pkg/externalapi/monitoring/v1"
 	"github.com/scylladb/scylla-operator/pkg/helpers"
+	okubecrypto "github.com/scylladb/scylla-operator/pkg/kubecrypto"
 	"github.com/scylladb/scylla-operator/pkg/kubeinterfaces"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	"github.com/scylladb/scylla-operator/pkg/resource"
@@ -65,17 +69,103 @@ func (smc *Controller) syncPrometheus(
 ) ([]metav1.Condition, error) {
 	var progressingConditions []metav1.Condition
 
-	// secretsMap, err := controllerhelpers.GetObjects[CT, *corev1.Secret](
-	// 	ctx,
-	// 	sm,
-	// 	scylladbMonitoringControllerGVK,
-	// 	smc.getPrometheusSelector(sm),
-	// 	controllerhelpers.ControlleeManagerGetObjectsFuncs[CT, *corev1.Secret]{
-	// 		GetControllerUncachedFunc: smc.scyllaV1alpha1Client.ScyllaDBMonitorings(sm.Namespace).Get,
-	// 		ListObjectsFunc:           smc.secretLister.List,
-	// 		PatchObjectFunc:           smc.kubeClient.CoreV1().Secrets(sm.Namespace).Patch,
-	// 	},
-	// )
+	prometheusServingCertChainConfig := &okubecrypto.CertChainConfig{
+		CAConfig: &okubecrypto.CAConfig{
+			MetaConfig: okubecrypto.MetaConfig{
+				Name:   fmt.Sprintf("%s-prometheus-serving-ca", sm.Name),
+				Labels: smc.getPrometheusLabels(sm),
+			},
+			Validity: 10 * 365 * 24 * time.Hour,
+			Refresh:  8 * 365 * 24 * time.Hour,
+		},
+		CABundleConfig: &okubecrypto.CABundleConfig{
+			MetaConfig: okubecrypto.MetaConfig{
+				Name:   fmt.Sprintf("%s-prometheus-serving-ca", sm.Name),
+				Labels: smc.getPrometheusLabels(sm),
+			},
+		},
+		CertConfigs: []*okubecrypto.CertificateConfig{
+			{
+				MetaConfig: okubecrypto.MetaConfig{
+					Name:   fmt.Sprintf("%s-prometheus-serving-certs", sm.Name),
+					Labels: smc.getPrometheusLabels(sm),
+				},
+				Validity: 30 * 24 * time.Hour,
+				Refresh:  20 * 24 * time.Hour,
+				CertCreator: (&ocrypto.ServingCertCreatorConfig{
+					Subject: pkix.Name{
+						CommonName: "",
+					},
+					IPAddresses: nil,
+					DNSNames: []string{
+						fmt.Sprintf("%s-prometheus", sm.Name),
+					},
+				}).ToCreator(),
+			},
+		},
+	}
+
+	prometheusClientCertChainConfig := &okubecrypto.CertChainConfig{
+		CAConfig: &okubecrypto.CAConfig{
+			MetaConfig: okubecrypto.MetaConfig{
+				Name:   fmt.Sprintf("%s-prometheus-client-ca", sm.Name),
+				Labels: smc.getPrometheusLabels(sm),
+			},
+			Validity: 10 * 365 * 24 * time.Hour,
+			Refresh:  8 * 365 * 24 * time.Hour,
+		},
+		CABundleConfig: &okubecrypto.CABundleConfig{
+			MetaConfig: okubecrypto.MetaConfig{
+				Name:   fmt.Sprintf("%s-prometheus-client-ca", sm.Name),
+				Labels: smc.getPrometheusLabels(sm),
+			},
+		},
+		CertConfigs: []*okubecrypto.CertificateConfig{
+			{
+				MetaConfig: okubecrypto.MetaConfig{
+					Name:   fmt.Sprintf("%s-prometheus-client-grafana", sm.Name),
+					Labels: smc.getPrometheusLabels(sm),
+				},
+				Validity: 10 * 365 * 24 * time.Hour,
+				Refresh:  8 * 365 * 24 * time.Hour,
+				CertCreator: (&ocrypto.ClientCertCreatorConfig{
+					Subject: pkix.Name{
+						CommonName: "",
+					},
+					DNSNames: []string{"grafana"},
+				}).ToCreator(),
+			},
+		},
+	}
+
+	certChainConfigs := okubecrypto.CertChainConfigs{
+		prometheusServingCertChainConfig,
+		prometheusClientCertChainConfig,
+	}
+
+	secrets, err := controllerhelpers.GetObjects[CT, *corev1.Secret](
+		ctx,
+		sm,
+		scylladbMonitoringControllerGVK,
+		smc.getPrometheusSelector(sm),
+		controllerhelpers.ControlleeManagerGetObjectsFuncs[CT, *corev1.Secret]{
+			GetControllerUncachedFunc: smc.scyllaV1alpha1Client.ScyllaDBMonitorings(sm.Namespace).Get,
+			ListObjectsFunc:           smc.secretLister.Secrets(sm.Namespace).List,
+			PatchObjectFunc:           smc.kubeClient.CoreV1().Secrets(sm.Namespace).Patch,
+		},
+	)
+
+	configMaps, err := controllerhelpers.GetObjects[CT, *corev1.ConfigMap](
+		ctx,
+		sm,
+		scylladbMonitoringControllerGVK,
+		smc.getPrometheusSelector(sm),
+		controllerhelpers.ControlleeManagerGetObjectsFuncs[CT, *corev1.ConfigMap]{
+			GetControllerUncachedFunc: smc.scyllaV1alpha1Client.ScyllaDBMonitorings(sm.Namespace).Get,
+			ListObjectsFunc:           smc.configMapLister.ConfigMaps(sm.Namespace).List,
+			PatchObjectFunc:           smc.kubeClient.CoreV1().ConfigMaps(sm.Namespace).Patch,
+		},
+	)
 
 	serviceAccounts, err := controllerhelpers.GetObjects[CT, *corev1.ServiceAccount](
 		ctx,
@@ -84,7 +174,7 @@ func (smc *Controller) syncPrometheus(
 		smc.getPrometheusSelector(sm),
 		controllerhelpers.ControlleeManagerGetObjectsFuncs[CT, *corev1.ServiceAccount]{
 			GetControllerUncachedFunc: smc.scyllaV1alpha1Client.ScyllaDBMonitorings(sm.Namespace).Get,
-			ListObjectsFunc:           smc.serviceAccountLister.List,
+			ListObjectsFunc:           smc.serviceAccountLister.ServiceAccounts(sm.Namespace).List,
 			PatchObjectFunc:           smc.kubeClient.CoreV1().ServiceAccounts(sm.Namespace).Patch,
 		},
 	)
@@ -96,7 +186,7 @@ func (smc *Controller) syncPrometheus(
 		smc.getPrometheusSelector(sm),
 		controllerhelpers.ControlleeManagerGetObjectsFuncs[CT, *corev1.Service]{
 			GetControllerUncachedFunc: smc.scyllaV1alpha1Client.ScyllaDBMonitorings(sm.Namespace).Get,
-			ListObjectsFunc:           smc.serviceLister.List,
+			ListObjectsFunc:           smc.serviceLister.Services(sm.Namespace).List,
 			PatchObjectFunc:           smc.kubeClient.CoreV1().Services(sm.Namespace).Patch,
 		},
 	)
@@ -108,7 +198,7 @@ func (smc *Controller) syncPrometheus(
 		smc.getPrometheusSelector(sm),
 		controllerhelpers.ControlleeManagerGetObjectsFuncs[CT, *rbacv1.RoleBinding]{
 			GetControllerUncachedFunc: smc.scyllaV1alpha1Client.ScyllaDBMonitorings(sm.Namespace).Get,
-			ListObjectsFunc:           smc.roleBindingLister.List,
+			ListObjectsFunc:           smc.roleBindingLister.RoleBindings(sm.Namespace).List,
 			PatchObjectFunc:           smc.kubeClient.RbacV1().RoleBindings(sm.Namespace).Patch,
 		},
 	)
@@ -120,7 +210,7 @@ func (smc *Controller) syncPrometheus(
 		smc.getPrometheusSelector(sm),
 		controllerhelpers.ControlleeManagerGetObjectsFuncs[CT, *monitoringv1.ServiceMonitor]{
 			GetControllerUncachedFunc: smc.scyllaV1alpha1Client.ScyllaDBMonitorings(sm.Namespace).Get,
-			ListObjectsFunc:           smc.serviceMonitorLister.List,
+			ListObjectsFunc:           smc.serviceMonitorLister.ServiceMonitors(sm.Namespace).List,
 			PatchObjectFunc:           smc.monitoringClient.ServiceMonitors(sm.Namespace).Patch,
 		},
 	)
@@ -132,7 +222,7 @@ func (smc *Controller) syncPrometheus(
 		smc.getPrometheusSelector(sm),
 		controllerhelpers.ControlleeManagerGetObjectsFuncs[CT, *monitoringv1.PrometheusRule]{
 			GetControllerUncachedFunc: smc.scyllaV1alpha1Client.ScyllaDBMonitorings(sm.Namespace).Get,
-			ListObjectsFunc:           smc.prometheusRuleLister.List,
+			ListObjectsFunc:           smc.prometheusRuleLister.PrometheusRules(sm.Namespace).List,
 			PatchObjectFunc:           smc.monitoringClient.PrometheusRules(sm.Namespace).Patch,
 		},
 	)
@@ -234,6 +324,26 @@ func (smc *Controller) syncPrometheus(
 	)
 	pruneErrors = append(pruneErrors, err)
 
+	err = controllerhelpers.Prune(
+		ctx,
+		certChainConfigs.GetMetaSecrets(),
+		secrets,
+		&controllerhelpers.PruneControlFuncs{
+			DeleteFunc: smc.kubeClient.CoreV1().Secrets(sm.Namespace).Delete,
+		},
+	)
+	pruneErrors = append(pruneErrors, err)
+
+	err = controllerhelpers.Prune(
+		ctx,
+		certChainConfigs.GetMetaConfigMaps(),
+		configMaps,
+		&controllerhelpers.PruneControlFuncs{
+			DeleteFunc: smc.kubeClient.CoreV1().ConfigMaps(sm.Namespace).Delete,
+		},
+	)
+	pruneErrors = append(pruneErrors, err)
+
 	pruneError := kutilerrors.NewAggregate(pruneErrors)
 	if pruneError != nil {
 		return progressingConditions, pruneError
@@ -326,6 +436,25 @@ func (smc *Controller) syncPrometheus(
 			gvk := resource.GetObjectGVKOrUnknown(item.required)
 			applyErrors = append(applyErrors, fmt.Errorf("can't apply %s: %w", gvk, err))
 		}
+	}
+
+	cm := okubecrypto.NewCertificateManager(
+		smc.kubeClient.CoreV1(),
+		smc.secretLister,
+		smc.kubeClient.CoreV1(),
+		smc.configMapLister,
+		smc.eventRecorder,
+	)
+	for _, ccc := range certChainConfigs {
+		applyErrors = append(applyErrors, cm.ManageCertificateChain(
+			ctx,
+			time.Now,
+			&sm.ObjectMeta,
+			scylladbMonitoringControllerGVK,
+			ccc,
+			secrets,
+			configMaps,
+		))
 	}
 
 	applyError := kutilerrors.NewAggregate(applyErrors)

@@ -4,6 +4,23 @@ metadata:
   name: "{{ .scyllaDBMonitoringName }}"
 spec:
   serviceAccountName: "{{ .scyllaDBMonitoringName }}-prometheus"
+  web:
+    pageTitle: "ScyllaDB Prometheus"
+    tlsConfig:
+      cert:
+        secret:
+          name: "{{ .scyllaDBMonitoringName }}-prometheus-serving-certs"
+          key: "tls.crt"
+      keySecret:
+        name: "{{ .scyllaDBMonitoringName }}-prometheus-serving-certs"
+        key: "tls.key"
+#      clientAuthType: "RequireAndVerifyClientCert"
+      client_ca:
+        configMap:
+          name: "{{ .scyllaDBMonitoringName }}-prometheus-client-ca"
+          key: "ca-bundle.crt"
+    httpConfig:
+      http2: true
   serviceMonitorSelector:
     matchLabels: {}
   resources:

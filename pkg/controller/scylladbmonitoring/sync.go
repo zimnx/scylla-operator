@@ -47,7 +47,7 @@ func (smc *Controller) sync(ctx context.Context, key string) error {
 		smc.getPrometheusSelector(sm),
 		controllerhelpers.ControlleeManagerGetObjectsFuncs[CT, *monitoringv1.Prometheus]{
 			GetControllerUncachedFunc: smc.scyllaV1alpha1Client.ScyllaDBMonitorings(sm.Namespace).Get,
-			ListObjectsFunc:           smc.prometheusLister.List,
+			ListObjectsFunc:           smc.prometheusLister.Prometheuses(sm.Namespace).List,
 			PatchObjectFunc:           smc.monitoringClient.Prometheuses(sm.Namespace).Patch,
 		},
 	)
@@ -59,7 +59,7 @@ func (smc *Controller) sync(ctx context.Context, key string) error {
 		smc.getGrafanaSelector(sm),
 		controllerhelpers.ControlleeManagerGetObjectsFuncs[CT, *integreatlyv1alpha1.Grafana]{
 			GetControllerUncachedFunc: smc.scyllaV1alpha1Client.ScyllaDBMonitorings(sm.Namespace).Get,
-			ListObjectsFunc:           smc.grafanaLister.List,
+			ListObjectsFunc:           smc.grafanaLister.Grafanas(sm.Namespace).List,
 			PatchObjectFunc:           smc.integreatlyClient.Grafanas(sm.Namespace).Patch,
 		},
 	)
