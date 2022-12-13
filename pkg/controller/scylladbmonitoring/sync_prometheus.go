@@ -26,15 +26,17 @@ import (
 	"k8s.io/utils/pointer"
 )
 
-func (smc *Controller) getPrometheusLabels(sm *scyllav1alpha1.ScyllaDBMonitoring) labels.Set {
-	return labels.Set{
-		naming.ScyllaDBMonitoringNameLabel: sm.Name,
-		naming.ControllerNameLabel:         "prometheus",
-	}
+func getPrometheusLabels(sm *scyllav1alpha1.ScyllaDBMonitoring) labels.Set {
+	return helpers.MergeMaps(
+		getLabels(sm),
+		labels.Set{
+			naming.ControllerNameLabel: "prometheus",
+		},
+	)
 }
 
-func (smc *Controller) getPrometheusSelector(sm *scyllav1alpha1.ScyllaDBMonitoring) labels.Selector {
-	return labels.SelectorFromSet(smc.getPrometheusLabels(sm))
+func getPrometheusSelector(sm *scyllav1alpha1.ScyllaDBMonitoring) labels.Selector {
+	return labels.SelectorFromSet(getPrometheusLabels(sm))
 }
 
 func makeScyllaDBServiceMonitor(sm *scyllav1alpha1.ScyllaDBMonitoring) (*monitoringv1.ServiceMonitor, string, error) {
@@ -66,6 +68,13 @@ func (smc *Controller) syncPrometheus(
 	ctx context.Context,
 	sm *scyllav1alpha1.ScyllaDBMonitoring,
 	prometheuses map[string]*monitoringv1.Prometheus,
+	prometheusRules map[string]*monitoringv1.PrometheusRule,
+	serviceMonitors map[string]*monitoringv1.ServiceMonitor,
+	secrets map[string]*corev1.Secret,
+	configMaps map[string]*corev1.ConfigMap,
+	serviceAccounts map[string]*corev1.ServiceAccount,
+	services map[string]*corev1.Service,
+	roleBindings map[string]*rbacv1.RoleBinding,
 ) ([]metav1.Condition, error) {
 	var progressingConditions []metav1.Condition
 
@@ -73,7 +82,7 @@ func (smc *Controller) syncPrometheus(
 		CAConfig: &okubecrypto.CAConfig{
 			MetaConfig: okubecrypto.MetaConfig{
 				Name:   fmt.Sprintf("%s-prometheus-serving-ca", sm.Name),
-				Labels: smc.getPrometheusLabels(sm),
+				Labels: getPrometheusLabels(sm),
 			},
 			Validity: 10 * 365 * 24 * time.Hour,
 			Refresh:  8 * 365 * 24 * time.Hour,
@@ -81,14 +90,14 @@ func (smc *Controller) syncPrometheus(
 		CABundleConfig: &okubecrypto.CABundleConfig{
 			MetaConfig: okubecrypto.MetaConfig{
 				Name:   fmt.Sprintf("%s-prometheus-serving-ca", sm.Name),
-				Labels: smc.getPrometheusLabels(sm),
+				Labels: getPrometheusLabels(sm),
 			},
 		},
 		CertConfigs: []*okubecrypto.CertificateConfig{
 			{
 				MetaConfig: okubecrypto.MetaConfig{
 					Name:   fmt.Sprintf("%s-prometheus-serving-certs", sm.Name),
-					Labels: smc.getPrometheusLabels(sm),
+					Labels: getPrometheusLabels(sm),
 				},
 				Validity: 30 * 24 * time.Hour,
 				Refresh:  20 * 24 * time.Hour,
@@ -109,7 +118,7 @@ func (smc *Controller) syncPrometheus(
 		CAConfig: &okubecrypto.CAConfig{
 			MetaConfig: okubecrypto.MetaConfig{
 				Name:   fmt.Sprintf("%s-prometheus-client-ca", sm.Name),
-				Labels: smc.getPrometheusLabels(sm),
+				Labels: getPrometheusLabels(sm),
 			},
 			Validity: 10 * 365 * 24 * time.Hour,
 			Refresh:  8 * 365 * 24 * time.Hour,
@@ -117,14 +126,14 @@ func (smc *Controller) syncPrometheus(
 		CABundleConfig: &okubecrypto.CABundleConfig{
 			MetaConfig: okubecrypto.MetaConfig{
 				Name:   fmt.Sprintf("%s-prometheus-client-ca", sm.Name),
-				Labels: smc.getPrometheusLabels(sm),
+				Labels: getPrometheusLabels(sm),
 			},
 		},
 		CertConfigs: []*okubecrypto.CertificateConfig{
 			{
 				MetaConfig: okubecrypto.MetaConfig{
 					Name:   fmt.Sprintf("%s-prometheus-client-grafana", sm.Name),
-					Labels: smc.getPrometheusLabels(sm),
+					Labels: getPrometheusLabels(sm),
 				},
 				Validity: 10 * 365 * 24 * time.Hour,
 				Refresh:  8 * 365 * 24 * time.Hour,
@@ -142,90 +151,6 @@ func (smc *Controller) syncPrometheus(
 		prometheusServingCertChainConfig,
 		prometheusClientCertChainConfig,
 	}
-
-	secrets, err := controllerhelpers.GetObjects[CT, *corev1.Secret](
-		ctx,
-		sm,
-		scylladbMonitoringControllerGVK,
-		smc.getPrometheusSelector(sm),
-		controllerhelpers.ControlleeManagerGetObjectsFuncs[CT, *corev1.Secret]{
-			GetControllerUncachedFunc: smc.scyllaV1alpha1Client.ScyllaDBMonitorings(sm.Namespace).Get,
-			ListObjectsFunc:           smc.secretLister.Secrets(sm.Namespace).List,
-			PatchObjectFunc:           smc.kubeClient.CoreV1().Secrets(sm.Namespace).Patch,
-		},
-	)
-
-	configMaps, err := controllerhelpers.GetObjects[CT, *corev1.ConfigMap](
-		ctx,
-		sm,
-		scylladbMonitoringControllerGVK,
-		smc.getPrometheusSelector(sm),
-		controllerhelpers.ControlleeManagerGetObjectsFuncs[CT, *corev1.ConfigMap]{
-			GetControllerUncachedFunc: smc.scyllaV1alpha1Client.ScyllaDBMonitorings(sm.Namespace).Get,
-			ListObjectsFunc:           smc.configMapLister.ConfigMaps(sm.Namespace).List,
-			PatchObjectFunc:           smc.kubeClient.CoreV1().ConfigMaps(sm.Namespace).Patch,
-		},
-	)
-
-	serviceAccounts, err := controllerhelpers.GetObjects[CT, *corev1.ServiceAccount](
-		ctx,
-		sm,
-		scylladbMonitoringControllerGVK,
-		smc.getPrometheusSelector(sm),
-		controllerhelpers.ControlleeManagerGetObjectsFuncs[CT, *corev1.ServiceAccount]{
-			GetControllerUncachedFunc: smc.scyllaV1alpha1Client.ScyllaDBMonitorings(sm.Namespace).Get,
-			ListObjectsFunc:           smc.serviceAccountLister.ServiceAccounts(sm.Namespace).List,
-			PatchObjectFunc:           smc.kubeClient.CoreV1().ServiceAccounts(sm.Namespace).Patch,
-		},
-	)
-
-	services, err := controllerhelpers.GetObjects[CT, *corev1.Service](
-		ctx,
-		sm,
-		scylladbMonitoringControllerGVK,
-		smc.getPrometheusSelector(sm),
-		controllerhelpers.ControlleeManagerGetObjectsFuncs[CT, *corev1.Service]{
-			GetControllerUncachedFunc: smc.scyllaV1alpha1Client.ScyllaDBMonitorings(sm.Namespace).Get,
-			ListObjectsFunc:           smc.serviceLister.Services(sm.Namespace).List,
-			PatchObjectFunc:           smc.kubeClient.CoreV1().Services(sm.Namespace).Patch,
-		},
-	)
-
-	roleBindings, err := controllerhelpers.GetObjects[CT, *rbacv1.RoleBinding](
-		ctx,
-		sm,
-		scylladbMonitoringControllerGVK,
-		smc.getPrometheusSelector(sm),
-		controllerhelpers.ControlleeManagerGetObjectsFuncs[CT, *rbacv1.RoleBinding]{
-			GetControllerUncachedFunc: smc.scyllaV1alpha1Client.ScyllaDBMonitorings(sm.Namespace).Get,
-			ListObjectsFunc:           smc.roleBindingLister.RoleBindings(sm.Namespace).List,
-			PatchObjectFunc:           smc.kubeClient.RbacV1().RoleBindings(sm.Namespace).Patch,
-		},
-	)
-
-	serviceMonitors, err := controllerhelpers.GetObjects[CT, *monitoringv1.ServiceMonitor](
-		ctx,
-		sm,
-		scylladbMonitoringControllerGVK,
-		smc.getPrometheusSelector(sm),
-		controllerhelpers.ControlleeManagerGetObjectsFuncs[CT, *monitoringv1.ServiceMonitor]{
-			GetControllerUncachedFunc: smc.scyllaV1alpha1Client.ScyllaDBMonitorings(sm.Namespace).Get,
-			ListObjectsFunc:           smc.serviceMonitorLister.ServiceMonitors(sm.Namespace).List,
-			PatchObjectFunc:           smc.monitoringClient.ServiceMonitors(sm.Namespace).Patch,
-		},
-	)
-
-	prometheusRules, err := controllerhelpers.GetObjects[CT, *monitoringv1.PrometheusRule](
-		ctx,
-		sm,
-		scylladbMonitoringControllerGVK,
-		smc.getPrometheusSelector(sm),
-		controllerhelpers.ControlleeManagerGetObjectsFuncs[CT, *monitoringv1.PrometheusRule]{
-			GetControllerUncachedFunc: smc.scyllaV1alpha1Client.ScyllaDBMonitorings(sm.Namespace).Get,
-			ListObjectsFunc:           smc.prometheusRuleLister.PrometheusRules(sm.Namespace).List,
-			PatchObjectFunc:           smc.monitoringClient.PrometheusRules(sm.Namespace).Patch,
-		},
-	)
 
 	// Render manifests.
 	var renderErrors []error
@@ -410,9 +335,9 @@ func (smc *Controller) syncPrometheus(
 
 		// Enforce labels for selection.
 		if item.required.GetLabels() == nil {
-			item.required.SetLabels(smc.getPrometheusLabels(sm))
+			item.required.SetLabels(getPrometheusLabels(sm))
 		} else {
-			resourcemerge.MergeMapInPlaceWithoutRemovalKeys2(item.required.GetLabels(), smc.getPrometheusLabels(sm))
+			resourcemerge.MergeMapInPlaceWithoutRemovalKeys2(item.required.GetLabels(), getPrometheusLabels(sm))
 		}
 
 		// Set ControllerRef.

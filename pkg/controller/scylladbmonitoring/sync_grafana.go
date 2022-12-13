@@ -31,15 +31,17 @@ const (
 	grafanaPasswordLength = 20
 )
 
-func (smc *Controller) getGrafanaLabels(sm *scyllav1alpha1.ScyllaDBMonitoring) labels.Set {
-	return labels.Set{
-		naming.ScyllaDBMonitoringNameLabel: sm.Name,
-		naming.ControllerNameLabel:         "grafana",
-	}
+func getGrafanaLabels(sm *scyllav1alpha1.ScyllaDBMonitoring) labels.Set {
+	return helpers.MergeMaps(
+		getLabels(sm),
+		labels.Set{
+			naming.ControllerNameLabel: "grafana",
+		},
+	)
 }
 
-func (smc *Controller) getGrafanaSelector(sm *scyllav1alpha1.ScyllaDBMonitoring) labels.Selector {
-	return labels.SelectorFromSet(smc.getGrafanaLabels(sm))
+func getGrafanaSelector(sm *scyllav1alpha1.ScyllaDBMonitoring) labels.Selector {
+	return labels.SelectorFromSet(getGrafanaLabels(sm))
 }
 
 func generateGrafanaPassword() string {
@@ -95,6 +97,11 @@ func (smc *Controller) syncGrafana(
 	ctx context.Context,
 	sm *scyllav1alpha1.ScyllaDBMonitoring,
 	grafanas map[string]*integreatlyv1alpha1.Grafana,
+	dashboards map[string]*integreatlyv1alpha1.GrafanaDashboard,
+	datasources map[string]*integreatlyv1alpha1.GrafanaDataSource,
+	secrets map[string]*corev1.Secret,
+	configMaps map[string]*corev1.ConfigMap,
+	ingresses map[string]*networkingv1.Ingress,
 ) ([]metav1.Condition, error) {
 	var progressingConditions []metav1.Condition
 
@@ -102,7 +109,7 @@ func (smc *Controller) syncGrafana(
 		CAConfig: &okubecrypto.CAConfig{
 			MetaConfig: okubecrypto.MetaConfig{
 				Name:   fmt.Sprintf("%s-grafana-serving-ca", sm.Name),
-				Labels: smc.getGrafanaLabels(sm),
+				Labels: getGrafanaLabels(sm),
 			},
 			Validity: 10 * 365 * 24 * time.Hour,
 			Refresh:  8 * 365 * 24 * time.Hour,
@@ -110,14 +117,14 @@ func (smc *Controller) syncGrafana(
 		CABundleConfig: &okubecrypto.CABundleConfig{
 			MetaConfig: okubecrypto.MetaConfig{
 				Name:   fmt.Sprintf("%s-grafana-serving-ca", sm.Name),
-				Labels: smc.getGrafanaLabels(sm),
+				Labels: getGrafanaLabels(sm),
 			},
 		},
 		CertConfigs: []*okubecrypto.CertificateConfig{
 			{
 				MetaConfig: okubecrypto.MetaConfig{
 					Name:   fmt.Sprintf("%s-grafana-serving-certs", sm.Name),
-					Labels: smc.getGrafanaLabels(sm),
+					Labels: getGrafanaLabels(sm),
 				},
 				Validity: 30 * 24 * time.Hour,
 				Refresh:  20 * 24 * time.Hour,
@@ -143,66 +150,6 @@ func (smc *Controller) syncGrafana(
 		grafanaServingCertSecretName = grafanaServingCertChainConfig.CertConfigs[0].Name
 		certChainConfigs = append(certChainConfigs, grafanaServingCertChainConfig)
 	}
-
-	dashboards, err := controllerhelpers.GetObjects[CT, *integreatlyv1alpha1.GrafanaDashboard](
-		ctx,
-		sm,
-		scylladbMonitoringControllerGVK,
-		smc.getGrafanaSelector(sm),
-		controllerhelpers.ControlleeManagerGetObjectsFuncs[CT, *integreatlyv1alpha1.GrafanaDashboard]{
-			GetControllerUncachedFunc: smc.scyllaV1alpha1Client.ScyllaDBMonitorings(sm.Namespace).Get,
-			ListObjectsFunc:           smc.grafanaDashboardLister.GrafanaDashboards(sm.Namespace).List,
-			PatchObjectFunc:           smc.integreatlyClient.GrafanaDashboards(sm.Namespace).Patch,
-		},
-	)
-
-	datasources, err := controllerhelpers.GetObjects[CT, *integreatlyv1alpha1.GrafanaDataSource](
-		ctx,
-		sm,
-		scylladbMonitoringControllerGVK,
-		smc.getGrafanaSelector(sm),
-		controllerhelpers.ControlleeManagerGetObjectsFuncs[CT, *integreatlyv1alpha1.GrafanaDataSource]{
-			GetControllerUncachedFunc: smc.scyllaV1alpha1Client.ScyllaDBMonitorings(sm.Namespace).Get,
-			ListObjectsFunc:           smc.grafanaDataSourceLister.GrafanaDataSources(sm.Namespace).List,
-			PatchObjectFunc:           smc.integreatlyClient.GrafanaDataSources(sm.Namespace).Patch,
-		},
-	)
-
-	ingresses, err := controllerhelpers.GetObjects[CT, *networkingv1.Ingress](
-		ctx,
-		sm,
-		scylladbMonitoringControllerGVK,
-		smc.getGrafanaSelector(sm),
-		controllerhelpers.ControlleeManagerGetObjectsFuncs[CT, *networkingv1.Ingress]{
-			GetControllerUncachedFunc: smc.scyllaV1alpha1Client.ScyllaDBMonitorings(sm.Namespace).Get,
-			ListObjectsFunc:           smc.ingressLister.Ingresses(sm.Namespace).List,
-			PatchObjectFunc:           smc.kubeClient.NetworkingV1().Ingresses(sm.Namespace).Patch,
-		},
-	)
-
-	secrets, err := controllerhelpers.GetObjects[CT, *corev1.Secret](
-		ctx,
-		sm,
-		scylladbMonitoringControllerGVK,
-		smc.getGrafanaSelector(sm),
-		controllerhelpers.ControlleeManagerGetObjectsFuncs[CT, *corev1.Secret]{
-			GetControllerUncachedFunc: smc.scyllaV1alpha1Client.ScyllaDBMonitorings(sm.Namespace).Get,
-			ListObjectsFunc:           smc.secretLister.Secrets(sm.Namespace).List,
-			PatchObjectFunc:           smc.kubeClient.CoreV1().Secrets(sm.Namespace).Patch,
-		},
-	)
-
-	configMaps, err := controllerhelpers.GetObjects[CT, *corev1.ConfigMap](
-		ctx,
-		sm,
-		scylladbMonitoringControllerGVK,
-		smc.getGrafanaSelector(sm),
-		controllerhelpers.ControlleeManagerGetObjectsFuncs[CT, *corev1.ConfigMap]{
-			GetControllerUncachedFunc: smc.scyllaV1alpha1Client.ScyllaDBMonitorings(sm.Namespace).Get,
-			ListObjectsFunc:           smc.configMapLister.ConfigMaps(sm.Namespace).List,
-			PatchObjectFunc:           smc.kubeClient.CoreV1().ConfigMaps(sm.Namespace).Patch,
-		},
-	)
 
 	// Render manifests.
 	var renderErrors []error
@@ -337,9 +284,9 @@ func (smc *Controller) syncGrafana(
 
 		// Enforce labels for selection.
 		if item.required.GetLabels() == nil {
-			item.required.SetLabels(smc.getGrafanaLabels(sm))
+			item.required.SetLabels(getGrafanaLabels(sm))
 		} else {
-			resourcemerge.MergeMapInPlaceWithoutRemovalKeys2(item.required.GetLabels(), smc.getGrafanaLabels(sm))
+			resourcemerge.MergeMapInPlaceWithoutRemovalKeys2(item.required.GetLabels(), getGrafanaLabels(sm))
 		}
 
 		// Set ControllerRef.

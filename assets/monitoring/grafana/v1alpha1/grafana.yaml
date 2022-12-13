@@ -10,7 +10,8 @@ spec:
     enabled: False
   secrets:
   - "{{ .scyllaDBMonitoringName }}-grafana-serving-certs"
-  configmaps:
+  - "{{ .scyllaDBMonitoringName }}-prometheus-client-grafana"
+  configMaps:
   - "{{ .scyllaDBMonitoringName }}-prometheus-serving-ca"
   config:
     log:
