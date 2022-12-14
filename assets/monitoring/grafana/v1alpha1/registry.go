@@ -6,6 +6,7 @@ import (
 	"github.com/scylladb/scylla-operator/pkg/assets"
 	integreatlyv1alpha1 "github.com/scylladb/scylla-operator/pkg/externalapi/integreatly/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/scheme"
+	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
@@ -18,6 +19,10 @@ var (
 	//go:embed "grafana.yaml"
 	grafanaTemplateString string
 	GrafanaTemplate       = ParseObjectTemplateOrDie[*integreatlyv1alpha1.Grafana]("grafana", grafanaTemplateString)
+
+	//go:embed "overview-dashboard.configmap.yaml"
+	grafanaOverviewDashboardConfigMapTemplateString string
+	GrafanaOverviewDashboardConfigMapTemplate       = ParseObjectTemplateOrDie[*corev1.ConfigMap]("grafana-overview-dashboard", grafanaOverviewDashboardConfigMapTemplateString)
 
 	//go:embed "overview.grafanadashboard.yaml"
 	grafanaOverviewDashboardTemplateString string

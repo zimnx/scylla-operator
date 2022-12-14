@@ -150,6 +150,15 @@ func Apply(
 			options,
 		)
 
+	case *corev1.ConfigMap:
+		return ApplyConfigMap2(
+			ctx,
+			required.(*corev1.ConfigMap),
+			TypeApplyControlInterface[*corev1.ConfigMap](control),
+			recorder,
+			options,
+		)
+
 	case *corev1.ServiceAccount:
 		return ApplyServiceAccount2(
 			ctx,
@@ -294,6 +303,16 @@ func ApplyGrafanaDataSource(
 	options ApplyOptions,
 ) (*integreatlyv1alpha1.GrafanaDataSource, bool, error) {
 	return ApplyGeneric[*integreatlyv1alpha1.GrafanaDataSource](ctx, required, control, recorder, options)
+}
+
+func ApplyConfigMap2(
+	ctx context.Context,
+	required *corev1.ConfigMap,
+	control ApplyControlInterface[*corev1.ConfigMap],
+	recorder record.EventRecorder,
+	options ApplyOptions,
+) (*corev1.ConfigMap, bool, error) {
+	return ApplyGeneric[*corev1.ConfigMap](ctx, required, control, recorder, options)
 }
 
 func ApplyService2(

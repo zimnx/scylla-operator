@@ -70,6 +70,12 @@ func makeGrafana(sm *scyllav1alpha1.ScyllaDBMonitoring, grafanas map[string]*int
 	return required, nil
 }
 
+func makeGrafanaOverviewDashboardConfigMap(sm *scyllav1alpha1.ScyllaDBMonitoring) (*corev1.ConfigMap, string, error) {
+	return grafanav1alpha1assets.GrafanaOverviewDashboardConfigMapTemplate.RenderObject(map[string]any{
+		"scyllaDBMonitoringName": sm.Name,
+	})
+}
+
 func makeGrafanaOverviewDashboard(sm *scyllav1alpha1.ScyllaDBMonitoring) (*integreatlyv1alpha1.GrafanaDashboard, string, error) {
 	return grafanav1alpha1assets.GrafanaOverviewDashboardTemplate.RenderObject(map[string]any{
 		"scyllaDBMonitoringName": sm.Name,
@@ -154,6 +160,9 @@ func (smc *Controller) syncGrafana(
 	// Render manifests.
 	var renderErrors []error
 
+	requiredOverviewDashboardConfigMap, _, err := makeGrafanaOverviewDashboardConfigMap(sm)
+	renderErrors = append(renderErrors, err)
+
 	requiredOverviewDashboard, _, err := makeGrafanaOverviewDashboard(sm)
 	renderErrors = append(renderErrors, err)
 
@@ -173,6 +182,16 @@ func (smc *Controller) syncGrafana(
 
 	// Prune objects.
 	var pruneErrors []error
+
+	err = controllerhelpers.Prune(
+		ctx,
+		helpers.ToArray(requiredOverviewDashboardConfigMap),
+		configMaps,
+		&controllerhelpers.PruneControlFuncs{
+			DeleteFunc: smc.kubeClient.CoreV1().ConfigMaps(sm.Namespace).Delete,
+		},
+	)
+	pruneErrors = append(pruneErrors, err)
 
 	err = controllerhelpers.Prune(
 		ctx,
@@ -246,6 +265,14 @@ func (smc *Controller) syncGrafana(
 		required kubeinterfaces.ObjectInterface
 		control  resourceapply.ApplyControlUntypedInterface
 	}{
+		{
+			required: requiredOverviewDashboardConfigMap,
+			control: resourceapply.ApplyControlFuncs[*corev1.ConfigMap]{
+				GetCachedFunc: smc.configMapLister.ConfigMaps(sm.Namespace).Get,
+				CreateFunc:    smc.kubeClient.CoreV1().ConfigMaps(sm.Namespace).Create,
+				UpdateFunc:    smc.kubeClient.CoreV1().ConfigMaps(sm.Namespace).Update,
+			}.ToUntyped(),
+		},
 		{
 			required: requiredOverviewDashboard,
 			control: resourceapply.ApplyControlFuncs[*integreatlyv1alpha1.GrafanaDashboard]{
