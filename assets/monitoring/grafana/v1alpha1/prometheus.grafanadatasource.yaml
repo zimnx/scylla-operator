@@ -14,8 +14,8 @@ spec:
     editable: true
     jsonData:
       timeInterval: "5s"
-      tlsAuth: true
+      tlsAuthWithCACert: true
     secureJsonData:
       tlsCACert: "$__file{/etc/grafana-configmaps/{{ .scyllaDBMonitoringName }}-prometheus-serving-ca/ca-bundle.crt}"
       tlsClientCert: "$__file{/etc/grafana-secrets/{{ .scyllaDBMonitoringName }}-prometheus-client-grafana/tls.crt}"
-      tlsClientKey: "$__file{/etc/grafana-secrets/{{ .scyllaDBMonitoringName }}-prometheus-client-grafana/tls.crt}"
+      tlsClientKey: "$__file{/etc/grafana-secrets/{{ .scyllaDBMonitoringName }}-prometheus-client-grafana/tls.key}"
