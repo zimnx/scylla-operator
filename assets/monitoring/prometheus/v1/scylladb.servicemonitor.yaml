@@ -9,15 +9,15 @@ spec:
   - port: node-exporter
     honorLabels: false
     relabelings:
-    - sourceLabels: [ __address__ ]
+    - sourceLabels: [__address__]
       regex: '(.*):\d+'
       targetLabel: instance
       replacement: '${1}'
-    - sourceLabels: [ __address__ ]
+    - sourceLabels: [__address__]
       regex: '([^:]+)'
       targetLabel: instance
       replacement: '${1}'
-    - sourceLabels: [ instance ]
+    - sourceLabels: [instance]
       regex: '(.*)'
       targetLabel: __address__
       replacement: '${1}:9100'
