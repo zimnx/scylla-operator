@@ -9,17 +9,17 @@ spec:
   - port: node-exporter
     honorLabels: false
     relabelings:
-    - source_labels: [ __address__ ]
+    - sourceLabels: [ __address__ ]
       regex: '(.*):\d+'
-      target_label: instance
+      targetLabel: instance
       replacement: '${1}'
-    - source_labels: [ __address__ ]
+    - sourceLabels: [ __address__ ]
       regex: '([^:]+)'
-      target_label: instance
+      targetLabel: instance
       replacement: '${1}'
-    - source_labels: [ instance ]
+    - sourceLabels: [ instance ]
       regex: '(.*)'
-      target_label: __address__
+      targetLabel: __address__
       replacement: '${1}:9100'
     - sourceLabels: [__meta_kubernetes_service_label_scylla_cluster]
       regex:  '(.+)'
