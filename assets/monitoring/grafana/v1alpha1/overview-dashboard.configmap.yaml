@@ -4480,6 +4480,37 @@ data:
                     },
                     {
                         "allValue": null,
+                        "class": "template_variable_single",
+                        "current": {
+                            "text": "/var/lib/scylla",
+                            "value": "/var/lib/scylla"
+                        },
+                        "datasource": "prometheus",
+                        "definition": "",
+                        "error": null,
+                        "hide": 0,
+                        "includeAll": false,
+                        "label": "Mount path",
+                        "multi": false,
+                        "name": "mount_point",
+                        "options": [
+                            {
+                                "selected": true,
+                                "text": "/var/lib/scylla",
+                                "value": "/var/lib/scylla"
+                            }
+                        ],
+                        "query": "/var/lib/scylla",
+                        "skipUrlSync": false,
+                        "sort": 0,
+                        "tagValuesQuery": "",
+                        "tags": [],
+                        "tagsQuery": "",
+                        "type": "custom",
+                        "useTags": false
+                    },
+                    {
+                        "allValue": null,
                         "class": "aggregation_function",
                         "current": {
                             "tags": [],
