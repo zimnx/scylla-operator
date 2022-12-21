@@ -159,7 +159,7 @@ var _ = g.Describe("ScyllaDBMonitoring", func() {
 			framework.Infof("Listing grafana targets: err: %v, active: %d, dropped: %d", err, len(targets.Active), len(targets.Dropped))
 			eo.Expect(err).NotTo(o.HaveOccurred())
 
-			eo.Expect(targets.Active).To(o.HaveLen(1))
+			eo.Expect(targets.Active).To(o.HaveLen(2))
 			for _, t := range targets.Active {
 				eo.Expect(t.Health).To(o.Equal(promeheusappv1api.HealthGood))
 			}
