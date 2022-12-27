@@ -41,7 +41,7 @@ func getObjectLogContext(cur, old kubeinterfaces.ObjectInterface) []any {
 }
 
 type GetFuncType[T any] func(namespace, name string) (T, error)
-type EnqueueFuncType func(kubeinterfaces.ObjectInterface, HandlerOperationType)
+type EnqueueFuncType func(int, kubeinterfaces.ObjectInterface, HandlerOperationType)
 type DeleteFuncType = func(any)
 
 type Handlers[T kubeinterfaces.ObjectInterface] struct {
@@ -71,13 +71,12 @@ func (h *Handlers[T]) EnqueueWithDepth(depth int, untypedObj kubeinterfaces.Obje
 		return
 	}
 
-	// klog.V(4).InfoSDepth(depth, "Enqueuing object", []any{"Operation", op, getObjectLogContext(obj, nil)...}...)
-	klog.V(4).InfoSDepth(depth, "Enqueuing object", getObjectLogContext(obj, nil)...)
+	klog.V(4).InfoSDepth(depth, "Enqueuing object", append([]any{"Operation", op}, getObjectLogContext(obj, nil)...)...)
 	h.queue.Add(key)
 }
 
-func (h *Handlers[T]) Enqueue(obj kubeinterfaces.ObjectInterface, op HandlerOperationType) {
-	h.EnqueueWithDepth(2, obj, op)
+func (h *Handlers[T]) Enqueue(depth int, obj kubeinterfaces.ObjectInterface, op HandlerOperationType) {
+	h.EnqueueWithDepth(depth+1, obj, op)
 }
 
 func (h *Handlers[T]) EnqueueAllWithDepth(depth int, untypedObj kubeinterfaces.ObjectInterface, op HandlerOperationType) {
@@ -94,8 +93,8 @@ func (h *Handlers[T]) EnqueueAllWithDepth(depth int, untypedObj kubeinterfaces.O
 	}
 }
 
-func (h *Handlers[T]) EnqueueAll(obj kubeinterfaces.ObjectInterface, op HandlerOperationType) {
-	h.EnqueueAllWithDepth(2, obj, op)
+func (h *Handlers[T]) EnqueueAll(depth int, obj kubeinterfaces.ObjectInterface, op HandlerOperationType) {
+	h.EnqueueAllWithDepth(depth+1, obj, op)
 }
 
 func (h *Handlers[QT]) EnqueueOwnerWithDepth(depth int, obj kubeinterfaces.ObjectInterface, operation HandlerOperationType) {
@@ -119,23 +118,22 @@ func (h *Handlers[QT]) EnqueueOwnerWithDepth(depth int, obj kubeinterfaces.Objec
 		return
 	}
 
-	// klog.V(4).InfoSDepth(depth, "Enqueuing owner", "OwnerGVK", q.gvk, "OwnerRef", klog.KObj(owner), "OwnerUID", owner.GetUID(), getObjectLogContext(obj, nil)...)
-	klog.V(4).InfoSDepth(depth, "Enqueuing owner", "OwnerGVK", h.gvk, "OwnerRef", klog.KObj(owner), "OwnerUID", owner.GetUID(), "TODO")
+	klog.V(4).InfoSDepth(depth, "Enqueuing owner", append([]any{"OwnerGVK", h.gvk, "OwnerRef", klog.KObj(owner), "OwnerUID", owner.GetUID()}, getObjectLogContext(obj, nil)...)...)
 	h.EnqueueWithDepth(depth+1, owner, operation)
 }
 
-func (h *Handlers[T]) EnqueueOwner(obj kubeinterfaces.ObjectInterface, operation HandlerOperationType) {
-	h.EnqueueOwnerWithDepth(2, obj, operation)
+func (h *Handlers[T]) EnqueueOwner(depth int, obj kubeinterfaces.ObjectInterface, operation HandlerOperationType) {
+	h.EnqueueOwnerWithDepth(depth+1, obj, operation)
 }
 
 func (h *Handlers[T]) HandleAdd(obj kubeinterfaces.ObjectInterface, enqueueFunc EnqueueFuncType) {
-	h.HandleAddWithDepth(1, obj, enqueueFunc)
+	h.HandleAddWithDepth(2, obj, enqueueFunc)
 }
 
 func (h *Handlers[T]) HandleAddWithDepth(depth int, obj any, enqueueFunc EnqueueFuncType) {
 	klog.V(5).InfoSDepth(depth, "Observed addition", getObjectLogContext(obj.(kubeinterfaces.ObjectInterface), nil)...)
 
-	enqueueFunc(obj.(kubeinterfaces.ObjectInterface), HandlerOperationTypeAdd)
+	enqueueFunc(depth+1, obj.(kubeinterfaces.ObjectInterface), HandlerOperationTypeAdd)
 }
 
 func (h *Handlers[QT]) HandleUpdateWithDepth(depth int, oldUntyped, curUntyped any, enqueueFunc EnqueueFuncType, deleteFunc DeleteFuncType) {
@@ -159,7 +157,7 @@ func (h *Handlers[QT]) HandleUpdateWithDepth(depth int, oldUntyped, curUntyped a
 		}
 	}
 
-	enqueueFunc(cur, HandlerOperationTypeUpdate)
+	enqueueFunc(depth+1, cur, HandlerOperationTypeUpdate)
 }
 
 func (h *Handlers[QT]) HandleUpdate(old, cur any, enqueueFunc EnqueueFuncType, deleteFunc DeleteFuncType) {
@@ -170,13 +168,13 @@ func (h *Handlers[T]) HandleDeleteWithDepth(depth int, obj any, enqueueFunc Enqu
 	tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
 	if ok {
 		klog.V(5).InfoSDepth(depth, "Observed deletion", getObjectLogContext(tombstone.Obj.(kubeinterfaces.ObjectInterface), nil)...)
-		enqueueFunc(tombstone.Obj.(kubeinterfaces.ObjectInterface), HandlerOperationTypeDelete)
+		enqueueFunc(depth+1, tombstone.Obj.(kubeinterfaces.ObjectInterface), HandlerOperationTypeDelete)
 		return
 	}
 
 	klog.V(5).InfoSDepth(depth, "Observed deletion", getObjectLogContext(obj.(kubeinterfaces.ObjectInterface), nil)...)
 
-	enqueueFunc(obj.(kubeinterfaces.ObjectInterface), HandlerOperationTypeDelete)
+	enqueueFunc(depth+1, obj.(kubeinterfaces.ObjectInterface), HandlerOperationTypeDelete)
 }
 
 func (h *Handlers[T]) HandleDelete(obj any, enqueueFunc EnqueueFuncType) {

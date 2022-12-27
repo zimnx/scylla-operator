@@ -12,7 +12,6 @@ import (
 	scyllav1listers "github.com/scylladb/scylla-operator/pkg/client/scylla/listers/scylla/v1"
 	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
 	"github.com/scylladb/scylla-operator/pkg/kubeinterfaces"
-	"github.com/scylladb/scylla-operator/pkg/resource"
 	"github.com/scylladb/scylla-operator/pkg/scheme"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -22,7 +21,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/runtime"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -352,32 +350,19 @@ func (scc *Controller) resolveScyllaClusterControllerThroughStatefulSet(obj meta
 	return sc
 }
 
-func (scc *Controller) enqueueOwnerThroughStatefulSet(obj metav1.Object) {
-	sc := scc.resolveScyllaClusterControllerThroughStatefulSet(obj)
+func (scc *Controller) enqueueOwnerThroughStatefulSetOwner(depth int, obj kubeinterfaces.ObjectInterface, op controllerhelpers.HandlerOperationType) {
+	sts := scc.resolveStatefulSetController(obj)
+	if sts == nil {
+		return
+	}
+
+	sc := scc.resolveScyllaClusterController(sts)
 	if sc == nil {
 		return
 	}
 
-	gvk, err := resource.GetObjectGVK(obj.(runtime.Object))
-	if err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
-
-	klog.V(4).InfoS(fmt.Sprintf("%s added", gvk.Kind), gvk.Kind, klog.KObj(obj))
-	// FIXME
-	scc.handlers.EnqueueOwnerWithDepth(1, sc, "FIXME")
-}
-
-func (scc *Controller) enqueueScyllaClusterFromPod(pod *corev1.Pod) {
-	sc := scc.resolveScyllaClusterControllerThroughStatefulSet(pod)
-	if sc == nil {
-		return
-	}
-
-	klog.V(4).InfoS("Pod added", "ScyllaCluster", klog.KObj(sc))
-	// FIXME
-	scc.handlers.EnqueueOwnerWithDepth(1, sc, "FIXME")
+	klog.V(4).InfoS("Enqueuing owner of StatefulSet", "StatefulSet", klog.KObj(sc), "ScyllaCluster", klog.KObj(sc))
+	scc.handlers.EnqueueWithDepth(depth+1, sc, op)
 }
 
 func (scc *Controller) addService(obj interface{}) {
@@ -498,7 +483,7 @@ func (scc *Controller) deleteRoleBinding(obj interface{}) {
 func (scc *Controller) addPod(obj interface{}) {
 	scc.handlers.HandleAdd(
 		obj.(*corev1.Pod),
-		scc.handlers.EnqueueOwner,
+		scc.enqueueOwnerThroughStatefulSetOwner,
 	)
 }
 
@@ -506,7 +491,7 @@ func (scc *Controller) updatePod(old, cur interface{}) {
 	scc.handlers.HandleUpdate(
 		old.(*corev1.Pod),
 		cur.(*corev1.Pod),
-		scc.handlers.EnqueueOwner,
+		scc.enqueueOwnerThroughStatefulSetOwner,
 		scc.deletePod,
 	)
 }
@@ -514,7 +499,7 @@ func (scc *Controller) updatePod(old, cur interface{}) {
 func (scc *Controller) deletePod(obj interface{}) {
 	scc.handlers.HandleDelete(
 		obj,
-		scc.handlers.EnqueueOwner,
+		scc.enqueueOwnerThroughStatefulSetOwner,
 	)
 }
 

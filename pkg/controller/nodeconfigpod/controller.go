@@ -147,88 +147,78 @@ func NewController(
 	return ncpc, nil
 }
 
-func (ncpc *Controller) enqueueAllScyllaPodsOnNodeWithDepthFunc(
-	depth int,
-) controllerhelpers.EnqueueFuncType {
-	return func(obj kubeinterfaces.ObjectInterface, op controllerhelpers.HandlerOperationType) {
-		node := obj.(*corev1.Node)
+func (ncpc *Controller) enqueueAllScyllaPodsOnNode(depth int, obj kubeinterfaces.ObjectInterface, op controllerhelpers.HandlerOperationType) {
+	node := obj.(*corev1.Node)
 
-		allPods, err := ncpc.podLister.List(naming.ScyllaSelector())
-		if err != nil {
-			utilruntime.HandleError(err)
-			return
-		}
-
-		var pods []*corev1.Pod
-		for _, pod := range allPods {
-			if pod.Spec.NodeName == node.Name {
-				pods = append(pods, pod)
-			}
-		}
-
-		klog.V(4).InfofDepth(depth, "Enqueuing all (%d) pods for on Node", len(pods), "Node", klog.KObj(node))
-		for _, pod := range pods {
-			ncpc.handlers.EnqueueWithDepth(depth+1, pod, op)
-		}
-
+	allPods, err := ncpc.podLister.List(naming.ScyllaSelector())
+	if err != nil {
+		utilruntime.HandleError(err)
 		return
 	}
+
+	var pods []*corev1.Pod
+	for _, pod := range allPods {
+		if pod.Spec.NodeName == node.Name {
+			pods = append(pods, pod)
+		}
+	}
+
+	klog.V(4).InfoSDepth(depth, "Enqueuing all pods on Node", "Pods", len(pods), "Node", klog.KObj(node))
+	for _, pod := range pods {
+		ncpc.handlers.EnqueueWithDepth(depth+1, pod, op)
+	}
+
+	return
 }
 
-func (ncpc *Controller) enqueueAllScyllaPodsForNodeConfigWithDepthFunc(
-	depth int,
-) controllerhelpers.EnqueueFuncType {
-	return func(obj kubeinterfaces.ObjectInterface, op controllerhelpers.HandlerOperationType) {
-		nodeConfig := obj.(*scyllav1alpha1.NodeConfig)
+func (ncpc *Controller) enqueueAllScyllaPodsForNodeConfig(depth int, obj kubeinterfaces.ObjectInterface, op controllerhelpers.HandlerOperationType) {
+	nodeConfig := obj.(*scyllav1alpha1.NodeConfig)
 
-		allNodes, err := ncpc.nodeLister.List(labels.Everything())
+	allNodes, err := ncpc.nodeLister.List(labels.Everything())
+	if err != nil {
+		utilruntime.HandleError(err)
+		return
+	}
+
+	var nodes []*corev1.Node
+	for _, node := range allNodes {
+		matching, err := controllerhelpers.IsNodeConfigSelectingNode(nodeConfig, node)
 		if err != nil {
 			utilruntime.HandleError(err)
 			return
 		}
 
-		var nodes []*corev1.Node
-		for _, node := range allNodes {
-			matching, err := controllerhelpers.IsNodeConfigSelectingNode(nodeConfig, node)
-			if err != nil {
-				utilruntime.HandleError(err)
-				return
-			}
-
-			if matching {
-				nodes = append(nodes, node)
-			}
+		if matching {
+			nodes = append(nodes, node)
 		}
+	}
 
-		klog.V(4).InfoS("Enqueuing all Scylla Pods for NodeConfig", "NodeConfig", klog.KObj(nodeConfig), "NodeCount", len(nodes))
-		for _, node := range nodes {
-			ncpc.enqueueAllScyllaPodsOnNodeWithDepthFunc(depth+1)(node, op)
-		}
+	klog.V(4).InfoS("Enqueuing all Scylla Pods for NodeConfig", "NodeConfig", klog.KObj(nodeConfig), "NodeCount", len(nodes))
+	for _, node := range nodes {
+		ncpc.enqueueAllScyllaPodsOnNode(depth+1, node, op)
 	}
 }
 
-func (ncpc *Controller) enqueuePodWithDepthFunc(depth int) controllerhelpers.EnqueueFuncType {
-	return func(obj kubeinterfaces.ObjectInterface, op controllerhelpers.HandlerOperationType) {
-		pod := obj.(*corev1.Pod)
+func (ncpc *Controller) enqueueScyllaPod(depth int, obj kubeinterfaces.ObjectInterface, op controllerhelpers.HandlerOperationType) {
+	pod := obj.(*corev1.Pod)
 
-		// TODO: extract and use a better label, verify the container
-		if pod.Labels == nil {
-			return
-		}
-
-		_, isScyllaPod := pod.Labels[naming.ClusterNameLabel]
-		if !isScyllaPod {
-			return
-		}
-
-		ncpc.handlers.EnqueueWithDepth(depth+1, pod, op)
+	// TODO: extract and use a better label, verify the container
+	if pod.Labels == nil {
+		return
 	}
+
+	_, isScyllaPod := pod.Labels[naming.ClusterNameLabel]
+	if !isScyllaPod {
+		return
+	}
+
+	ncpc.handlers.EnqueueWithDepth(depth+1, pod, op)
 }
 
 func (ncpc *Controller) addPod(obj interface{}) {
 	ncpc.handlers.HandleAdd(
 		obj.(*corev1.Pod),
-		ncpc.enqueuePodWithDepthFunc(1),
+		ncpc.enqueueScyllaPod,
 	)
 }
 
@@ -236,7 +226,7 @@ func (ncpc *Controller) updatePod(old, cur interface{}) {
 	ncpc.handlers.HandleUpdate(
 		old.(*corev1.Pod),
 		cur.(*corev1.Pod),
-		ncpc.enqueuePodWithDepthFunc(1),
+		ncpc.enqueueScyllaPod,
 		nil,
 	)
 }
@@ -268,7 +258,7 @@ func (ncpc *Controller) updateNode(old, cur interface{}) {
 	ncpc.handlers.HandleUpdate(
 		old.(*corev1.Node),
 		cur.(*corev1.Node),
-		ncpc.enqueueAllScyllaPodsOnNodeWithDepthFunc(1),
+		ncpc.enqueueAllScyllaPodsOnNode,
 		nil,
 	)
 }
@@ -276,7 +266,7 @@ func (ncpc *Controller) updateNode(old, cur interface{}) {
 func (ncpc *Controller) addNodeConfig(obj interface{}) {
 	ncpc.handlers.HandleAdd(
 		obj.(*scyllav1alpha1.NodeConfig),
-		ncpc.enqueueAllScyllaPodsForNodeConfigWithDepthFunc(1),
+		ncpc.enqueueAllScyllaPodsForNodeConfig,
 	)
 }
 
@@ -284,7 +274,7 @@ func (ncpc *Controller) updateNodeConfig(old, cur interface{}) {
 	ncpc.handlers.HandleUpdate(
 		old.(*scyllav1alpha1.NodeConfig),
 		cur.(*scyllav1alpha1.NodeConfig),
-		ncpc.enqueueAllScyllaPodsForNodeConfigWithDepthFunc(1),
+		ncpc.enqueueAllScyllaPodsForNodeConfig,
 		ncpc.deleteNodeConfig,
 	)
 }
@@ -292,7 +282,7 @@ func (ncpc *Controller) updateNodeConfig(old, cur interface{}) {
 func (ncpc *Controller) deleteNodeConfig(obj interface{}) {
 	ncpc.handlers.HandleDelete(
 		obj,
-		ncpc.enqueueAllScyllaPodsForNodeConfigWithDepthFunc(1),
+		ncpc.enqueueAllScyllaPodsForNodeConfig,
 	)
 }
 
