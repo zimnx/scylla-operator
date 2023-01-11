@@ -25,31 +25,6 @@ import (
 	"k8s.io/klog/v2"
 )
 
-func runSync(conditions *[]metav1.Condition, progressingConditionType, degradedCondType string, observedGeneration int64, syncFn func() ([]metav1.Condition, error)) error {
-	progressingConditions, err := syncFn()
-	controllerhelpers.SetStatusConditionFromError(conditions, err, degradedCondType, observedGeneration)
-	if err != nil {
-		return err
-	}
-
-	progressingCondition, err := controllerhelpers.AggregateStatusConditions(
-		progressingConditions,
-		metav1.Condition{
-			Type:               progressingConditionType,
-			Status:             metav1.ConditionFalse,
-			Reason:             internalapi.AsExpectedReason,
-			Message:            "",
-			ObservedGeneration: observedGeneration,
-		},
-	)
-	if err != nil {
-		return fmt.Errorf("can't aggregate progressing conditions %q: %w", progressingConditionType, err)
-	}
-	apimeta.SetStatusCondition(conditions, progressingCondition)
-
-	return nil
-}
-
 func (scc *Controller) sync(ctx context.Context, key string) error {
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
@@ -212,7 +187,7 @@ func (scc *Controller) sync(ctx context.Context, key string) error {
 
 	var errs []error
 
-	err = runSync(
+	err = controllerhelpers.RunSync(
 		&status.Conditions,
 		serviceAccountControllerProgressingCondition,
 		serviceAccountControllerDegradedCondition,
@@ -225,7 +200,7 @@ func (scc *Controller) sync(ctx context.Context, key string) error {
 		errs = append(errs, fmt.Errorf("can't sync service accounts: %w", err))
 	}
 
-	err = runSync(
+	err = controllerhelpers.RunSync(
 		&status.Conditions,
 		roleBindingControllerProgressingCondition,
 		roleBindingControllerDegradedCondition,
@@ -238,7 +213,7 @@ func (scc *Controller) sync(ctx context.Context, key string) error {
 		errs = append(errs, fmt.Errorf("can't sync role bindings: %w", err))
 	}
 
-	err = runSync(
+	err = controllerhelpers.RunSync(
 		&status.Conditions,
 		agentTokenControllerProgressingCondition,
 		agentTokenControllerDegradedCondition,
@@ -252,7 +227,7 @@ func (scc *Controller) sync(ctx context.Context, key string) error {
 	}
 
 	if utilfeature.DefaultMutableFeatureGate.Enabled(features.AutomaticTLSCertificates) {
-		err = runSync(
+		err = controllerhelpers.RunSync(
 			&status.Conditions,
 			certControllerProgressingCondition,
 			certControllerDegradedCondition,
@@ -266,7 +241,7 @@ func (scc *Controller) sync(ctx context.Context, key string) error {
 		}
 	}
 
-	err = runSync(
+	err = controllerhelpers.RunSync(
 		&status.Conditions,
 		statefulSetControllerProgressingCondition,
 		statefulSetControllerDegradedCondition,
@@ -284,7 +259,7 @@ func (scc *Controller) sync(ctx context.Context, key string) error {
 	// in a single place, on the next resync.
 	scc.setStatefulSetsAvailableStatusCondition(sc, status)
 
-	err = runSync(
+	err = controllerhelpers.RunSync(
 		&status.Conditions,
 		serviceControllerProgressingCondition,
 		serviceControllerDegradedCondition,
@@ -297,7 +272,7 @@ func (scc *Controller) sync(ctx context.Context, key string) error {
 		errs = append(errs, fmt.Errorf("can't sync services: %w", err))
 	}
 
-	err = runSync(
+	err = controllerhelpers.RunSync(
 		&status.Conditions,
 		pdbControllerProgressingCondition,
 		pdbControllerDegradedCondition,
@@ -310,7 +285,7 @@ func (scc *Controller) sync(ctx context.Context, key string) error {
 		errs = append(errs, fmt.Errorf("can't sync pdbs: %w", err))
 	}
 
-	err = runSync(
+	err = controllerhelpers.RunSync(
 		&status.Conditions,
 		ingressControllerProgressingCondition,
 		ingressControllerDegradedCondition,
