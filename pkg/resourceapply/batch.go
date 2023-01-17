@@ -4,6 +4,7 @@ import (
 	"context"
 
 	batchv1 "k8s.io/api/batch/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	batchv1client "k8s.io/client-go/kubernetes/typed/batch/v1"
 	batchv1listers "k8s.io/client-go/listers/batch/v1"
 	"k8s.io/client-go/tools/record"
@@ -16,7 +17,26 @@ func ApplyJobWithControl(
 	required *batchv1.Job,
 	options ApplyOptions,
 ) (*batchv1.Job, bool, error) {
-	return ApplyGeneric[*batchv1.Job](ctx, control, recorder, required, options)
+	return ApplyGenericWithHandlers[*batchv1.Job](
+		ctx,
+		control,
+		recorder,
+		required,
+		options,
+		nil,
+		func(required *batchv1.Job, existing *batchv1.Job) string {
+			if !equality.Semantic.DeepEqual(existing.Spec.Template, required.Spec.Template) {
+				return "spec.template is immutable"
+			}
+			if !equality.Semantic.DeepEqual(existing.Spec.Completions, required.Spec.Completions) {
+				return "spec.completions is immutable"
+			}
+			if required.Spec.ManualSelector != nil && *required.Spec.ManualSelector && !equality.Semantic.DeepEqual(existing.Spec.Selector, required.Spec.Selector) {
+				return "spec.manualSelector is immutable"
+			}
+			return ""
+		},
+	)
 }
 
 func ApplyJob(
