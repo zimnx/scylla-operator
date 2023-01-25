@@ -31,6 +31,71 @@ spec:
                 disableOptimizations:
                   description: disableOptimizations controls if nodes matching placement requirements are going to be optimized. Turning off optimizations on already optimized Nodes does not revert changes.
                   type: boolean
+                localDiskSetup:
+                  description: localDiskSetup contains options of automatic local disk setup.
+                  properties:
+                    filesystems:
+                      description: filesystems is a list of filesystem configurations.
+                      items:
+                        description: FilesystemConfiguration specifies filesystem configuration options.
+                        properties:
+                          device:
+                            description: device is a host path of device where desired filesystem will be created.
+                            type: string
+                          type:
+                            description: type is a desired filesystem type.
+                            type: string
+                        type: object
+                      type: array
+                    mounts:
+                      description: mounts is a list of mount configuration.
+                      items:
+                        description: MountConfiguration specifies mount configuration options.
+                        properties:
+                          device:
+                            description: device is path to a device which will be mounted.
+                            type: string
+                          fsType:
+                            description: fsType is a name of filesystem to mount.
+                            type: string
+                          mountPoint:
+                            description: mountPoint is a path where device will be mounted at.
+                            type: string
+                          unsupportedOptions:
+                            description: unsupportedOptions is a list of mount options used during device mounting. unsupported in this field name means that we won't support all the available options passed down using this field.
+                            items:
+                              type: string
+                            type: array
+                        type: object
+                      type: array
+                    raids:
+                      description: raids is a list of raid configurations.
+                      items:
+                        description: RaidConfiguration is a configuration of single raid array.
+                        properties:
+                          RAID0:
+                            description: RAID0 specifies RAID0 options.
+                            properties:
+                              devices:
+                                description: devices represents devices taking part in raid array.
+                                properties:
+                                  modelRegex:
+                                    description: modelRegex is a regular expression filtering out devices by their model name.
+                                    type: string
+                                  nameRegex:
+                                    description: nameRegex is a regular expression filtering out devices by their name.
+                                    type: string
+                                type: object
+                            type: object
+                          name:
+                            description: name is a name of raid array device. New block device will be created under /dev/md/<name> on the host.
+                            type: string
+                          type:
+                            description: type is a type of raid array.
+                            type: string
+                        type: object
+                      type: array
+                  type: object
                 placement:
                   description: placement contains scheduling rules for NodeConfig Pods.
                   properties:
@@ -557,8 +622,22 @@ spec:
                   description: nodeStatuses hold the status for each tuned node.
                   items:
                     properties:
+                      disksSetUp:
+                        type: boolean
+                      filesystemsCreated:
+                        items:
+                          type: string
+                        type: array
+                      mountsCreated:
+                        items:
+                          type: string
+                        type: array
                       name:
                         type: string
+                      raidsCreated:
+                        items:
+                          type: string
+                        type: array
                       tunedContainers:
                         items:
                           type: string

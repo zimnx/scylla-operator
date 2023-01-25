@@ -39,6 +39,7 @@ require (
 	go.uber.org/multierr v1.8.0
 	go.uber.org/zap v1.23.0
 	golang.org/x/oauth2 v0.1.0
+	golang.org/x/sys v0.3.0
 	google.golang.org/grpc v1.50.1
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.25.3
@@ -51,7 +52,8 @@ require (
 	k8s.io/cri-api v0.25.3
 	k8s.io/klog/v2 v2.80.1
 	k8s.io/kubectl v0.25.3
-	k8s.io/utils v0.0.0-20221101230645-61b03e2f6476
+	k8s.io/mount-utils v0.26.0
+	k8s.io/utils v0.0.0-20221107191617-1a15be271d1d
 	sigs.k8s.io/controller-tools v0.5.0
 	sigs.k8s.io/yaml v1.3.0
 )
@@ -113,6 +115,7 @@ require (
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
 	github.com/moby/spdystream v0.2.0 // indirect
+	github.com/moby/sys/mountinfo v0.6.2 // indirect
 	github.com/moby/term v0.0.0-20220808134915-39b0c02b01ae // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
@@ -132,7 +135,6 @@ require (
 	golang.org/x/lint v0.0.0-20210508222113-6edffad5e616 // indirect
 	golang.org/x/mod v0.6.0 // indirect
 	golang.org/x/net v0.1.0 // indirect
-	golang.org/x/sys v0.1.0 // indirect
 	golang.org/x/term v0.1.0 // indirect
 	golang.org/x/text v0.4.0 // indirect
 	golang.org/x/time v0.1.0 // indirect
