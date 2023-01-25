@@ -107,6 +107,10 @@ func ContextForManagerSync(parent context.Context, sc *scyllav1.ScyllaCluster) (
 	return context.WithTimeout(parent, SyncTimeoutForScyllaCluster(sc))
 }
 
+func ContextForPodStartup(parent context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(parent, imagePullTimeout)
+}
+
 func IsScyllaClusterRolledOut(sc *scyllav1.ScyllaCluster) (bool, error) {
 	if !helpers.IsStatusConditionPresentAndTrue(sc.Status.Conditions, scyllav1.AvailableCondition, sc.Generation) {
 		return false, nil
@@ -517,4 +521,14 @@ func GetScyllaHostsAndWaitForFullQuorum(ctx context.Context, client corev1client
 	framework.Infof("ScyllaDB nodes have reached status consistency.")
 
 	return hosts, nil
+}
+
+func PodIsRunning(pod *corev1.Pod) (bool, error) {
+	switch pod.Status.Phase {
+	case corev1.PodRunning:
+		return true, nil
+	case corev1.PodFailed, corev1.PodSucceeded:
+		return false, fmt.Errorf("pod ran to completion")
+	}
+	return false, nil
 }

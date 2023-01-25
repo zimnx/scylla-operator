@@ -7,12 +7,12 @@ import (
 
 	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/naming"
+	"github.com/scylladb/scylla-operator/pkg/pointer"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/pointer"
 )
 
 func makeScyllaOperatorNodeTuningNamespace() *corev1.Namespace {
@@ -116,14 +116,176 @@ func makeNodeConfigClusterRoleBinding() *rbacv1.ClusterRoleBinding {
 	}
 }
 
+func makeNodeDiskSetupDaemonSet(nc *scyllav1alpha1.NodeConfig, operatorImage string) *appsv1.DaemonSet {
+	if nc.Spec.LocalDiskSetup == nil {
+		return nil
+	}
+
+	labels := map[string]string{
+		"app.kubernetes.io/name":       naming.NodeConfigAppName,
+		naming.NodeConfigNameLabel:     nc.Name,
+		naming.NodeConfigDaemonSetType: naming.NodeConfigDaemonSetTypeNodeSetup,
+	}
+
+	return &appsv1.DaemonSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      fmt.Sprintf("%s-node-setup", nc.Name),
+			Namespace: naming.ScyllaOperatorNodeTuningNamespace,
+			Labels:    labels,
+			OwnerReferences: []metav1.OwnerReference{
+				*metav1.NewControllerRef(nc, nodeConfigControllerGVK),
+			},
+		},
+		Spec: appsv1.DaemonSetSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: labels,
+			},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: labels,
+				},
+				Spec: corev1.PodSpec{
+					ServiceAccountName: naming.NodeConfigAppName,
+					NodeSelector:       nc.Spec.Placement.NodeSelector,
+					Affinity:           &nc.Spec.Placement.Affinity,
+					Tolerations:        nc.Spec.Placement.Tolerations,
+					Volumes: []corev1.Volume{
+						{
+							Name: "hostfs",
+							VolumeSource: corev1.VolumeSource{
+								HostPath: &corev1.HostPathVolumeSource{
+									Path: "/",
+									Type: pointer.Ptr(corev1.HostPathDirectory),
+								},
+							},
+						},
+					},
+					Containers: []corev1.Container{
+						{
+							Name:  naming.NodeConfigAppName,
+							Image: operatorImage,
+							// FIXME:
+							ImagePullPolicy: corev1.PullAlways,
+							Command: []string{
+								"/usr/bin/bash",
+								"-euExo",
+								"pipefail",
+								"-c",
+							},
+							Args: []string{
+								`
+cd "$( mktemp -d )"
+
+for f in $( find /host -mindepth 1 -maxdepth 1 -type d -printf '%f\n' ); do
+	mkdir -p "./${f}"
+	mount --rbind "/host/${f}" "./${f}"
+done
+
+for f in $( find /host -mindepth 1 -maxdepth 1 -type f -printf '%f\n' ); do
+	touch "./${f}"
+	mount --bind "/host/${f}" "./${f}"
+done
+
+find /host -mindepth 1 -maxdepth 1 -type l -exec cp -P "{}" ./ \;
+
+mkdir -p ./scylla-operator
+touch ./scylla-operator/scylla-operator
+mount --bind /usr/bin/scylla-operator ./scylla-operator/scylla-operator
+
+for f in ca.crt token; do
+	touch "./scylla-operator/${f}"
+	mount --bind "/var/run/secrets/kubernetes.io/serviceaccount/${f}" "./scylla-operator/${f}"
+done
+
+cat <<EOF > ./scylla-operator/kubeconfig
+apiVersion: v1
+kind: Config
+clusters:
+- name: in-cluster
+  cluster:
+    server: https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}
+    certificate-authority: /scylla-operator/ca.crt
+
+users:
+- name: scylla-operator
+  user:
+    tokenFile: /scylla-operator/token
+
+contexts:
+- name: in-cluster
+  context:
+    cluster: in-cluster
+    user: scylla-operator
+
+current-context: in-cluster
+
+EOF
+
+exec chroot ./ /scylla-operator/scylla-operator node-setup-daemon \
+--kubeconfig=/scylla-operator/kubeconfig \
+--namespace="$(NAMESPACE)" \
+--node-name="$(NODE_NAME)" \
+--node-config-name=` + fmt.Sprintf("%q", nc.Name) + ` \
+--node-config-uid=` + fmt.Sprintf("%q", nc.UID) + ` \
+--loglevel=` + fmt.Sprintf("%d", 4) + `
+							`},
+							Env: []corev1.EnvVar{
+								{
+									Name:  "SYSTEMD_IGNORE_CHROOT",
+									Value: "1",
+								},
+								{
+									Name: "NODE_NAME",
+									ValueFrom: &corev1.EnvVarSource{
+										FieldRef: &corev1.ObjectFieldSelector{
+											APIVersion: "v1",
+											FieldPath:  "spec.nodeName",
+										},
+									},
+								},
+								{
+									Name: "NAMESPACE",
+									ValueFrom: &corev1.EnvVarSource{
+										FieldRef: &corev1.ObjectFieldSelector{
+											APIVersion: "v1",
+											FieldPath:  "metadata.namespace",
+										},
+									},
+								},
+							},
+							Resources: corev1.ResourceRequirements{
+								Requests: corev1.ResourceList{
+									corev1.ResourceCPU:    resource.MustParse("10m"),
+									corev1.ResourceMemory: resource.MustParse("50Mi"),
+								},
+							},
+							SecurityContext: &corev1.SecurityContext{
+								Privileged: pointer.Ptr(true),
+							},
+							VolumeMounts: []corev1.VolumeMount{
+								{
+									Name:             "hostfs",
+									MountPath:        "/host",
+									MountPropagation: pointer.Ptr(corev1.MountPropagationBidirectional),
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
 func makeNodeConfigDaemonSet(nc *scyllav1alpha1.NodeConfig, operatorImage, scyllaImage string) *appsv1.DaemonSet {
 	if nc.Spec.DisableOptimizations {
 		return nil
 	}
 
 	labels := map[string]string{
-		"app.kubernetes.io/name":   naming.NodeConfigAppName,
-		naming.NodeConfigNameLabel: nc.Name,
+		"app.kubernetes.io/name":       naming.NodeConfigAppName,
+		naming.NodeConfigNameLabel:     nc.Name,
+		naming.NodeConfigDaemonSetType: naming.NodeConfigDaemonSetTypeTuning,
 	}
 
 	return &appsv1.DaemonSet{
@@ -202,11 +364,11 @@ clusters:
 
 users:
 - name: scylla-operator
-  user: 
+  user:
     tokenFile: /scylla-operator/token
 
 contexts:
-- name: in-cluster 
+- name: in-cluster
   context:
     cluster: in-cluster
     user: scylla-operator
@@ -263,7 +425,7 @@ exec chroot ./ /scylla-operator/scylla-operator node-config-daemon \
 								},
 							},
 							SecurityContext: &corev1.SecurityContext{
-								Privileged: pointer.BoolPtr(true),
+								Privileged: pointer.Ptr(true),
 							},
 							VolumeMounts: []corev1.VolumeMount{
 								makeVolumeMount("hostfs", "/host", false),

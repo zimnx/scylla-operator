@@ -60,6 +60,7 @@ const (
 	NodeConfigJobTypeLabel       = "scylla-operator.scylladb.com/node-config-job-type"
 	NodeConfigJobData            = "scylla-operator.scylladb.com/node-config-job-data"
 	NodeConfigNameLabel          = "scylla-operator.scylladb.com/node-config-name"
+	NodeConfigDaemonSetType      = "scylla-operator.scylladb.com/node-config-daemonset-type"
 	ConfigMapTypeLabel           = "scylla-operator.scylladb.com/config-map-type"
 	OwnerUIDLabel                = "scylla-operator.scylladb.com/owner-uid"
 	ScyllaDBMonitoringNameLabel  = "scylla-operator.scylladb.com/scylladbmonitoring-name"
@@ -78,6 +79,11 @@ const (
 
 const (
 	NodeConfigJobForNodeKey = "scylla-operator.scylladb.com/node-config-job-for-node"
+)
+
+const (
+	NodeConfigDaemonSetTypeTuning    = "Tuning"
+	NodeConfigDaemonSetTypeNodeSetup = "NodeSetup"
 )
 
 // Configuration Values

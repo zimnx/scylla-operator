@@ -52,12 +52,7 @@ func (ncdc *Controller) getCurrentNodeConfig(ctx context.Context) (*v1alpha1.Nod
 	return nc, nil
 }
 
-func (ncdc *Controller) updateNodeStatus(ctx context.Context, nodeStatus *v1alpha1.NodeConfigNodeStatus) error {
-	oldNC, err := ncdc.getCurrentNodeConfig(ctx)
-	if err != nil {
-		return err
-	}
-
+func (ncdc *Controller) updateNodeStatus(ctx context.Context, oldNC *v1alpha1.NodeConfig, nodeStatus *v1alpha1.NodeConfigNodeStatus) error {
 	nc := oldNC.DeepCopy()
 
 	nc.Status.NodeStatuses = controllerhelpers.SetNodeStatus(nc.Status.NodeStatuses, nodeStatus)
@@ -68,7 +63,7 @@ func (ncdc *Controller) updateNodeStatus(ctx context.Context, nodeStatus *v1alph
 
 	klog.V(2).InfoS("Updating status", "NodeConfig", klog.KObj(oldNC), "Node", nodeStatus.Name)
 
-	_, err = ncdc.scyllaClient.ScyllaV1alpha1().NodeConfigs().UpdateStatus(ctx, nc, metav1.UpdateOptions{})
+	_, err := ncdc.scyllaClient.ScyllaV1alpha1().NodeConfigs().UpdateStatus(ctx, nc, metav1.UpdateOptions{})
 	if err != nil {
 		return fmt.Errorf("can't update node config status %q: %w", ncdc.nodeConfigName, err)
 	}
@@ -124,8 +119,16 @@ func (ncdc *Controller) sync(ctx context.Context) error {
 		return objectErr
 	}
 
-	nodeStatus := &v1alpha1.NodeConfigNodeStatus{
-		Name: ncdc.nodeName,
+	currentNC, err := ncdc.getCurrentNodeConfig(ctx)
+	if err != nil {
+		return fmt.Errorf("can't get current node config %q: %w", ncdc.nodeConfigName, err)
+	}
+
+	nodeStatus := controllerhelpers.FindNodeStatus(currentNC.Status.NodeStatuses, ncdc.nodeName)
+	if nodeStatus == nil {
+		nodeStatus = &v1alpha1.NodeConfigNodeStatus{
+			Name: ncdc.nodeName,
+		}
 	}
 
 	var errs []error
@@ -135,7 +138,7 @@ func (ncdc *Controller) sync(ctx context.Context) error {
 		errs = append(errs, fmt.Errorf("can't sync jobs: %w", err))
 	}
 
-	err = ncdc.updateNodeStatus(ctx, nodeStatus)
+	err = ncdc.updateNodeStatus(ctx, currentNC, nodeStatus)
 	if err != nil {
 		errs = append(errs, fmt.Errorf("can't update status: %w", err))
 	}

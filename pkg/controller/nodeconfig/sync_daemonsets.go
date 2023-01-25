@@ -13,14 +13,25 @@ import (
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 )
 
-func (ncc *Controller) pruneDaemonSets(ctx context.Context, requiredDaemonSet *appsv1.DaemonSet, daemonSets map[string]*appsv1.DaemonSet) error {
+func (ncc *Controller) pruneDaemonSets(ctx context.Context, requiredDaemonSets []*appsv1.DaemonSet, daemonSets map[string]*appsv1.DaemonSet) error {
 	var errs []error
 	for _, ds := range daemonSets {
+		if ds == nil {
+			continue
+		}
+
 		if ds.DeletionTimestamp != nil {
 			continue
 		}
 
-		if requiredDaemonSet != nil && ds.Name == requiredDaemonSet.Name {
+		isRequired := false
+		for _, req := range requiredDaemonSets {
+			if ds.Name == req.Name {
+				isRequired = true
+				break
+			}
+		}
+		if isRequired {
 			continue
 		}
 
@@ -49,16 +60,23 @@ func (ncc *Controller) syncDaemonSet(
 	scyllaUtilsImage := soc.Spec.ScyllaUtilsImage
 	// FIXME: check that its not empty, emit event
 	// FIXME: add webhook validation for the format
-	requiredDaemonSet := makeNodeConfigDaemonSet(nc, ncc.operatorImage, scyllaUtilsImage)
+	requiredDaemonSets := []*appsv1.DaemonSet{
+		makeNodeConfigDaemonSet(nc, ncc.operatorImage, scyllaUtilsImage),
+		makeNodeDiskSetupDaemonSet(nc, ncc.operatorImage),
+	}
 
 	// Delete any excessive DaemonSets.
 	// Delete has to be the first action to avoid getting stuck on quota.
-	err := ncc.pruneDaemonSets(ctx, requiredDaemonSet, daemonSets)
+	err := ncc.pruneDaemonSets(ctx, requiredDaemonSets, daemonSets)
 	if err != nil {
 		return fmt.Errorf("can't delete DaemonSet(s): %w", err)
 	}
 
-	if requiredDaemonSet != nil {
+	for _, requiredDaemonSet := range requiredDaemonSets {
+		if requiredDaemonSet == nil {
+			continue
+		}
+
 		updatedDaemonSet, _, err := resourceapply.ApplyDaemonSet(ctx, ncc.kubeClient.AppsV1(), ncc.daemonSetLister, ncc.eventRecorder, requiredDaemonSet, resourceapply.ApplyOptions{})
 		if err != nil {
 			return fmt.Errorf("can't apply statefulset update: %w", err)
