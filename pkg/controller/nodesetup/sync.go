@@ -62,11 +62,12 @@ func (nsc *Controller) sync(ctx context.Context) error {
 		}
 		nodeStatus.DisksSetUp = nodeStatus.DisksSetUp && filesystemsFinished
 
-		mountsFinished, err := nsc.syncMounts(ctx, nc, nodeStatus)
+		_, err = nsc.syncMounts(ctx, nc, nodeStatus)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("can't sync mounts: %w", err))
 		}
-		nodeStatus.DisksSetUp = nodeStatus.DisksSetUp && mountsFinished
+		// FIXME: this should be conditions
+		nodeStatus.DisksSetUp = false
 	}
 
 	err = nsc.updateNodeStatus(ctx, nc, nodeStatus)
@@ -76,7 +77,7 @@ func (nsc *Controller) sync(ctx context.Context) error {
 
 	err = utilerrors.NewAggregate(errs)
 	if err != nil {
-		errs = append(errs, fmt.Errorf("failed to sync nodeconfig %q: %w", nsc.nodeConfigName, err))
+		return fmt.Errorf("failed to sync nodeconfig %q: %w", nsc.nodeConfigName, err)
 	}
 
 	return nil

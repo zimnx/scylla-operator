@@ -154,6 +154,7 @@ func (o *NodeSetupDaemonOptions) Run(streams genericclioptions.IOStreams, cmd *c
 	}
 
 	ncdc, err := nodesetup.NewController(
+		ctx,
 		o.kubeClient,
 		o.scyllaClient.ScyllaV1alpha1(),
 		nodeConfigInformers.Scylla().V1alpha1().NodeConfigs(),
@@ -165,6 +166,7 @@ func (o *NodeSetupDaemonOptions) Run(streams genericclioptions.IOStreams, cmd *c
 	if err != nil {
 		return fmt.Errorf("can't create node config instance controller: %w", err)
 	}
+	defer ncdc.Close()
 
 	// Start informers.
 	nodeConfigInformers.Start(ctx.Done())

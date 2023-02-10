@@ -188,41 +188,10 @@ done
 
 find /host -mindepth 1 -maxdepth 1 -type l -exec cp -P "{}" ./ \;
 
-mkdir -p ./scylla-operator
-touch ./scylla-operator/scylla-operator
-mount --bind /usr/bin/scylla-operator ./scylla-operator/scylla-operator
+scylla_operator_bin=$( mktemp -p ./ )
+mount --bind /usr/bin/scylla-operator "${scylla_operator_bin}"
 
-for f in ca.crt token; do
-	touch "./scylla-operator/${f}"
-	mount --bind "/var/run/secrets/kubernetes.io/serviceaccount/${f}" "./scylla-operator/${f}"
-done
-
-cat <<EOF > ./scylla-operator/kubeconfig
-apiVersion: v1
-kind: Config
-clusters:
-- name: in-cluster
-  cluster:
-    server: https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}
-    certificate-authority: /scylla-operator/ca.crt
-
-users:
-- name: scylla-operator
-  user:
-    tokenFile: /scylla-operator/token
-
-contexts:
-- name: in-cluster
-  context:
-    cluster: in-cluster
-    user: scylla-operator
-
-current-context: in-cluster
-
-EOF
-
-exec chroot ./ /scylla-operator/scylla-operator node-setup-daemon \
---kubeconfig=/scylla-operator/kubeconfig \
+exec chroot ./ "${scylla_operator_bin}" node-setup-daemon \
 --namespace="$(NAMESPACE)" \
 --node-name="$(NODE_NAME)" \
 --node-config-name=` + fmt.Sprintf("%q", nc.Name) + ` \

@@ -15,6 +15,7 @@ import (
 	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
 	"github.com/scylladb/scylla-operator/pkg/kubeinterfaces"
 	"github.com/scylladb/scylla-operator/pkg/scheme"
+	"github.com/scylladb/scylla-operator/pkg/systemd"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -29,7 +30,6 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/component-base/metrics/prometheus/ratelimiter"
 	"k8s.io/klog/v2"
-	"k8s.io/mount-utils"
 	"k8s.io/utils/exec"
 )
 
@@ -60,12 +60,14 @@ type Controller struct {
 	nodeConfigName string
 	nodeConfigUID  types.UID
 
-	executor  exec.Interface
-	mounter   mount.Interface
-	sysfsPath string
+	executor           exec.Interface
+	systemdControl     *systemd.SystemdControl
+	systemdUnitManager *systemd.UnitManager
+	sysfsPath          string
 }
 
 func NewController(
+	ctx context.Context,
 	kubeClient kubernetes.Interface,
 	scyllaClient scyllav1alpha1client.ScyllaV1alpha1Interface,
 	nodeConfigInformer scyllav1alpha1informers.NodeConfigInformer,
@@ -87,6 +89,12 @@ func NewController(
 			return nil, err
 		}
 	}
+
+	systemdControl, err := systemd.NewSystemdSystemControl(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("can't create systemd control: %w", err)
+	}
+
 	ncc := &Controller{
 		kubeClient:   kubeClient,
 		scyllaClient: scyllaClient,
@@ -106,12 +114,12 @@ func NewController(
 		nodeConfigName: nodeConfigName,
 		nodeConfigUID:  nodeConfigUID,
 
-		executor:  exec.New(),
-		mounter:   mount.New(""),
-		sysfsPath: "/sys",
+		executor:           exec.New(),
+		systemdControl:     systemdControl,
+		systemdUnitManager: systemd.NewUnitManager("scylla-operator-node-setup"),
+		sysfsPath:          "/sys",
 	}
 
-	var err error
 	ncc.handlers, err = controllerhelpers.NewHandlers[*scyllav1alpha1.NodeConfig](
 		ncc.queue,
 		keyFunc,
@@ -137,6 +145,10 @@ func NewController(
 	})
 
 	return ncc, nil
+}
+
+func (nsc *Controller) Close() {
+	nsc.systemdControl.Close()
 }
 
 func (nsc *Controller) addNodeConfig(obj interface{}) {
