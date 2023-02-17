@@ -24,6 +24,9 @@ runs:
       echo 'net.bridge.bridge-nf-call-iptables  = 1' | sudo tee -a /etc/sysctl.d/90-kube.conf >/dev/null
       echo 'net.bridge.bridge-nf-call-ip6tables = 1' | sudo tee -a /etc/sysctl.d/90-kube.conf >/dev/null
       
+      # Required by crio+conmon
+      # echo 'fs.protected_regular = 0' | sudo tee -a /etc/sysctl.d/91-conmon.conf >/dev/null
+      
       sudo sysctl --system
 
   - name: Install cri-o
@@ -49,7 +52,7 @@ runs:
       echo "deb [signed-by=/etc/apt/keyrings/libcontainers-crio-archive-keyring.gpg] https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable:/cri-o:/${KUBERNETES_VERSION_SHORT}/xUbuntu_${VERSION_ID}/ /" | sudo tee /etc/apt/sources.list.d/devel:kubic:libcontainers:stable:cri-o:${KUBERNETES_VERSION_SHORT}.list
       
       sudo apt-get update
-      sudo apt-get install -y --no-install-recommends cri-o cri-o-runc
+      sudo apt-get install -y --no-install-recommends cri-o cri-o-runc conmon
       
       cat << EOF | sudo tee /etc/crio/crio.conf.d/02-cgroup-manager.conf
       [crio.runtime]
@@ -75,9 +78,12 @@ runs:
       sudo apt-get update
       
       # Remove conflicting package
-      sudo apt remove containernetworking-plugins
+      sudo apt-get remove containernetworking-plugins
       
       sudo apt-get install -y --no-install-recommends kubelet="${KUBERNETES_PKG_VERSION}" kubeadm="${KUBERNETES_PKG_VERSION}" kubectl="${KUBERNETES_PKG_VERSION}"
+      
+      # Podman got wiped by removing `containernetworking-plugins` so we have to install it from the new repo.
+      sudo apt-get install podman
 
   - name: Start Kubernetes
     shell: bash
@@ -143,11 +149,14 @@ runs:
       
       # master taint is deprecated in 1.24 and removed in 1.25
       # control-plane taint is added in 1.25
+      # kubectl returns an error if taint isn't there when we try to remove it, to overcome this we first taint it, and then untaint
+      kubectl taint nodes --selector node-role.kubernetes.io/control-plane= --overwrite node-role.kubernetes.io/control-plane:NoSchedule
       kubectl taint nodes --selector node-role.kubernetes.io/control-plane= node-role.kubernetes.io/control-plane-
+      kubectl taint nodes --selector node-role.kubernetes.io/control-plane= --overwrite node-role.kubernetes.io/master:NoSchedule
       kubectl taint nodes --selector node-role.kubernetes.io/control-plane= node-role.kubernetes.io/master-
       
       kubectl -n kube-system rollout status --timeout=5m deployment.apps/coredns
-
+      
   - name: Tweak Kubernetes
     shell: bash
     run: |
