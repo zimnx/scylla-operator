@@ -9,6 +9,7 @@ require (
 	github.com/blang/semver v3.5.1+incompatible
 	github.com/c9s/goprocinfo v0.0.0-20210130143923-c95fcf8c64a8
 	github.com/cenkalti/backoff v2.2.1+incompatible
+	github.com/coreos/go-systemd/v22 v22.3.2
 	github.com/evanphx/json-patch v4.12.0+incompatible
 	github.com/ghodss/yaml v1.0.0
 	github.com/go-git/go-git/v5 v5.4.2
@@ -18,6 +19,7 @@ require (
 	github.com/go-openapi/swag v0.22.3
 	github.com/go-openapi/validate v0.22.0
 	github.com/gocql/gocql v1.2.1
+	github.com/godbus/dbus/v5 v5.0.4
 	github.com/google/go-cmp v0.5.9
 	github.com/grafana/grafana-api-golang-client v0.16.0
 	github.com/hailocab/go-hostpool v0.0.0-20160125115350-e80d13ce29ed
