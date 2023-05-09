@@ -30,6 +30,7 @@ runs:
       ref: ${{ inputs.genReleaseNotesVersionRef }}
       repository: scylladb/scylla-operator
       path: ${{ github.workspace }}/go/src/github.com/scylladb/scylla-operator
+      fetch-depth: 0
 
   - name: Install release notes generator
     shell: bash
