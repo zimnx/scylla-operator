@@ -13,6 +13,9 @@ inputs:
   genReleaseNotesVersionRef:
     description: "Version ref of gen-release-notes"
     default: master
+  githubToken:
+    description: "Token with access to pull permissions to scylladb/scylla-operator and release permissions to repository which release is published"
+    required: true
 runs:
   using: "composite"
   steps:
@@ -46,8 +49,6 @@ runs:
       fetch-depth: 0
   
   - name: Create release
-    env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     working-directory: ${{ github.workspace }}/go/src/github.com/${{ inputs.githubRepository }}
     shell: bash
     run: |
@@ -84,7 +85,7 @@ runs:
       previous_release_name="${previous_tag#v}"
       
       gen-release-notes --start-ref="$( git merge-base "${current_tag}" "${previous_tag}" )" \
-      --end-ref="${current_tag}" --release-name="${release_name}" --previous-release-name="${previous_release_name}" --github-token="${GITHUB_TOKEN}" \
+      --end-ref="${current_tag}" --release-name="${release_name}" --previous-release-name="${previous_release_name}" --github-token="${{ inputs.githubToken }}" \
       --loglevel=2 > ~/release_notes.md
       
       data="$( jq -n \
@@ -101,7 +102,7 @@ runs:
           "body": $body
       }' )"
       curl --fail -X POST \
-      -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+      -H "Authorization: Bearer ${{ inputs.githubToken }}" \
       -H "Accept: application/vnd.github.v3+json" \
       https://api.github.com/repos/${{ inputs.githubRepository }}/releases \
       --data "${data}"
