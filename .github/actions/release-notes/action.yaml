@@ -30,6 +30,7 @@ runs:
       ref: ${{ inputs.genReleaseNotesVersionRef }}
       repository: scylladb/scylla-operator
       path: ${{ github.workspace }}/go/src/github.com/scylladb/scylla-operator
+      fetch-depth: 0
 
   - name: Install release notes generator
     shell: bash
@@ -40,7 +41,7 @@ runs:
       cd ${{ github.workspace }}/go/src/github.com/scylladb/scylla-operator
       make build GO_BUILD_PACKAGES=./cmd/gen-release-notes --warn-undefined-variables
       
-      mv ./gen-release-notes "${GOPATH}/bin/gen-release-notes"
+      echo "${{ github.workspace }}/go/src/github.com/scylladb/scylla-operator" >> ${GITHUB_PATH}
   
   - uses: actions/checkout@v3
     with:
