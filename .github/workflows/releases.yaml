@@ -52,9 +52,7 @@ jobs:
       with:
         path: ${{ github.workspace }}/go/src/github.com/scylladb/scylla-operator
         fetch-depth: 0
-=======
->>>>>>> Stashed changes
-    
+
     - name: Generate and publish release notes
       uses: ./go/src/github.com/scylladb/scylla-operator/.github/actions/release-notes
       with:
