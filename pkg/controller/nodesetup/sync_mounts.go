@@ -32,7 +32,7 @@ func (nsc *Controller) syncMounts(ctx context.Context, nc *scyllav1alpha1.NodeCo
 				Device:      device,
 				MountPoint:  mc.MountPoint,
 				FSType:      mc.FSType,
-				Options:     mc.UnsupportedOptions,
+				Options:     append([]string{"X-mount.mkdir"}, mc.UnsupportedOptions...),
 			}
 
 			mountUnit, err := mount.MakeUnit()
