@@ -52,6 +52,8 @@ func (nsc *Controller) syncMounts(ctx context.Context, nc *scyllav1alpha1.NodeCo
 		errs = append(errs, fmt.Errorf("can't ensure units: %w", err))
 	}
 
+	// TODO: Check mount units for failures.
+
 	err = utilerrors.NewAggregate(errs)
 	if err != nil {
 		return progressingConditions, fmt.Errorf("can't create mounts: %w", err)
