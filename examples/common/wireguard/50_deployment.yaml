@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wireguard
+  namespace: wireguard
+  labels:
+    app.kubernetes.io/name: wireguard
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: wireguard
+  strategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: wireguard
+    spec:
+      containers:
+      - name: wireguard
+        image: ghcr.io/linuxserver/wireguard@sha256:6c4b5b7bbccdefb27ec540e280450e35e5ff66ed0a1cf2b60bd18e2351dd1a76
+        envFrom:
+        - configMapRef:
+            name: wireguard
+        securityContext:
+          capabilities:
+            add:
+            - NET_ADMIN
+            - SYS_MODULE
+          privileged: true
+        volumeMounts:
+        - name: host-lib-modules
+          mountPath: /lib/modules
+        - name: config
+          mountPath: /config
+        ports:
+        - containerPort: 51820
+          protocol: UDP
+        resources:
+          limits:
+            memory: 128Mi
+            cpu: 200m
+      volumes:
+      - name: host-lib-modules
+        hostPath:
+          path: /lib/modules
+          type: Directory
+      - name: config
+        emptyDir:
+          sizeLimit: 100Mi
