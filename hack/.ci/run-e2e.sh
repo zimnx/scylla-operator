@@ -51,13 +51,36 @@ ingress_address="$( kubectl -n haproxy-ingress get svc haproxy-ingress --templat
 kubectl create namespace e2e
 kubectl -n e2e create clusterrolebinding e2e --clusterrole=cluster-admin --serviceaccount=e2e:default
 
-# kubectl -n e2e create poddisruptionbudget e2e --selector=app=e2e --max-unavailable=0
-# timeout -v 70m kubectl -n e2e run -l=app=e2e --attach --restart=Never --image=quay.io/tnozicka/scylla-operator:latest --image-pull-policy=Always --command=true e2e -- scylla-operator-tests run all \
-# --loglevel=2 \
-# --artifacts-dir="${ARTIFACTS}" \
-# --timeout=60m \
-# --feature-gates=AllAlpha=true,AllBeta=true \
-# --override-ingress-address="${ingress_address}"
-# FIXME: cp artifacts like junit
+kubectl -n wireguard apply --server-side -f=https://raw.githubusercontent.com/zimnx/scylla-operator/c3a23fa6405dc70fc79f3fec5d4da704a037f958/examples/common/wireguard/{00_namespace,10_configmap,10_service,50_deployment}.yaml
+
+wireguard_external_ip=""
+while [ -z ${wireguard_external_ip} ]; do
+  wireguard_external_ip=$( kubectl -n wireguard get svc wireguard --template="{{range .status.loadBalancer.ingress}}{{.ip}}{{end}}" )
+  if [ -z "${wireguard_external_ip}" ]; then
+    echo "Waiting for end point..."
+    sleep 1
+  fi
+done
+
+kubectl -n wireguard exec deployment.apps/wireguard -- cat /config/peer1/peer1.conf > /tmp/wg.conf
+sed -i "/Endpoint/c\Endpoint=${wireguard_external_ip}:51820" /tmp/wg.conf
+sed -i "/AllowedIPs/c\AllowedIPs=${SERVICES_CIDR}, ${PODS_CIDR}" /tmp/wg.conf
+
+podman pod create --name e2e
+podman run --pod e2e --privileged -v="/tmp/wg.conf:/etc/wireguard/wg0.conf:ro" docker.io/scyllazimnx/wireguard:latest wg-quick up wg0
+
+timeout 70m podman run --pod e2e --rm \
+--entrypoint=/usr/bin/scylla-operator-tests \
+-v="${ARTIFACTS}:/artifacts:rw" \
+-v="${KUBECONFIG}:/kubeconfig:ro" -e='KUBECONFIG=/kubeconfig' \
+"quay.io/scylladb/scylla-operator-ci:scylla-operator-${SOCI_PR_TAG}" \
+run all \
+--loglevel=2 \
+--feature-gates=AllAlpha=true,AllBeta=true \
+--artifacts-dir=/artifacts \
+--timeout="60m" \
+--override-ingress-address="${ingress_address}"
 
 ARTIFACTS_DIR="${ARTIFACTS}" timeout -v 10m ./hack/ci-gather-artifacts.sh
+
+podman pod rm e2e
