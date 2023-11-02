@@ -91,7 +91,9 @@ runs:
       
       # Remove conflicting packages (also removes podman).
       sudo apt-get remove containernetworking-plugins
-      
+
+      sudo apt-get remove kubelet kubeadm kubectl
+      sudo apt-get autoremove
       sudo apt-get install -y --no-install-recommends kubelet="${KUBERNETES_PKG_VERSION}" kubeadm="${KUBERNETES_PKG_VERSION}" kubectl="${KUBERNETES_PKG_VERSION}"
 
       # Podman got wiped by removing `containernetworking-plugins` so we have to install it from the new repo.
