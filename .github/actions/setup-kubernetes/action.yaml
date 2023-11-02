@@ -83,9 +83,12 @@ runs:
       sudo apt-get update
       sudo apt-get install -y --no-install-recommends conntrack socat ebtables
       
+      ls -la /etc/apt/keyrings/
+      
       tmp_file=$( mktemp )
       curl -fsSL https://pkgs.k8s.io/core:/stable:/v${KUBERNETES_VERSION_SHORT}/deb/Release.key -o ${tmp_file}
       sudo gpg --no-tty --batch --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg ${tmp_file}
+      
       
       echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v${KUBERNETES_VERSION_SHORT}/deb/ /" | sudo tee /etc/apt/sources.list.d/kubernetes.list
       sudo apt-get update
