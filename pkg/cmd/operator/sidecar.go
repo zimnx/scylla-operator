@@ -38,6 +38,8 @@ type SidecarOptions struct {
 	ExternalSeeds                     []string
 	NodesBroadcastAddressTypeString   string
 	ClientsBroadcastAddressTypeString string
+	AdditionalScyllaDBArguments       []string
+	DeveloperMode                     bool
 
 	nodesBroadcastAddressType   scyllav1alpha1.BroadcastAddressType
 	clientsBroadcastAddressType scyllav1alpha1.BroadcastAddressType
@@ -95,6 +97,8 @@ func NewSidecarCmd(streams genericclioptions.IOStreams) *cobra.Command {
 	cmd.Flags().StringSliceVar(&o.ExternalSeeds, "external-seeds", o.ExternalSeeds, "The external seeds to propagate to ScyllaDB binary on startup as \"seeds\" parameter of seed-provider.")
 	cmd.Flags().StringVarP(&o.NodesBroadcastAddressTypeString, "nodes-broadcast-address-type", "", o.NodesBroadcastAddressTypeString, "Address type that is broadcasted for communication with other nodes.")
 	cmd.Flags().StringVarP(&o.ClientsBroadcastAddressTypeString, "clients-broadcast-address-type", "", o.ClientsBroadcastAddressTypeString, "Address type that is broadcasted for communication with clients.")
+	cmd.Flags().StringSliceVar(&o.AdditionalScyllaDBArguments, "additional-scylladb-arguments", o.AdditionalScyllaDBArguments, "Specifies a list of arguments appended to the ScyllaDB binary during startup. When set, ScyllaDB may behave unexpectedly, and every such setup is considered unsupported. Instead, consider using customConfigMapRef for setting custom ScyllaDB configuration options.")
+	cmd.Flags().BoolVarP(&o.DeveloperMode, "developer-mode", "", o.DeveloperMode, "Specifies if ScyllaDB runs in developer mode.")
 
 	return cmd
 }
@@ -139,11 +143,6 @@ func (o *SidecarOptions) Complete() error {
 	o.kubeClient, err = kubernetes.NewForConfig(o.ProtoConfig)
 	if err != nil {
 		return fmt.Errorf("can't build kubernetes clientset: %w", err)
-	}
-
-	o.scyllaClient, err = scyllaversionedclient.NewForConfig(o.RestConfig)
-	if err != nil {
-		return fmt.Errorf("can't build scylla clientset: %w", err)
 	}
 
 	o.clientsBroadcastAddressType = scyllav1alpha1.BroadcastAddressType(o.ClientsBroadcastAddressTypeString)
@@ -208,14 +207,14 @@ func (o *SidecarOptions) Run(streams genericclioptions.IOStreams, cmd *cobra.Com
 		return fmt.Errorf("can't get pod %q: %w", o.ServiceName, err)
 	}
 
-	member, err := identity.NewMember(service, pod, o.nodesBroadcastAddressType, o.clientsBroadcastAddressType)
+	member, err := identity.NewMember(service, pod, o.nodesBroadcastAddressType, o.clientsBroadcastAddressType, o.DeveloperMode, o.AdditionalScyllaDBArguments)
 	if err != nil {
 		return fmt.Errorf("can't create new member from objects: %w", err)
 	}
 
 	klog.V(2).InfoS("Starting scylla")
 
-	cfg := config.NewScyllaConfig(member, o.kubeClient, o.scyllaClient, o.CPUCount, o.ExternalSeeds)
+	cfg := config.NewScyllaConfig(member, o.kubeClient, o.CPUCount, o.ExternalSeeds)
 	scyllaCmd, err := cfg.Setup(ctx)
 	if err != nil {
 		return fmt.Errorf("can't set up scylla: %w", err)

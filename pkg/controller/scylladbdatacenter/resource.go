@@ -650,6 +650,13 @@ exec /mnt/shared/scylla-operator sidecar \
 										}
 										return string(scyllav1alpha1.BroadcastAddressTypeServiceClusterIP)
 									}() + ` \
+--developer-mode=` + func() string {
+										if sdc.Spec.ScyllaDB.EnableDeveloperMode != nil && *sdc.Spec.ScyllaDB.EnableDeveloperMode {
+											return "true"
+										}
+										return "false"
+									}() + ` \
+--additional-scylladb-arguments=` + fmt.Sprintf("%q", strings.Join(sdc.Spec.ScyllaDB.AdditionalScyllaDBArguments, ",")) + ` \
 --service-name=$(SERVICE_NAME) \
 --cpu-count=$(CPU_COUNT) \
 --loglevel=2 \

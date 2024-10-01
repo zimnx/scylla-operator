@@ -480,7 +480,12 @@ func TestStatefulSetForRack(t *testing.T) {
 				ClusterName:    "basic",
 				DatacenterName: pointer.Ptr("dc"),
 				ScyllaDB: scyllav1alpha1.ScyllaDB{
-					Image: "scylladb/scylla:latest",
+					Image:               "scylladb/scylla:latest",
+					EnableDeveloperMode: pointer.Ptr(true),
+					AdditionalScyllaDBArguments: []string{
+						"--log-to-stdout=1",
+						"--log-to-stderr=1",
+					},
 				},
 				ScyllaDBManagerAgent: &scyllav1alpha1.ScyllaDBManagerAgent{
 					Image: pointer.Ptr("scylladb/scylla-manager-agent:latest"),
@@ -741,6 +746,8 @@ exec /mnt/shared/scylla-operator sidecar \
 										}() + ` \
 --nodes-broadcast-address-type=ServiceClusterIP \
 --clients-broadcast-address-type=ServiceClusterIP \
+--developer-mode=true \
+--additional-scylladb-arguments="--log-to-stdout=1,--log-to-stderr=1" \
 --service-name=$(SERVICE_NAME) \
 --cpu-count=$(CPU_COUNT) \
 --loglevel=2 \
