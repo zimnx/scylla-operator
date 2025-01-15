@@ -9,7 +9,6 @@ import (
 	"github.com/scylladb/scylla-operator/pkg/helpers"
 	"github.com/scylladb/scylla-operator/pkg/helpers/slices"
 	"github.com/scylladb/scylla-operator/pkg/naming"
-	"github.com/scylladb/scylla-operator/pkg/pointer"
 	"github.com/scylladb/scylla-operator/pkg/scyllaclient"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -282,8 +281,7 @@ func GetRackNodeCount(sdc *scyllav1alpha1.ScyllaDBDatacenter, rackName string) (
 		return sdc.Spec.RackTemplate.Nodes, nil
 	}
 
-	// TODO: support scale subresource, until it's missing, mimic default value of rack members from v1.ScyllaCluster
-	return pointer.Ptr[int32](0), nil
+	return nil, nil
 }
 
 func IsScyllaDBDatacenterRolledOut(sdc *scyllav1alpha1.ScyllaDBDatacenter) (bool, error) {
