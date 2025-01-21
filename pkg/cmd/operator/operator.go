@@ -359,9 +359,11 @@ func (o *OperatorOptions) run(ctx context.Context, streams genericclioptions.IOS
 
 	opc, err := orphanedpv.NewController(
 		o.kubeClient,
+		o.scyllaClient,
 		kubeInformers.Core().V1().PersistentVolumes(),
 		kubeInformers.Core().V1().PersistentVolumeClaims(),
 		kubeInformers.Core().V1().Nodes(),
+		kubeInformers.Apps().V1().StatefulSets(),
 		scyllaInformers.Scylla().V1alpha1().ScyllaDBDatacenters(),
 	)
 	if err != nil {

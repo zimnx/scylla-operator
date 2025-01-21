@@ -280,7 +280,7 @@ func (sdcc *Controller) sync(ctx context.Context, key string) error {
 	// StatefulSets, the rack status can change afterwards. Overtime we should consider adding a status.progressing
 	// field (to allow determining cluster status without conditions) and wait for the status to be updated
 	// in a single place, on the next resync.
-	sdcc.setStatefulSetsAvailableStatusCondition(sdc, status)
+	sdcc.setStatefulSetsAvailableStatusCondition(sdc, status, statefulSetMap)
 
 	err = controllerhelpers.RunSync(
 		&status.Conditions,
@@ -327,7 +327,7 @@ func (sdcc *Controller) sync(ctx context.Context, key string) error {
 		jobControllerDegradedCondition,
 		sdc.Generation,
 		func() ([]metav1.Condition, error) {
-			return sdcc.syncJobs(ctx, sdc, serviceMap, jobMap)
+			return sdcc.syncJobs(ctx, sdc, serviceMap, jobMap, statefulSetMap)
 		},
 	)
 	if err != nil {

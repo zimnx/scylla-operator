@@ -8,6 +8,7 @@ import (
 	"time"
 
 	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
+	scyllaclient "github.com/scylladb/scylla-operator/pkg/client/scylla/clientset/versioned"
 	scyllav1alpha1informers "github.com/scylladb/scylla-operator/pkg/client/scylla/informers/externalversions/scylla/v1alpha1"
 	scyllav1alpha1listers "github.com/scylladb/scylla-operator/pkg/client/scylla/listers/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
@@ -18,9 +19,11 @@ import (
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
+	appsv1informers "k8s.io/client-go/informers/apps/v1"
 	corev1informers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
 	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
+	appsv1listers "k8s.io/client-go/listers/apps/v1"
 	corev1listers "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
@@ -52,11 +55,13 @@ var (
 //	It would also process PVs instead of ScyllaDBDatacenter which is currently complicating the logic
 //	that has to handle multiple PVs at once, artificial requeues / not watching PVs and different error paths.
 type Controller struct {
-	kubeClient kubernetes.Interface
+	kubeClient   kubernetes.Interface
+	scyllaClient scyllaclient.Interface
 
 	pvLister                 corev1listers.PersistentVolumeLister
 	pvcLister                corev1listers.PersistentVolumeClaimLister
 	nodeLister               corev1listers.NodeLister
+	statefulSetLister        appsv1listers.StatefulSetLister
 	scyllaDBDatacenterLister scyllav1alpha1listers.ScyllaDBDatacenterLister
 
 	cachesToSync []cache.InformerSynced
@@ -70,9 +75,11 @@ type Controller struct {
 
 func NewController(
 	kubeClient kubernetes.Interface,
+	scyllaClient scyllaclient.Interface,
 	pvInformer corev1informers.PersistentVolumeInformer,
 	pvcInformer corev1informers.PersistentVolumeClaimInformer,
 	nodeInformer corev1informers.NodeInformer,
+	statefulSetInformer appsv1informers.StatefulSetInformer,
 	scyllaDBDatacenterInformer scyllav1alpha1informers.ScyllaDBDatacenterInformer,
 ) (*Controller, error) {
 	eventBroadcaster := record.NewBroadcaster()
@@ -80,16 +87,20 @@ func NewController(
 	eventBroadcaster.StartRecordingToSink(&corev1client.EventSinkImpl{Interface: kubeClient.CoreV1().Events("")})
 
 	opc := &Controller{
-		kubeClient:               kubeClient,
+		kubeClient:   kubeClient,
+		scyllaClient: scyllaClient,
+
 		pvLister:                 pvInformer.Lister(),
 		pvcLister:                pvcInformer.Lister(),
 		nodeLister:               nodeInformer.Lister(),
+		statefulSetLister:        statefulSetInformer.Lister(),
 		scyllaDBDatacenterLister: scyllaDBDatacenterInformer.Lister(),
 
 		cachesToSync: []cache.InformerSynced{
 			pvInformer.Informer().HasSynced,
 			pvcInformer.Informer().HasSynced,
 			nodeInformer.Informer().HasSynced,
+			statefulSetInformer.Informer().HasSynced,
 			scyllaDBDatacenterInformer.Informer().HasSynced,
 		},
 

@@ -414,7 +414,12 @@ func StatefulSetForRack(rack scyllav1alpha1.RackSpec, sdc *scyllav1alpha1.Scylla
 		return nil, fmt.Errorf("can't get scylla container ports: %w", err)
 	}
 
-	rackNodeCount, err := controllerhelpers.GetRackNodeCount(sdc, rack.Name)
+	statefulSets := make(map[string]*appsv1.StatefulSet)
+	if existingSts != nil {
+		statefulSets[existingSts.Name] = existingSts
+	}
+
+	rackNodeCount, err := controllerhelpers.GetRackNodeCount(sdc, rack.Name, statefulSets)
 	if err != nil {
 		return nil, fmt.Errorf("can't get rack %q node count of ScyllaDBDatacenter %q: %w", rack.Name, naming.ObjRef(sdc), err)
 	}
@@ -1009,7 +1014,7 @@ wait
 	}
 
 	// Make sure we adjust if it was scaled in between.
-	if *sts.Spec.UpdateStrategy.RollingUpdate.Partition > *sts.Spec.Replicas {
+	if sts.Spec.Replicas != nil && *sts.Spec.UpdateStrategy.RollingUpdate.Partition > *sts.Spec.Replicas {
 		sts.Spec.UpdateStrategy.RollingUpdate.Partition = pointer.Ptr(*sts.Spec.Replicas)
 	}
 
@@ -1533,12 +1538,12 @@ func MakeRoleBinding(sdc *scyllav1alpha1.ScyllaDBDatacenter) *rbacv1.RoleBinding
 	}
 }
 
-func MakeJobs(sdc *scyllav1alpha1.ScyllaDBDatacenter, services map[string]*corev1.Service, image string) ([]*batchv1.Job, []metav1.Condition, error) {
+func MakeJobs(sdc *scyllav1alpha1.ScyllaDBDatacenter, services map[string]*corev1.Service, statefulSets map[string]*appsv1.StatefulSet, image string) ([]*batchv1.Job, []metav1.Condition, error) {
 	var jobs []*batchv1.Job
 	var progressingConditions []metav1.Condition
 
 	for _, rack := range sdc.Spec.Racks {
-		rackNodes, err := controllerhelpers.GetRackNodeCount(sdc, rack.Name)
+		rackNodes, err := controllerhelpers.GetRackNodeCount(sdc, rack.Name, statefulSets)
 		if err != nil {
 			return jobs, progressingConditions, fmt.Errorf("can't get rack %q node count of ScyllaDBDatacenter %q: %w", rack.Name, naming.ObjRef(sdc), err)
 		}

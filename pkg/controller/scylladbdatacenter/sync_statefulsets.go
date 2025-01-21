@@ -132,11 +132,11 @@ func (sdcc *Controller) removeSnapshot(ctx context.Context, scyllaClient *scylla
 
 // beforeUpgrade runs hooks before a cluster upgrade starts.
 // It returns true if the action is done, false if the caller should repeat later.
-func (sdcc *Controller) beforeUpgrade(ctx context.Context, sdc *scyllav1alpha1.ScyllaDBDatacenter, services map[string]*corev1.Service, upgradeContext *internalapi.DatacenterUpgradeContext) (bool, error) {
+func (sdcc *Controller) beforeUpgrade(ctx context.Context, sdc *scyllav1alpha1.ScyllaDBDatacenter, services map[string]*corev1.Service, statefulSets map[string]*appsv1.StatefulSet, upgradeContext *internalapi.DatacenterUpgradeContext) (bool, error) {
 	klog.V(2).InfoS("Running pre-upgrade hook", "ScyllaDBDatacenter", klog.KObj(sdc))
 	defer klog.V(2).InfoS("Finished running pre-upgrade hook", "ScyllaDBDatacenter", klog.KObj(sdc))
 
-	hosts, err := controllerhelpers.GetRequiredScyllaHosts(sdc, services, sdcc.podLister)
+	hosts, err := controllerhelpers.GetRequiredScyllaHosts(sdc, services, statefulSets, sdcc.podLister)
 	if err != nil {
 		return true, err
 	}
@@ -171,11 +171,11 @@ func (sdcc *Controller) beforeUpgrade(ctx context.Context, sdc *scyllav1alpha1.S
 	return true, nil
 }
 
-func (sdcc *Controller) afterUpgrade(ctx context.Context, sdc *scyllav1alpha1.ScyllaDBDatacenter, services map[string]*corev1.Service, upgradeContext *internalapi.DatacenterUpgradeContext) error {
+func (sdcc *Controller) afterUpgrade(ctx context.Context, sdc *scyllav1alpha1.ScyllaDBDatacenter, services map[string]*corev1.Service, statefulSets map[string]*appsv1.StatefulSet, upgradeContext *internalapi.DatacenterUpgradeContext) error {
 	klog.V(2).InfoS("Running post-upgrade hook", "ScyllaDBDatacenter", klog.KObj(sdc))
 	defer klog.V(2).InfoS("Finished running post-upgrade hook", "ScyllaDBDatacenter", klog.KObj(sdc))
 
-	hosts, err := controllerhelpers.GetRequiredScyllaHosts(sdc, services, sdcc.podLister)
+	hosts, err := controllerhelpers.GetRequiredScyllaHosts(sdc, services, statefulSets, sdcc.podLister)
 	if err != nil {
 		return err
 	}
@@ -536,6 +536,10 @@ func (sdcc *Controller) syncStatefulSets(
 
 	// Scale before the update.
 	for _, req := range requiredStatefulSets {
+		if req.Spec.Replicas == nil {
+			continue
+		}
+
 		sts := statefulSets[req.Name]
 
 		scale := &autoscalingv1.Scale{
@@ -713,7 +717,7 @@ func (sdcc *Controller) syncStatefulSets(
 		switch currentUpgradeContext.State {
 		case internalapi.PreHooksUpgradePhase:
 			// TODO: Move the pre-upgrade hook into a Job.
-			done, err := sdcc.beforeUpgrade(ctx, sdc, services, currentUpgradeContext)
+			done, err := sdcc.beforeUpgrade(ctx, sdc, services, statefulSets, currentUpgradeContext)
 			if err != nil {
 				return progressingConditions, err
 			}
@@ -914,7 +918,7 @@ func (sdcc *Controller) syncStatefulSets(
 			return progressingConditions, nil
 
 		case internalapi.PostHooksUpgradePhase:
-			err = sdcc.afterUpgrade(ctx, sdc, services, currentUpgradeContext)
+			err = sdcc.afterUpgrade(ctx, sdc, services, statefulSets, currentUpgradeContext)
 			if err != nil {
 				return progressingConditions, err
 			}
@@ -1078,13 +1082,14 @@ func (sdcc *Controller) syncStatefulSets(
 func (sdcc *Controller) setStatefulSetsAvailableStatusCondition(
 	sdc *scyllav1alpha1.ScyllaDBDatacenter,
 	status *scyllav1alpha1.ScyllaDBDatacenterStatus,
+	statefulSetMap map[string]*appsv1.StatefulSet,
 ) {
 	desiredMembers := int32(0)
 	updatedMembers := int32(0)
 	readyMembers := int32(0)
 	var racksInDifferentVersion []string
 	for _, rack := range sdc.Spec.Racks {
-		rackCount, err := controllerhelpers.GetRackNodeCount(sdc, rack.Name)
+		rackCount, err := controllerhelpers.GetRackNodeCount(sdc, rack.Name, statefulSetMap)
 		if err != nil {
 			klog.ErrorS(err, "can't get rack node count", "ScyllaDBDatacenter", naming.ObjRef(sdc), "Rack", rack.Name)
 			continue

@@ -9,7 +9,9 @@ import (
 	"github.com/scylladb/scylla-operator/pkg/helpers"
 	"github.com/scylladb/scylla-operator/pkg/helpers/slices"
 	"github.com/scylladb/scylla-operator/pkg/naming"
+	"github.com/scylladb/scylla-operator/pkg/pointer"
 	"github.com/scylladb/scylla-operator/pkg/scyllaclient"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/errors"
@@ -74,11 +76,11 @@ func GetScyllaBroadcastAddress(broadcastAddressType scyllav1alpha1.BroadcastAddr
 	}
 }
 
-func GetRequiredScyllaHosts(sdc *scyllav1alpha1.ScyllaDBDatacenter, services map[string]*corev1.Service, podLister corev1listers.PodLister) ([]string, error) {
+func GetRequiredScyllaHosts(sdc *scyllav1alpha1.ScyllaDBDatacenter, services map[string]*corev1.Service, statefulSets map[string]*appsv1.StatefulSet, podLister corev1listers.PodLister) ([]string, error) {
 	var hosts []string
 	var errs []error
 	for _, rack := range sdc.Spec.Racks {
-		rackNodeCount, err := GetRackNodeCount(sdc, rack.Name)
+		rackNodeCount, err := GetRackNodeCount(sdc, rack.Name, statefulSets)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("can't get rack %q node count of ScyllaDBDatacenter %q: %w", rack.Name, naming.ObjRef(sdc), err))
 			continue
@@ -265,7 +267,7 @@ func IsScyllaPod(pod *corev1.Pod) bool {
 	return true
 }
 
-func GetRackNodeCount(sdc *scyllav1alpha1.ScyllaDBDatacenter, rackName string) (*int32, error) {
+func GetRackNodeCount(sdc *scyllav1alpha1.ScyllaDBDatacenter, rackName string, statefulSets map[string]*appsv1.StatefulSet) (*int32, error) {
 	rackSpec, _, ok := slices.Find(sdc.Spec.Racks, func(spec scyllav1alpha1.RackSpec) bool {
 		return spec.Name == rackName
 	})
@@ -281,7 +283,13 @@ func GetRackNodeCount(sdc *scyllav1alpha1.ScyllaDBDatacenter, rackName string) (
 		return sdc.Spec.RackTemplate.Nodes, nil
 	}
 
-	return nil, nil
+	rackSts, ok := statefulSets[naming.StatefulSetNameForRack(rackSpec, sdc)]
+	if !ok {
+		// Missing replicas defaults to 1
+		return pointer.Ptr[int32](1), nil
+	}
+
+	return rackSts.Spec.Replicas, nil
 }
 
 func IsScyllaDBDatacenterRolledOut(sdc *scyllav1alpha1.ScyllaDBDatacenter) (bool, error) {

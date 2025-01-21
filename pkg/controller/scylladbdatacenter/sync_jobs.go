@@ -13,6 +13,7 @@ import (
 	"github.com/scylladb/scylla-operator/pkg/internalapi"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	"github.com/scylladb/scylla-operator/pkg/resourceapply"
+	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
@@ -25,8 +26,9 @@ func (sdcc *Controller) syncJobs(
 	sdc *scyllav1alpha1.ScyllaDBDatacenter,
 	services map[string]*corev1.Service,
 	jobs map[string]*batchv1.Job,
+	statefulSets map[string]*appsv1.StatefulSet,
 ) ([]metav1.Condition, error) {
-	requiredJobs, progressingConditions, err := MakeJobs(sdc, services, sdcc.operatorImage)
+	requiredJobs, progressingConditions, err := MakeJobs(sdc, services, statefulSets, sdcc.operatorImage)
 	if err != nil {
 		return progressingConditions, fmt.Errorf("can't make jobs: %w", err)
 	}

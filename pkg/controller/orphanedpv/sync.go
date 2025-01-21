@@ -8,6 +8,7 @@ import (
 	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
 	"github.com/scylladb/scylla-operator/pkg/naming"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -23,13 +24,17 @@ type PVItem struct {
 	ServiceName string
 }
 
-func (opc *Controller) getPVsForScyllaDBDatacenter(ctx context.Context, sdc *scyllav1alpha1.ScyllaDBDatacenter) ([]*PVItem, []string, error) {
+var (
+	scyllaDBDatacenterControllerGVK = scyllav1alpha1.GroupVersion.WithKind("ScyllaDBDatacenter")
+)
+
+func (opc *Controller) getPVsForScyllaDBDatacenter(ctx context.Context, sdc *scyllav1alpha1.ScyllaDBDatacenter, statefulSets map[string]*appsv1.StatefulSet) ([]*PVItem, []string, error) {
 	var errs []error
 	var requeueReasons []string
 	var pis []*PVItem
 	for _, rack := range sdc.Spec.Racks {
 		stsName := naming.StatefulSetNameForRack(rack, sdc)
-		rackNodeCount, err := controllerhelpers.GetRackNodeCount(sdc, rack.Name)
+		rackNodeCount, err := controllerhelpers.GetRackNodeCount(sdc, rack.Name, statefulSets)
 		if err != nil {
 			return nil, nil, fmt.Errorf("can't get rack %q node count of ScyllaDBDatacenter %q: %w", rack.Name, naming.ObjRef(sdc), err)
 		}
@@ -107,9 +112,35 @@ func (opc *Controller) sync(ctx context.Context, key string) error {
 		return err
 	}
 
+	sdcSelector := labels.SelectorFromSet(labels.Set{
+		naming.ClusterNameLabel: sdc.Name,
+	})
+
+	var objectErrs []error
+
+	statefulSetMap, err := controllerhelpers.GetObjects[*scyllav1alpha1.ScyllaDBDatacenter, *appsv1.StatefulSet](
+		ctx,
+		sdc,
+		scyllaDBDatacenterControllerGVK,
+		sdcSelector,
+		controllerhelpers.ControlleeManagerGetObjectsFuncs[*scyllav1alpha1.ScyllaDBDatacenter, *appsv1.StatefulSet]{
+			GetControllerUncachedFunc: opc.scyllaClient.ScyllaV1alpha1().ScyllaDBDatacenters(sdc.Namespace).Get,
+			ListObjectsFunc:           opc.statefulSetLister.StatefulSets(sdc.Namespace).List,
+			PatchObjectFunc:           opc.kubeClient.AppsV1().StatefulSets(sdc.Namespace).Patch,
+		},
+	)
+	if err != nil {
+		objectErrs = append(objectErrs, err)
+	}
+
+	objectErr := utilerrors.NewAggregate(objectErrs)
+	if objectErr != nil {
+		return objectErr
+	}
+
 	var errs []error
 
-	pis, requeueReasons, err := opc.getPVsForScyllaDBDatacenter(ctx, sdc)
+	pis, requeueReasons, err := opc.getPVsForScyllaDBDatacenter(ctx, sdc, statefulSetMap)
 	// Process at least some PVs even if there were errors retrieving the rest
 	if err != nil {
 		errs = append(errs, err)
